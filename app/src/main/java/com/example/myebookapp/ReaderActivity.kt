@@ -24,6 +24,8 @@ import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
@@ -48,15 +50,18 @@ class ReaderActivity : FragmentActivity() {
 
     companion object {
         private const val NAV_TAG = "epub_navigator"
+        private const val AUTO_HIDE_MS = 4000L
     }
 
     private var publication: Publication? = null
     private var containerId: Int = View.NO_ID
+    private var lastPreferenceChangeAt: Long = 0L
 
     private var bookTitle by mutableStateOf("Opening book...")
     private var isLoading by mutableStateOf(true)
     private var errorMessage by mutableStateOf<String?>(null)
     private var showControls by mutableStateOf(true)
+    private var interactionTick by mutableIntStateOf(0)
     private var currentTheme by mutableStateOf(Theme.LIGHT)
     private var fontSize by mutableStateOf(1.0)
 
@@ -100,6 +105,13 @@ class ReaderActivity : FragmentActivity() {
             )
             setContent {
                 MaterialTheme {
+                    LaunchedEffect(showControls, isLoading, errorMessage, interactionTick) {
+                        if (showControls && !isLoading && errorMessage == null) {
+                            delay(AUTO_HIDE_MS)
+                            showControls = false
+                        }
+                    }
+
                     AnimatedVisibility(
                         visible = showControls || isLoading || errorMessage != null,
                         enter = slideInVertically { -it } + fadeIn(),
@@ -112,6 +124,7 @@ class ReaderActivity : FragmentActivity() {
                             errorMessage = errorMessage,
                             onBack = { finish() },
                             onCycleTheme = {
+                                interactionTick++
                                 currentTheme = when (currentTheme) {
                                     Theme.LIGHT -> Theme.SEPIA
                                     Theme.SEPIA -> Theme.DARK
@@ -120,10 +133,12 @@ class ReaderActivity : FragmentActivity() {
                                 applyPreferences()
                             },
                             onDecreaseFont = {
+                                interactionTick++
                                 fontSize = (fontSize - 0.15).coerceAtLeast(0.7)
                                 applyPreferences()
                             },
                             onIncreaseFont = {
+                                interactionTick++
                                 fontSize = (fontSize + 0.15).coerceAtMost(2.2)
                                 applyPreferences()
                             }
@@ -197,9 +212,20 @@ class ReaderActivity : FragmentActivity() {
                     addInputListener(object : InputListener {
                         override fun onTap(event: TapEvent): Boolean {
                             showControls = !showControls
+                            if (showControls) interactionTick++
                             return true
                         }
                     })
+
+                    lifecycleScope.launch {
+                        currentLocator.drop(1).collect {
+                            val recentlyChangedPrefs =
+                                System.currentTimeMillis() - lastPreferenceChangeAt < 1000L
+                            if (showControls && !recentlyChangedPrefs) {
+                                showControls = false
+                            }
+                        }
+                    }
                 }
 
                 isLoading = false
@@ -220,6 +246,7 @@ class ReaderActivity : FragmentActivity() {
     }
 
     private fun applyPreferences() {
+        lastPreferenceChangeAt = System.currentTimeMillis()
         val navigator = supportFragmentManager.findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment
         navigator?.submitPreferences(currentPreferences())
     }
