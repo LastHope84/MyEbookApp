@@ -1,5 +1,6 @@
 package com.example.myebookapp
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -42,6 +43,7 @@ fun BookInspectorScreen() {
     val context = LocalContext.current
     var isLoading by remember { mutableStateOf(false) }
     var book by remember { mutableStateOf<EpubMetadata?>(null) }
+    var bookUri by remember { mutableStateOf<Uri?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var converterPromptFile by remember { mutableStateOf<String?>(null) }
 
@@ -66,7 +68,10 @@ fun BookInspectorScreen() {
                     }
                     ContextCompat.getMainExecutor(context).execute {
                         isLoading = false
-                        result.onSuccess { book = it }
+                        result.onSuccess {
+                            book = it
+                            bookUri = uri
+                        }
                         result.onFailure {
                             errorMessage = it.localizedMessage ?: "Failed to read EPUB."
                         }
@@ -124,11 +129,22 @@ fun BookInspectorScreen() {
             }
 
             book?.let { meta ->
-                BookDetailsCard(meta)
+                BookDetailsCard(
+                    meta = meta,
+                    onReadClick = {
+                        bookUri?.let { uri ->
+                            val intent = Intent(context, ReaderActivity::class.java).apply {
+                                data = uri
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(intent)
+                        }
+                    }
+                )
             } ?: run {
                 if (!isLoading && errorMessage == null) {
                     Text(
-                        text = "Pick any EPUB on your phone to inspect its cover and metadata!",
+                        text = "Pick any EPUB on your phone to inspect or read it!",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -156,7 +172,7 @@ fun BookInspectorScreen() {
 }
 
 @Composable
-fun BookDetailsCard(meta: EpubMetadata) {
+fun BookDetailsCard(meta: EpubMetadata, onReadClick: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -181,6 +197,15 @@ fun BookDetailsCard(meta: EpubMetadata) {
                 ) {
                     Text("No Cover")
                 }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = onReadClick,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Read This Book")
             }
 
             Spacer(modifier = Modifier.height(16.dp))
