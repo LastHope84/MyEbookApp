@@ -28,6 +28,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.epub.EpubPreferences
@@ -36,6 +37,7 @@ import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.preferences.Theme
 import org.readium.r2.navigator.util.DirectionalNavigationAdapter
 import org.readium.r2.shared.ExperimentalReadiumApi
+import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.asset.AssetRetriever
@@ -55,6 +57,7 @@ class ReaderActivity : FragmentActivity() {
 
     private var publication: Publication? = null
     private var containerId: Int = View.NO_ID
+    private var currentBookUriString: String? = null
     private var lastPreferenceChangeAt: Long = 0L
 
     private var bookTitle by mutableStateOf("Opening book...")
@@ -73,6 +76,14 @@ class ReaderActivity : FragmentActivity() {
             finish()
             return
         }
+        currentBookUriString = bookUri.toString()
+
+        currentTheme = when (BookHistoryStore.getReaderTheme(this)) {
+            "SEPIA" -> Theme.SEPIA
+            "DARK" -> Theme.DARK
+            else -> Theme.LIGHT
+        }
+        fontSize = BookHistoryStore.getReaderFontSize(this)
 
         containerId = View.generateViewId()
 
@@ -164,7 +175,16 @@ class ReaderActivity : FragmentActivity() {
                         tempFile.outputStream().use { output ->
                             input.copyTo(output)
                         }
-                    } ?: error("Could not read the selected file.")
+                    } ?: error("Permission expired or file moved — please pick this book again.")
+
+                    val savedLocatorJson = BookHistoryStore.getLocatorJson(
+                        this@ReaderActivity,
+                        bookUri.toString()
+                    )
+                    val savedLocator = savedLocatorJson?.let { json ->
+                        runCatching { Locator.fromJSON(JSONObject(json)) }.getOrNull()
+                    }
+                    BookHistoryStore.touchOpened(this@ReaderActivity, bookUri.toString())
 
                     val url = AbsoluteUrl(Uri.fromFile(tempFile).toString())
                         ?: error("Invalid book file URL.")
@@ -183,13 +203,15 @@ class ReaderActivity : FragmentActivity() {
                             pdfFactory = null
                         )
                     )
-                    opener.open(asset, allowUserInteraction = false).getOrElse { err ->
+                    val pub = opener.open(asset, allowUserInteraction = false).getOrElse { err ->
                         error("Could not open EPUB: ${err.message}")
                     }
+
+                    pub to savedLocator
                 }
             }
 
-            openResult.onSuccess { pub ->
+            openResult.onSuccess { (pub, savedLocator) ->
                 if (isFinishing || isDestroyed) {
                     pub.close()
                     return@onSuccess
@@ -199,7 +221,7 @@ class ReaderActivity : FragmentActivity() {
 
                 val navigatorFactory = EpubNavigatorFactory(pub)
                 supportFragmentManager.fragmentFactory = navigatorFactory.createFragmentFactory(
-                    initialLocator = null,
+                    initialLocator = savedLocator,
                     initialPreferences = currentPreferences()
                 )
                 supportFragmentManager.beginTransaction()
@@ -218,12 +240,13 @@ class ReaderActivity : FragmentActivity() {
                     })
 
                     lifecycleScope.launch {
-                        currentLocator.drop(1).collect {
+                        currentLocator.drop(1).collect { locator ->
                             val recentlyChangedPrefs =
                                 System.currentTimeMillis() - lastPreferenceChangeAt < 1000L
                             if (showControls && !recentlyChangedPrefs) {
                                 showControls = false
                             }
+                            saveLocatorNow(locator)
                         }
                     }
                 }
@@ -238,6 +261,13 @@ class ReaderActivity : FragmentActivity() {
         }
     }
 
+    private fun saveLocatorNow(locator: Locator) {
+        val uriStr = currentBookUriString ?: return
+        val json = locator.toJSON().toString()
+        val progress = locator.locations.totalProgression ?: 0.0
+        BookHistoryStore.saveLocator(this, uriStr, json, progress)
+    }
+
     private fun currentPreferences(): EpubPreferences {
         return EpubPreferences(
             theme = currentTheme,
@@ -247,8 +277,15 @@ class ReaderActivity : FragmentActivity() {
 
     private fun applyPreferences() {
         lastPreferenceChangeAt = System.currentTimeMillis()
+        BookHistoryStore.saveReaderPrefs(this, currentTheme.name, fontSize)
         val navigator = supportFragmentManager.findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment
         navigator?.submitPreferences(currentPreferences())
+    }
+
+    override fun onPause() {
+        super.onPause()
+        val navigator = supportFragmentManager.findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment
+        navigator?.currentLocator?.value?.let { saveLocatorNow(it) }
     }
 
     override fun onDestroy() {
