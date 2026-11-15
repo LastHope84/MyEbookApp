@@ -37,8 +37,19 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
-                BookInspectorScreen(resumeTick = resumeTick)
+            val context = LocalContext.current
+            var themeMode by remember { mutableStateOf(ThemePrefs.getMode(context)) }
+
+            MyEbookTheme(mode = themeMode) {
+                BookInspectorScreen(
+                    resumeTick = resumeTick,
+                    themeMode = themeMode,
+                    onCycleThemeMode = {
+                        val next = themeMode.next()
+                        themeMode = next
+                        ThemePrefs.saveMode(context, next)
+                    }
+                )
             }
         }
     }
@@ -51,7 +62,11 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BookInspectorScreen(resumeTick: Int) {
+fun BookInspectorScreen(
+    resumeTick: Int,
+    themeMode: AppThemeMode,
+    onCycleThemeMode: () -> Unit
+) {
     val context = LocalContext.current
     var isLoading by remember { mutableStateOf(false) }
     var recentBooks by remember { mutableStateOf<List<BookRecord>>(emptyList()) }
@@ -117,7 +132,14 @@ fun BookInspectorScreen(resumeTick: Int) {
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("My Ebook Library") })
+            TopAppBar(
+                title = { Text("My Ebook Library") },
+                actions = {
+                    TextButton(onClick = onCycleThemeMode) {
+                        Text("Theme: ${themeMode.label}")
+                    }
+                }
+            )
         }
     ) { innerPadding ->
         Column(
