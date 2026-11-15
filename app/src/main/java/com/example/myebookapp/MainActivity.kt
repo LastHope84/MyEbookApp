@@ -1,5 +1,6 @@
 package com.example.myebookapp
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -9,6 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,35 +24,63 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import kotlin.concurrent.thread
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
+
+    private var resumeTick by mutableIntStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
-                BookInspectorScreen()
+                BookInspectorScreen(resumeTick = resumeTick)
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        resumeTick++
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BookInspectorScreen() {
+fun BookInspectorScreen(resumeTick: Int) {
     val context = LocalContext.current
     var isLoading by remember { mutableStateOf(false) }
-    var book by remember { mutableStateOf<EpubMetadata?>(null) }
-    var bookUri by remember { mutableStateOf<Uri?>(null) }
+    var recentBooks by remember { mutableStateOf<List<BookRecord>>(emptyList()) }
+    var selectedBook by remember { mutableStateOf<BookRecord?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var converterPromptFile by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(resumeTick) {
+        val loaded = BookHistoryStore.getAll(context)
+        recentBooks = loaded
+        if (selectedBook == null && loaded.isNotEmpty()) {
+            selectedBook = loaded.first()
+        } else if (selectedBook != null) {
+            selectedBook = loaded.firstOrNull { it.uriString == selectedBook?.uriString }
+                ?: loaded.firstOrNull()
+        }
+    }
 
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
+
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        }
 
         val fileName = EpubParser.getFileName(context, uri)
         val ext = fileName.substringAfterLast('.', "").lowercase()
@@ -64,13 +94,14 @@ fun BookInspectorScreen() {
                 errorMessage = null
                 thread {
                     val result = runCatching {
-                        EpubParser.parseEpub(context, uri, fileName)
+                        val meta = EpubParser.parseEpub(context, uri, fileName)
+                        BookHistoryStore.upsertFromMetadata(context, uri.toString(), meta)
                     }
                     ContextCompat.getMainExecutor(context).execute {
                         isLoading = false
-                        result.onSuccess {
-                            book = it
-                            bookUri = uri
+                        result.onSuccess { record ->
+                            selectedBook = record
+                            recentBooks = BookHistoryStore.getAll(context)
                         }
                         result.onFailure {
                             errorMessage = it.localizedMessage ?: "Failed to read EPUB."
@@ -86,7 +117,7 @@ fun BookInspectorScreen() {
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("My Ebook Inspector") })
+            TopAppBar(title = { Text("My Ebook Library") })
         }
     ) { innerPadding ->
         Column(
@@ -102,6 +133,25 @@ fun BookInspectorScreen() {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Pick an Ebook (.epub / .mobi / .azw3)")
+            }
+
+            recentBooks.firstOrNull()?.let { lastBook ->
+                Spacer(modifier = Modifier.height(8.dp))
+                val pct = (lastBook.progressPercent * 100).roundToInt()
+                OutlinedButton(
+                    onClick = { openInReader(context, lastBook.uriString) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = if (pct > 0) {
+                            "Continue: ${lastBook.title} ($pct%)"
+                        } else {
+                            "Continue: ${lastBook.title}"
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -128,18 +178,10 @@ fun BookInspectorScreen() {
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            book?.let { meta ->
+            selectedBook?.let { record ->
                 BookDetailsCard(
-                    meta = meta,
-                    onReadClick = {
-                        bookUri?.let { uri ->
-                            val intent = Intent(context, ReaderActivity::class.java).apply {
-                                data = uri
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
-                            context.startActivity(intent)
-                        }
-                    }
+                    record = record,
+                    onReadClick = { openInReader(context, record.uriString) }
                 )
             } ?: run {
                 if (!isLoading && errorMessage == null) {
@@ -148,6 +190,34 @@ fun BookInspectorScreen() {
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+
+            if (recentBooks.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    text = "Recently Opened",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                recentBooks.forEach { record ->
+                    RecentBookRow(
+                        record = record,
+                        isSelected = record.uriString == selectedBook?.uriString,
+                        onSelect = { selectedBook = record },
+                        onRead = { openInReader(context, record.uriString) },
+                        onRemove = {
+                            BookHistoryStore.remove(context, record.uriString)
+                            val updated = BookHistoryStore.getAll(context)
+                            recentBooks = updated
+                            if (selectedBook?.uriString == record.uriString) {
+                                selectedBook = updated.firstOrNull()
+                            }
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
             }
         }
@@ -171,26 +241,39 @@ fun BookInspectorScreen() {
     }
 }
 
+private fun openInReader(context: Context, uriString: String) {
+    val intent = Intent(context, ReaderActivity::class.java).apply {
+        data = Uri.parse(uriString)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(intent)
+}
+
 @Composable
-fun BookDetailsCard(meta: EpubMetadata, onReadClick: () -> Unit) {
+fun BookDetailsCard(record: BookRecord, onReadClick: () -> Unit) {
+    val coverBitmap = remember(record.coverPath) {
+        BookHistoryStore.loadCoverBitmap(record.coverPath)
+    }
+    val pct = (record.progressPercent * 100).roundToInt()
+
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (meta.coverBitmap != null) {
+            if (coverBitmap != null) {
                 Image(
-                    bitmap = meta.coverBitmap.asImageBitmap(),
+                    bitmap = coverBitmap.asImageBitmap(),
                     contentDescription = "Book Cover",
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
-                        .height(240.dp)
+                        .height(220.dp)
                         .clip(RoundedCornerShape(8.dp))
                 )
             } else {
                 Box(
                     modifier = Modifier
-                        .size(width = 160.dp, height = 220.dp)
+                        .size(width = 150.dp, height = 200.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center
@@ -205,19 +288,104 @@ fun BookDetailsCard(meta: EpubMetadata, onReadClick: () -> Unit) {
                 onClick = onReadClick,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Read This Book")
+                Text(if (pct > 0) "Continue Reading ($pct%)" else "Read This Book")
             }
 
             Spacer(modifier = Modifier.height(16.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(12.dp))
 
-            MetadataRow("Title", meta.title)
-            MetadataRow("Author", meta.author)
-            MetadataRow("Publishing Date", meta.publishingDate)
-            MetadataRow("Publisher", meta.publisher)
-            MetadataRow("Language", meta.language)
-            MetadataRow("File", meta.fileName)
+            MetadataRow("Title", record.title)
+            MetadataRow("Author", record.author)
+            MetadataRow("Publishing Date", record.publishingDate)
+            MetadataRow("Publisher", record.publisher)
+            MetadataRow("Language", record.language)
+            MetadataRow("File", record.fileName)
+        }
+    }
+}
+
+@Composable
+fun RecentBookRow(
+    record: BookRecord,
+    isSelected: Boolean,
+    onSelect: () -> Unit,
+    onRead: () -> Unit,
+    onRemove: () -> Unit
+) {
+    val coverBitmap = remember(record.coverPath) {
+        BookHistoryStore.loadCoverBitmap(record.coverPath)
+    }
+    val pct = (record.progressPercent * 100).roundToInt()
+
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) {
+                MaterialTheme.colorScheme.secondaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            }
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onSelect() }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (coverBitmap != null) {
+                Image(
+                    bitmap = coverBitmap.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(width = 44.dp, height = 64.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(width = 44.dp, height = 64.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(MaterialTheme.colorScheme.surface),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("EPUB", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = record.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = record.author,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = if (pct > 0) "Progress: $pct%" else "Not started yet",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            TextButton(onClick = onRead) {
+                Text("Read")
+            }
+            TextButton(onClick = onRemove) {
+                Text("✕")
+            }
         }
     }
 }
