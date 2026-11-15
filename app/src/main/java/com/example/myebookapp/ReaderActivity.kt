@@ -2,8 +2,14 @@ package com.example.myebookapp
 
 import android.net.Uri
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
-import android.widget.LinearLayout
+import android.widget.FrameLayout
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,7 +29,10 @@ import kotlinx.coroutines.withContext
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.epub.EpubPreferences
+import org.readium.r2.navigator.input.InputListener
+import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.preferences.Theme
+import org.readium.r2.navigator.util.DirectionalNavigationAdapter
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.AbsoluteUrl
@@ -47,11 +56,11 @@ class ReaderActivity : FragmentActivity() {
     private var bookTitle by mutableStateOf("Opening book...")
     private var isLoading by mutableStateOf(true)
     private var errorMessage by mutableStateOf<String?>(null)
+    private var showControls by mutableStateOf(true)
     private var currentTheme by mutableStateOf(Theme.LIGHT)
     private var fontSize by mutableStateOf(1.0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Pass null so Android doesn't try restoring the Readium fragment before the book re-opens
         super.onCreate(null)
 
         val bookUri = intent?.data
@@ -62,11 +71,10 @@ class ReaderActivity : FragmentActivity() {
 
         containerId = View.generateViewId()
 
-        val rootLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.MATCH_PARENT
+        val rootLayout = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
             )
         }
 
@@ -76,47 +84,57 @@ class ReaderActivity : FragmentActivity() {
             insets
         }
 
+        val fragmentContainer = FragmentContainerView(this).apply {
+            id = containerId
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+
         val topBar = ComposeView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP
+            )
             setContent {
                 MaterialTheme {
-                    ReaderTopBar(
-                        title = bookTitle,
-                        theme = currentTheme,
-                        isLoading = isLoading,
-                        errorMessage = errorMessage,
-                        onBack = { finish() },
-                        onCycleTheme = {
-                            currentTheme = when (currentTheme) {
-                                Theme.LIGHT -> Theme.SEPIA
-                                Theme.SEPIA -> Theme.DARK
-                                Theme.DARK -> Theme.LIGHT
+                    AnimatedVisibility(
+                        visible = showControls || isLoading || errorMessage != null,
+                        enter = slideInVertically { -it } + fadeIn(),
+                        exit = slideOutVertically { -it } + fadeOut()
+                    ) {
+                        ReaderTopBar(
+                            title = bookTitle,
+                            theme = currentTheme,
+                            isLoading = isLoading,
+                            errorMessage = errorMessage,
+                            onBack = { finish() },
+                            onCycleTheme = {
+                                currentTheme = when (currentTheme) {
+                                    Theme.LIGHT -> Theme.SEPIA
+                                    Theme.SEPIA -> Theme.DARK
+                                    Theme.DARK -> Theme.LIGHT
+                                }
+                                applyPreferences()
+                            },
+                            onDecreaseFont = {
+                                fontSize = (fontSize - 0.15).coerceAtLeast(0.7)
+                                applyPreferences()
+                            },
+                            onIncreaseFont = {
+                                fontSize = (fontSize + 0.15).coerceAtMost(2.2)
+                                applyPreferences()
                             }
-                            applyPreferences()
-                        },
-                        onDecreaseFont = {
-                            fontSize = (fontSize - 0.15).coerceAtLeast(0.7)
-                            applyPreferences()
-                        },
-                        onIncreaseFont = {
-                            fontSize = (fontSize + 0.15).coerceAtMost(2.2)
-                            applyPreferences()
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
 
-        val fragmentContainer = FragmentContainerView(this).apply {
-            id = containerId
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
-        }
-
-        rootLayout.addView(topBar)
         rootLayout.addView(fragmentContainer)
+        rootLayout.addView(topBar)
         setContentView(rootLayout)
 
         openBook(bookUri)
@@ -171,11 +189,24 @@ class ReaderActivity : FragmentActivity() {
                 )
                 supportFragmentManager.beginTransaction()
                     .replace(containerId, EpubNavigatorFragment::class.java, Bundle(), NAV_TAG)
-                    .commitAllowingStateLoss()
+                    .commitNowAllowingStateLoss()
+
+                val navigator = supportFragmentManager.findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment
+                navigator?.apply {
+                    addInputListener(DirectionalNavigationAdapter(this))
+                    addInputListener(object : InputListener {
+                        override fun onTap(event: TapEvent): Boolean {
+                            showControls = !showControls
+                            return true
+                        }
+                    })
+                }
 
                 isLoading = false
+                showControls = false
             }.onFailure { err ->
                 isLoading = false
+                showControls = true
                 errorMessage = err.localizedMessage ?: "Failed to open EPUB."
             }
         }
@@ -216,7 +247,7 @@ private fun ReaderTopBar(
         Theme.DARK -> "Dark"
     }
 
-    Surface(tonalElevation = 2.dp) {
+    Surface(tonalElevation = 4.dp, shadowElevation = 4.dp) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
