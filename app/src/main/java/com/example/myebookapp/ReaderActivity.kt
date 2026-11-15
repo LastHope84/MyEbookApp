@@ -82,6 +82,7 @@ class ReaderActivity : FragmentActivity() {
     private var interactionTick by mutableIntStateOf(0)
     private var currentTheme by mutableStateOf(Theme.LIGHT)
     private var fontSize by mutableStateOf(1.0)
+    private var appThemeMode by mutableStateOf(AppThemeMode.AUTO)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(null)
@@ -93,6 +94,7 @@ class ReaderActivity : FragmentActivity() {
         }
         currentBookUriString = bookUri.toString()
 
+        appThemeMode = ThemePrefs.getMode(this)
         currentTheme = when (BookHistoryStore.getReaderTheme(this)) {
             "SEPIA" -> Theme.SEPIA
             "DARK" -> Theme.DARK
@@ -130,7 +132,10 @@ class ReaderActivity : FragmentActivity() {
                 Gravity.TOP
             )
             setContent {
-                MaterialTheme {
+                MyEbookTheme(
+                    mode = appThemeMode,
+                    forceDark = (currentTheme == Theme.DARK)
+                ) {
                     LaunchedEffect(showControls, showToc, isLoading, errorMessage, interactionTick) {
                         if (showControls && !showToc && !isLoading && errorMessage == null) {
                             delay(AUTO_HIDE_MS)
