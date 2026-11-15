@@ -10,12 +10,16 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.view.ViewCompat
@@ -37,6 +41,7 @@ import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.preferences.Theme
 import org.readium.r2.navigator.util.DirectionalNavigationAdapter
 import org.readium.r2.shared.ExperimentalReadiumApi
+import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.AbsoluteUrl
@@ -46,8 +51,15 @@ import org.readium.r2.shared.util.http.DefaultHttpClient
 import org.readium.r2.streamer.PublicationOpener
 import org.readium.r2.streamer.parser.DefaultPublicationParser
 import java.io.File
+import kotlin.math.roundToInt
 
-@OptIn(ExperimentalReadiumApi::class)
+data class TocEntry(
+    val link: Link,
+    val title: String,
+    val depth: Int
+)
+
+@OptIn(ExperimentalReadiumApi::class, ExperimentalMaterial3Api::class)
 class ReaderActivity : FragmentActivity() {
 
     companion object {
@@ -64,6 +76,9 @@ class ReaderActivity : FragmentActivity() {
     private var isLoading by mutableStateOf(true)
     private var errorMessage by mutableStateOf<String?>(null)
     private var showControls by mutableStateOf(true)
+    private var showToc by mutableStateOf(false)
+    private var tocEntries by mutableStateOf<List<TocEntry>>(emptyList())
+    private var progressPercent by mutableIntStateOf(0)
     private var interactionTick by mutableIntStateOf(0)
     private var currentTheme by mutableStateOf(Theme.LIGHT)
     private var fontSize by mutableStateOf(1.0)
@@ -116,8 +131,8 @@ class ReaderActivity : FragmentActivity() {
             )
             setContent {
                 MaterialTheme {
-                    LaunchedEffect(showControls, isLoading, errorMessage, interactionTick) {
-                        if (showControls && !isLoading && errorMessage == null) {
+                    LaunchedEffect(showControls, showToc, isLoading, errorMessage, interactionTick) {
+                        if (showControls && !showToc && !isLoading && errorMessage == null) {
                             delay(AUTO_HIDE_MS)
                             showControls = false
                         }
@@ -130,10 +145,15 @@ class ReaderActivity : FragmentActivity() {
                     ) {
                         ReaderTopBar(
                             title = bookTitle,
+                            progressPercent = progressPercent,
                             theme = currentTheme,
                             isLoading = isLoading,
                             errorMessage = errorMessage,
                             onBack = { finish() },
+                            onOpenToc = {
+                                interactionTick++
+                                showToc = true
+                            },
                             onCycleTheme = {
                                 interactionTick++
                                 currentTheme = when (currentTheme) {
@@ -152,6 +172,23 @@ class ReaderActivity : FragmentActivity() {
                                 interactionTick++
                                 fontSize = (fontSize + 0.15).coerceAtMost(2.2)
                                 applyPreferences()
+                            }
+                        )
+                    }
+
+                    if (showToc) {
+                        TocBottomSheet(
+                            entries = tocEntries,
+                            onDismiss = {
+                                showToc = false
+                                interactionTick++
+                            },
+                            onSelect = { entry ->
+                                showToc = false
+                                showControls = false
+                                val navigator = supportFragmentManager
+                                    .findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment
+                                navigator?.go(entry.link, animated = true)
                             }
                         )
                     }
@@ -218,6 +255,19 @@ class ReaderActivity : FragmentActivity() {
                 }
                 publication = pub
                 bookTitle = pub.metadata.title ?: "Reading"
+                progressPercent = ((savedLocator?.locations?.totalProgression ?: 0.0) * 100).roundToInt()
+
+                tocEntries = if (pub.tableOfContents.isNotEmpty()) {
+                    flattenToc(pub.tableOfContents)
+                } else {
+                    pub.readingOrder.mapIndexed { idx, link ->
+                        TocEntry(
+                            link = link,
+                            title = link.title?.takeIf { it.isNotBlank() } ?: "Section ${idx + 1}",
+                            depth = 0
+                        )
+                    }
+                }
 
                 val navigatorFactory = EpubNavigatorFactory(pub)
                 supportFragmentManager.fragmentFactory = navigatorFactory.createFragmentFactory(
@@ -246,6 +296,7 @@ class ReaderActivity : FragmentActivity() {
                             if (showControls && !recentlyChangedPrefs) {
                                 showControls = false
                             }
+                            progressPercent = ((locator.locations.totalProgression ?: 0.0) * 100).roundToInt()
                             saveLocatorNow(locator)
                         }
                     }
@@ -259,6 +310,18 @@ class ReaderActivity : FragmentActivity() {
                 errorMessage = err.localizedMessage ?: "Failed to open EPUB."
             }
         }
+    }
+
+    private fun flattenToc(links: List<Link>, depth: Int = 0): List<TocEntry> {
+        val result = mutableListOf<TocEntry>()
+        for (link in links) {
+            val label = link.title?.takeIf { it.isNotBlank() } ?: "Chapter"
+            result.add(TocEntry(link = link, title = label, depth = depth))
+            if (link.children.isNotEmpty()) {
+                result.addAll(flattenToc(link.children, depth + 1))
+            }
+        }
+        return result
     }
 
     private fun saveLocatorNow(locator: Locator) {
@@ -297,10 +360,12 @@ class ReaderActivity : FragmentActivity() {
 @Composable
 private fun ReaderTopBar(
     title: String,
+    progressPercent: Int,
     theme: Theme,
     isLoading: Boolean,
     errorMessage: String?,
     onBack: () -> Unit,
+    onOpenToc: () -> Unit,
     onCycleTheme: () -> Unit,
     onDecreaseFont: () -> Unit,
     onIncreaseFont: () -> Unit
@@ -316,7 +381,7 @@ private fun ReaderTopBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(onClick = onBack) {
@@ -331,14 +396,36 @@ private fun ReaderTopBar(
                         .weight(1f)
                         .padding(horizontal = 4.dp)
                 )
-                TextButton(onClick = onDecreaseFont) {
-                    Text("A-")
+                Text(
+                    text = "$progressPercent%",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+            }
+
+            HorizontalDivider()
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                TextButton(onClick = onOpenToc) {
+                    Text("Chapters")
                 }
-                TextButton(onClick = onIncreaseFont) {
-                    Text("A+")
-                }
-                TextButton(onClick = onCycleTheme) {
-                    Text(themeLabel)
+                Row {
+                    TextButton(onClick = onDecreaseFont) {
+                        Text("A-")
+                    }
+                    TextButton(onClick = onIncreaseFont) {
+                        Text("A+")
+                    }
+                    TextButton(onClick = onCycleTheme) {
+                        Text("Theme: $themeLabel")
+                    }
                 }
             }
 
@@ -353,6 +440,83 @@ private fun ReaderTopBar(
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TocBottomSheet(
+    entries: List<TocEntry>,
+    onDismiss: () -> Unit,
+    onSelect: (TocEntry) -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 520.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Table of Contents",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                TextButton(onClick = onDismiss) {
+                    Text("Close")
+                }
+            }
+
+            HorizontalDivider()
+
+            if (entries.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("No chapters found in this book.")
+                }
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                    items(entries) { entry ->
+                        val startPadding = (16 + (entry.depth.coerceAtMost(4) * 16)).dp
+                        Text(
+                            text = entry.title,
+                            style = if (entry.depth == 0) {
+                                MaterialTheme.typography.bodyLarge
+                            } else {
+                                MaterialTheme.typography.bodyMedium
+                            },
+                            fontWeight = if (entry.depth == 0) FontWeight.Medium else FontWeight.Normal,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelect(entry) }
+                                .padding(
+                                    start = startPadding,
+                                    end = 16.dp,
+                                    top = 12.dp,
+                                    bottom = 12.dp
+                                )
+                        )
+                        HorizontalDivider(thickness = 0.5.dp)
+                    }
+                }
             }
         }
     }
