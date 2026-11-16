@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.devtools.ksp")
 }
 
 android {
@@ -46,4 +47,16 @@ dependencies {
     implementation("org.readium.kotlin-toolkit:readium-shared:$readiumVersion")
     implementation("org.readium.kotlin-toolkit:readium-streamer:$readiumVersion")
     implementation("org.readium.kotlin-toolkit:readium-navigator:$readiumVersion")
+
+    val roomVersion = "2.7.2"
+    implementation("androidx.room:room-runtime:$roomVersion")
+    implementation("androidx.room:room-ktx:$roomVersion")
+    implementation("androidx.room:room-paging:$roomVersion")
+    ksp("androidx.room:room-compiler:$roomVersion")
+
+    val pagingVersion = "3.3.6"
+    implementation("androidx.paging:paging-runtime:$pagingVersion")
+    implementation("androidx.paging:paging-compose:$pagingVersion")
+
+    implementation("io.coil-kt:coil-compose:2.7.0")
 }
