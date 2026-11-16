@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Floating magic sparkles -->
+    <path
+        android:fillColor="#D8B4FE"
+        android:pathData="M33,29 L34,32 L37,33 L34,34 L33,37 L32,34 L29,33 L32,32 Z" />
+    <path
+        android:fillColor="#C084FC"
+        android:pathData="M75,28 L75.8,30.2 L78,31 L75.8,31.8 L75,34 L74.2,31.8 L72,31 L74.2,30.2 Z" />
+
+    <!-- Wizard hat brim -->
+    <path
+        android:fillColor="#240B47"
+        android:strokeColor="#C084FC"
+        android:strokeWidth="2.4"
+        android:strokeLineJoin="round"
+        android:pathData="M33,45 Q54,40 75,45 Q54,50 33,45 Z" />
+
+    <!-- Wizard hat cone -->
+    <path
+        android:fillColor="#240B47"
+        android:strokeColor="#C084FC"
+        android:strokeWidth="2.4"
+        android:strokeLineJoin="round"
+        android:strokeLineCap="round"
+        android:pathData="M61,22 Q46,25 41,43 Q54,45.5 67,43 Q63,31 56,27 Q59.5,24 61,22 Z" />
+
+    <!-- Wizard hat band -->
+    <path
+        android:strokeColor="#E9D5FF"
+        android:strokeWidth="2.0"
+        android:strokeLineCap="round"
+        android:pathData="M42.2,39.8 Q54,42.2 65.8,39.8" />
+
+    <!-- Open book outer hardcover -->
+    <path
+        android:fillColor="#1E0A3C"
+        android:strokeColor="#7E22CE"
+        android:strokeWidth="2.4"
+        android:strokeLineJoin="round"
+        android:strokeLineCap="round"
+        android:pathData="M32,57 L32,74 Q43,73 54,77 Q65,73 76,74 L76,57" />
+
+    <!-- Left page -->
+    <path
+        android:fillColor="#0F051D"
+        android:strokeColor="#C084FC"
+        android:strokeWidth="2.4"
+        android:strokeLineJoin="round"
+        android:pathData="M54,58 Q44,52 34,54 L34,72 Q44,70 54,75 Z" />
+
+    <!-- Right page -->
+    <path
+        android:fillColor="#0F051D"
+        android:strokeColor="#C084FC"
+        android:strokeWidth="2.4"
+        android:strokeLineJoin="round"
+        android:pathData="M54,58 Q64,52 74,54 L74,72 Q64,70 54,75 Z" />
+
+    <!-- Stylized page lines -->
+    <path
+        android:strokeColor="#9333EA"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:pathData="M38,60 Q44,58.5 50,61" />
+    <path
+        android:strokeColor="#9333EA"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:pathData="M38,65.5 Q44,64 50,66.5" />
+    <path
+        android:strokeColor="#9333EA"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:pathData="M58,61 Q64,58.5 70,60" />
+    <path
+        android:strokeColor="#9333EA"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:pathData="M58,66.5 Q64,64 70,65.5" />
+
+</vector>
