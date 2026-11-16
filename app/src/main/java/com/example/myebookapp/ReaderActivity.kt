@@ -27,6 +27,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
@@ -219,13 +220,17 @@ class ReaderActivity : FragmentActivity() {
                         }
                     } ?: error("Permission expired or file moved — please pick this book again.")
 
-                    val savedLocatorJson = BookHistoryStore.getLocatorJson(
-                        this@ReaderActivity,
-                        bookUri.toString()
-                    )
+                    val dao = AppDatabase.getInstance(this@ReaderActivity).bookDao()
+                    val dbBook = dao.getByUri(bookUri.toString())
+                    val savedLocatorJson = dbBook?.lastLocatorJson
+                        ?: BookHistoryStore.getLocatorJson(this@ReaderActivity, bookUri.toString())
+
                     val savedLocator = savedLocatorJson?.let { json ->
                         runCatching { Locator.fromJSON(JSONObject(json)) }.getOrNull()
                     }
+
+                    val now = System.currentTimeMillis()
+                    dao.touchOpened(bookUri.toString(), now)
                     BookHistoryStore.touchOpened(this@ReaderActivity, bookUri.toString())
 
                     val url = AbsoluteUrl(Uri.fromFile(tempFile).toString())
@@ -332,8 +337,15 @@ class ReaderActivity : FragmentActivity() {
     private fun saveLocatorNow(locator: Locator) {
         val uriStr = currentBookUriString ?: return
         val json = locator.toJSON().toString()
-        val progress = locator.locations.totalProgression ?: 0.0
-        BookHistoryStore.saveLocator(this, uriStr, json, progress)
+        val progress = (locator.locations.totalProgression ?: 0.0).coerceIn(0.0, 1.0)
+        val now = System.currentTimeMillis()
+        val appCtx = applicationContext
+
+        CoroutineScope(Dispatchers.IO).launch {
+            AppDatabase.getInstance(appCtx).bookDao()
+                .updateReadingPosition(uriStr, json, progress, now)
+            BookHistoryStore.saveLocator(appCtx, uriStr, json, progress)
+        }
     }
 
     private fun currentPreferences(): EpubPreferences {
