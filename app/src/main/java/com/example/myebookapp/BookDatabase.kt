@@ -13,12 +13,16 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.Transaction
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Entity(
     tableName = "books",
     indices = [
         Index(value = ["uriString"], unique = true),
+        Index(value = ["title"]),
         Index(value = ["lastOpenedAt"]),
         Index(value = ["format"]),
         Index(value = ["metadataExtracted"])
@@ -51,6 +55,16 @@ data class BookFtsEntity(
     val publisher: String,
     val language: String,
     val fileName: String
+)
+
+data class ExtractedBookMeta(
+    val id: Long,
+    val title: String,
+    val author: String,
+    val publishingDate: String,
+    val publisher: String,
+    val language: String,
+    val coverPath: String?
 )
 
 @Dao
@@ -134,6 +148,21 @@ interface BookDao {
         coverPath: String?
     )
 
+    @Transaction
+    suspend fun updateExtractedMetadataBatch(items: List<ExtractedBookMeta>) {
+        for (item in items) {
+            updateExtractedMetadata(
+                id = item.id,
+                title = item.title,
+                author = item.author,
+                publishingDate = item.publishingDate,
+                publisher = item.publisher,
+                language = item.language,
+                coverPath = item.coverPath
+            )
+        }
+    }
+
     @Query("""
         UPDATE books SET
             lastLocatorJson = :locatorJson,
@@ -157,7 +186,7 @@ interface BookDao {
 
 @Database(
     entities = [BookEntity::class, BookFtsEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -167,13 +196,22 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_books_title` ON `books` (`title`)")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "my_ebook_library.db"
-                ).build().also { INSTANCE = it }
+                )
+                    .addMigrations(MIGRATION_1_2)
+                    .build()
+                    .also { INSTANCE = it }
             }
         }
     }
