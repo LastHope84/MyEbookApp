@@ -18,6 +18,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
 import java.security.MessageDigest
+import java.util.Collections
 import kotlin.math.roundToInt
 
 data class ScanStatus(
@@ -136,7 +137,7 @@ object LibraryScanner {
             DocumentsContract.Document.COLUMN_LAST_MODIFIED
         )
 
-        val batch = ArrayList<BookEntity>(100)
+        val batch = ArrayList<BookEntity>(200)
 
         while (queue.isNotEmpty()) {
             if (!scope.coroutineContext.isActive) break
@@ -164,7 +165,7 @@ object LibraryScanner {
                             continue
                         }
 
-                        val ext = name.substringAfterLast('.', "").lowercase()
+                        val ext = name.substringAfterLast('.', "").trim().lowercase()
                         val format = when (ext) {
                             "epub" -> "EPUB"
                             "mobi" -> "MOBI"
@@ -197,7 +198,7 @@ object LibraryScanner {
                             )
                         )
 
-                        if (batch.size >= 100) {
+                        if (batch.size >= 200) {
                             dao.insertIgnoreBatch(batch)
                             _status.value = _status.value.copy(
                                 filesFoundInPass = _status.value.filesFoundInPass + batch.size
@@ -222,8 +223,10 @@ object LibraryScanner {
         _status.value = _status.value.copy(phaseLabel = "Extracting EPUB covers & metadata...")
 
         while (true) {
-            val pending = dao.getPendingEpubs(limit = 40)
+            val pending = dao.getPendingEpubs(limit = 60)
             if (pending.isEmpty()) break
+
+            val updates = Collections.synchronizedList(mutableListOf<ExtractedBookMeta>())
 
             coroutineScope {
                 val channel = Channel<BookEntity>(Channel.UNLIMITED)
@@ -245,25 +248,28 @@ object LibraryScanner {
                                     book.uriString,
                                     parsed.coverBitmap
                                 )
-                                dao.updateExtractedMetadata(
-                                    id = book.id,
-                                    title = parsed.title,
-                                    author = parsed.author,
-                                    publishingDate = parsed.publishingDate,
-                                    publisher = parsed.publisher,
-                                    language = parsed.language,
-                                    coverPath = coverPath
+                                updates.add(
+                                    ExtractedBookMeta(
+                                        id = book.id,
+                                        title = parsed.title,
+                                        author = parsed.author,
+                                        publishingDate = parsed.publishingDate,
+                                        publisher = parsed.publisher,
+                                        language = parsed.language,
+                                        coverPath = coverPath
+                                    )
                                 )
                             } else {
-                                // Mark processed so unreadable/corrupt EPUBs don't loop forever
-                                dao.updateExtractedMetadata(
-                                    id = book.id,
-                                    title = book.title,
-                                    author = book.author,
-                                    publishingDate = book.publishingDate,
-                                    publisher = book.publisher,
-                                    language = book.language,
-                                    coverPath = null
+                                updates.add(
+                                    ExtractedBookMeta(
+                                        id = book.id,
+                                        title = book.title,
+                                        author = book.author,
+                                        publishingDate = book.publishingDate,
+                                        publisher = book.publisher,
+                                        language = book.language,
+                                        coverPath = null
+                                    )
                                 )
                             }
 
@@ -273,6 +279,10 @@ object LibraryScanner {
                         }
                     }
                 }
+            }
+
+            if (updates.isNotEmpty()) {
+                dao.updateExtractedMetadataBatch(updates.toList())
             }
         }
     }
