@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
+import androidx.paging.cachedIn
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import coil.compose.AsyncImage
@@ -91,7 +92,6 @@ fun LibraryScreen(
     var converterPromptFile by remember { mutableStateOf<String?>(null) }
     var savedFoldersCount by remember { mutableIntStateOf(LibraryScanner.getSavedFolders(context).size) }
 
-    // One-time seamless migration from old BookHistoryStore to Room
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             val legacy = BookHistoryStore.getAll(context)
@@ -126,12 +126,13 @@ fun LibraryScreen(
         debouncedQuery = searchQuery
     }
 
-    val booksFlow = remember(debouncedQuery, activeTab) {
+    val booksFlow = remember(debouncedQuery, activeTab, scope) {
         Pager(
             config = PagingConfig(
-                pageSize = 36,
-                prefetchDistance = 18,
-                enablePlaceholders = false
+                pageSize = 60,
+                initialLoadSize = 180,
+                prefetchDistance = 30,
+                enablePlaceholders = true
             ),
             pagingSourceFactory = {
                 val fts = toFtsQuery(debouncedQuery)
@@ -141,7 +142,7 @@ fun LibraryScreen(
                     LibraryTab.TO_CONVERT -> if (fts == null) dao.toConvertPaged() else dao.searchToConvertPaged(fts)
                 }
             }
-        ).flow
+        ).flow.cachedIn(scope)
     }
     val pagedBooks = booksFlow.collectAsLazyPagingItems()
 
@@ -171,7 +172,7 @@ fun LibraryScreen(
             )
         }
         val fileName = EpubParser.getFileName(context, uri)
-        val ext = fileName.substringAfterLast('.', "").lowercase()
+        val ext = fileName.substringAfterLast('.', "").trim().lowercase()
 
         when (ext) {
             "mobi", "azw3", "azw", "prc" -> {
@@ -414,19 +415,17 @@ fun LibraryScreen(
                         .padding(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = when {
-                                debouncedQuery.isNotBlank() -> "No matches for \"$debouncedQuery\""
-                                activeTab == LibraryTab.RECENT -> "No books opened yet."
-                                activeTab == LibraryTab.TO_CONVERT -> "No MOBI/AZW3 files found yet."
-                                else -> "Tap '+ Folder' at the top to scan your ebooks!"
-                            },
-                            style = MaterialTheme.typography.bodyLarge,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        text = when {
+                            debouncedQuery.isNotBlank() -> "No matches for \"$debouncedQuery\""
+                            activeTab == LibraryTab.RECENT -> "No books opened yet."
+                            activeTab == LibraryTab.TO_CONVERT -> "No MOBI/AZW3 files found yet."
+                            else -> "Tap '+ Folder' at the top to scan your ebooks!"
+                        },
+                        style = MaterialTheme.typography.bodyLarge,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             } else {
                 LazyVerticalGrid(
@@ -446,6 +445,8 @@ fun LibraryScreen(
                                 book = book,
                                 onClick = { selectedBook = book }
                             )
+                        } else {
+                            BookPlaceholderTile()
                         }
                     }
                 }
@@ -498,6 +499,27 @@ private fun openInReader(context: Context, uriString: String) {
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(intent)
+}
+
+@Composable
+fun BookPlaceholderTile() {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.68f)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.8f)
+                .height(12.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+        )
+    }
 }
 
 @Composable
