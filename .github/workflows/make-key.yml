@@ -1,0 +1,28 @@
+name: Generate Keystore (Run Once)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  keygen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate permanent keystore
+        run: |
+          keytool -genkeypair -v \
+            -keystore myebook.keystore \
+            -alias myebook \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass android123 \
+            -keypass android123 \
+            -dname "CN=MyEbookApp, OU=Mobile, O=LastHope84, L=Italy, C=IT"
+          base64 -w 0 myebook.keystore > keystore_base64.txt
+
+      - name: Upload keystore text
+        uses: actions/upload-artifact@v4
+        with:
+          name: keystore-secret-text
+          path: keystore_base64.txt
+          retention-days: 1
