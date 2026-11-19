@@ -7,6 +7,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Xml
 import org.xmlpull.v1.XmlPullParser
+import java.io.File
 import java.io.InputStream
 import java.util.zip.ZipInputStream
 
@@ -23,6 +24,9 @@ data class EpubMetadata(
 object EpubParser {
 
     fun getFileName(context: Context, uri: Uri): String {
+        if (uri.scheme == "file") {
+            return uri.lastPathSegment?.substringAfterLast('/') ?: "Unknown"
+        }
         context.contentResolver.query(
             uri,
             arrayOf(OpenableColumns.DISPLAY_NAME),
@@ -65,6 +69,14 @@ object EpubParser {
             language = parsed.language.ifBlank { "Unknown" },
             coverBitmap = coverBitmap
         )
+    }
+
+    private fun openUriStream(context: Context, uri: Uri): InputStream? {
+        return if (uri.scheme == "file") {
+            uri.path?.let { File(it).inputStream() }
+        } else {
+            context.contentResolver.openInputStream(uri)
+        }
     }
 
     private fun findOpfPath(context: Context, uri: Uri): String? {
@@ -191,7 +203,7 @@ object EpubParser {
 
     private fun readZipEntryBytes(context: Context, uri: Uri, targetPath: String): ByteArray? {
         val normalizedTarget = targetPath.trimStart('/')
-        context.contentResolver.openInputStream(uri)?.use { inputStream ->
+        openUriStream(context, uri)?.use { inputStream ->
             ZipInputStream(inputStream).use { zip ->
                 var entry = zip.nextEntry
                 while (entry != null) {
