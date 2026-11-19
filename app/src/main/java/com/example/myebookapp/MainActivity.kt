@@ -21,6 +21,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -87,6 +88,8 @@ fun LibraryScreen(
     var activeTab by remember { mutableStateOf(LibraryTab.ALL) }
     var searchQuery by remember { mutableStateOf("") }
     var debouncedQuery by remember { mutableStateOf("") }
+    var isSearchFocused by remember { mutableStateOf(false) }
+    var menuExpanded by remember { mutableStateOf(false) }
     var selectedBook by remember { mutableStateOf<BookEntity?>(null) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var converterPromptFile by remember { mutableStateOf<String?>(null) }
@@ -252,14 +255,47 @@ fun LibraryScreen(
                     }
                 },
                 actions = {
-                    TextButton(onClick = { folderPicker.launch(null) }) {
-                        Text("+ Folder")
-                    }
-                    TextButton(onClick = { filePicker.launch(arrayOf("*/*")) }) {
-                        Text("+ File")
-                    }
-                    TextButton(onClick = onCycleThemeMode) {
-                        Text(themeMode.label)
+                    Box {
+                        IconButton(onClick = { menuExpanded = true }) {
+                            HamburgerIcon()
+                        }
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Add / Scan Folder") },
+                                onClick = {
+                                    menuExpanded = false
+                                    folderPicker.launch(null)
+                                }
+                            )
+                            if (savedFoldersCount > 0 && !scanStatus.isScanning) {
+                                DropdownMenuItem(
+                                    text = { Text("Rescan Folders ($savedFoldersCount)") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        val uris = LibraryScanner.getSavedFolders(context)
+                                            .map { Uri.parse(it) }
+                                        LibraryScanner.scanFolders(context, uris)
+                                    }
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text("Pick Single File") },
+                                onClick = {
+                                    menuExpanded = false
+                                    filePicker.launch(arrayOf("*/*"))
+                                }
+                            )
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("Theme: ${themeMode.label}") },
+                                onClick = {
+                                    onCycleThemeMode()
+                                }
+                            )
+                        }
                     }
                 }
             )
@@ -274,8 +310,18 @@ fun LibraryScreen(
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("Search title, author, publisher, language...") },
+                placeholder = {
+                    if (!isSearchFocused && searchQuery.isEmpty()) {
+                        Text(
+                            text = "Search title, author, publisher...",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                },
                 singleLine = true,
+                maxLines = 1,
+                shape = RoundedCornerShape(12.dp),
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
                         TextButton(onClick = { searchQuery = "" }) {
@@ -283,7 +329,9 @@ fun LibraryScreen(
                         }
                     }
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { isSearchFocused = it.isFocused }
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -358,41 +406,24 @@ fun LibraryScreen(
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Found: ${scanStatus.filesFoundInPass} • Covers & metadata: ${scanStatus.metadataProcessed} • Left: $pendingMetadataCount",
+                            text = "Found: ${scanStatus.filesFoundInPass} • Done: ${scanStatus.metadataProcessed} • Left: ${scanStatus.metadataLeft}",
                             style = MaterialTheme.typography.labelSmall
                         )
                     }
                 }
-            } else if (pendingMetadataCount > 0 || savedFoldersCount > 0) {
+            } else if (pendingMetadataCount > 0) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    if (pendingMetadataCount > 0) {
-                        Text(
-                            text = "$pendingMetadataCount EPUBs waiting for covers",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        TextButton(onClick = { LibraryScanner.resumeMetadataOnly(context) }) {
-                            Text("Resume Covers")
-                        }
-                    } else {
-                        Text(
-                            text = "$savedFoldersCount folder(s) linked",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        TextButton(
-                            onClick = {
-                                val uris = LibraryScanner.getSavedFolders(context)
-                                    .map { Uri.parse(it) }
-                                LibraryScanner.scanFolders(context, uris)
-                            }
-                        ) {
-                            Text("Rescan Folders")
-                        }
+                    Text(
+                        text = "$pendingMetadataCount EPUBs waiting for covers",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    TextButton(onClick = { LibraryScanner.resumeMetadataOnly(context) }) {
+                        Text("Resume Covers")
                     }
                 }
             }
@@ -420,7 +451,7 @@ fun LibraryScreen(
                             debouncedQuery.isNotBlank() -> "No matches for \"$debouncedQuery\""
                             activeTab == LibraryTab.RECENT -> "No books opened yet."
                             activeTab == LibraryTab.TO_CONVERT -> "No MOBI/AZW3 files found yet."
-                            else -> "Tap '+ Folder' at the top to scan your ebooks!"
+                            else -> "Tap the ☰ menu at the top-right to add a folder!"
                         },
                         style = MaterialTheme.typography.bodyLarge,
                         textAlign = TextAlign.Center,
@@ -490,6 +521,25 @@ fun LibraryScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+fun HamburgerIcon() {
+    val barColor = LocalContentColor.current
+    Column(
+        modifier = Modifier.size(22.dp),
+        verticalArrangement = Arrangement.SpaceEvenly
+    ) {
+        repeat(3) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.5.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(barColor)
+            )
+        }
     }
 }
 
