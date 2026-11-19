@@ -88,7 +88,8 @@ class ReaderActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(null)
 
-        val bookUri = intent?.data
+        val uriStr = intent?.getStringExtra("book_uri") ?: intent?.dataString
+        val bookUri = uriStr?.let { Uri.parse(it) }
         if (bookUri == null) {
             finish()
             return
@@ -214,11 +215,17 @@ class ReaderActivity : FragmentActivity() {
             val openResult = withContext(Dispatchers.IO) {
                 runCatching {
                     val tempFile = File(cacheDir, "current_book.epub")
-                    contentResolver.openInputStream(bookUri)?.use { input ->
+                    val inputStream = if (bookUri.scheme == "file") {
+                        bookUri.path?.let { File(it).inputStream() }
+                    } else {
+                        contentResolver.openInputStream(bookUri)
+                    } ?: error("Permission expired or file moved — please pick this book again.")
+
+                    inputStream.use { input ->
                         tempFile.outputStream().use { output ->
                             input.copyTo(output)
                         }
-                    } ?: error("Permission expired or file moved — please pick this book again.")
+                    }
 
                     val dao = AppDatabase.getInstance(this@ReaderActivity).bookDao()
                     val dbBook = dao.getByUri(bookUri.toString())
