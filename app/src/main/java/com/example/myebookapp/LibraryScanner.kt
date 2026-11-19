@@ -14,6 +14,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
@@ -26,6 +27,7 @@ data class ScanStatus(
     val phaseLabel: String = "",
     val filesFoundInPass: Int = 0,
     val metadataProcessed: Int = 0,
+    val metadataLeft: Int = 0,
     val error: String? = null
 )
 
@@ -74,16 +76,15 @@ object LibraryScanner {
                     extractPendingMetadata(appContext, dao)
                 }
 
-                _status.value = _status.value.copy(
-                    isScanning = false,
-                    phaseLabel = ""
-                )
+                _status.update { it.copy(isScanning = false, phaseLabel = "") }
             } catch (e: Exception) {
-                _status.value = _status.value.copy(
-                    isScanning = false,
-                    phaseLabel = "",
-                    error = e.localizedMessage ?: "Scan interrupted."
-                )
+                _status.update {
+                    it.copy(
+                        isScanning = false,
+                        phaseLabel = "",
+                        error = e.localizedMessage ?: "Scan interrupted."
+                    )
+                }
             }
         }
     }
@@ -99,13 +100,15 @@ object LibraryScanner {
             try {
                 val dao = AppDatabase.getInstance(appContext).bookDao()
                 extractPendingMetadata(appContext, dao)
-                _status.value = _status.value.copy(isScanning = false, phaseLabel = "")
+                _status.update { it.copy(isScanning = false, phaseLabel = "") }
             } catch (e: Exception) {
-                _status.value = _status.value.copy(
-                    isScanning = false,
-                    phaseLabel = "",
-                    error = e.localizedMessage
-                )
+                _status.update {
+                    it.copy(
+                        isScanning = false,
+                        phaseLabel = "",
+                        error = e.localizedMessage
+                    )
+                }
             }
         }
     }
@@ -113,10 +116,7 @@ object LibraryScanner {
     fun stopScan() {
         activeJob?.cancel()
         activeJob = null
-        _status.value = _status.value.copy(
-            isScanning = false,
-            phaseLabel = ""
-        )
+        _status.update { it.copy(isScanning = false, phaseLabel = "") }
     }
 
     private suspend fun walkTreeAndInsert(
@@ -200,9 +200,8 @@ object LibraryScanner {
 
                         if (batch.size >= 200) {
                             dao.insertIgnoreBatch(batch)
-                            _status.value = _status.value.copy(
-                                filesFoundInPass = _status.value.filesFoundInPass + batch.size
-                            )
+                            val count = batch.size
+                            _status.update { it.copy(filesFoundInPass = it.filesFoundInPass + count) }
                             batch.clear()
                         }
                     }
@@ -212,15 +211,20 @@ object LibraryScanner {
 
         if (batch.isNotEmpty()) {
             dao.insertIgnoreBatch(batch)
-            _status.value = _status.value.copy(
-                filesFoundInPass = _status.value.filesFoundInPass + batch.size
-            )
+            val count = batch.size
+            _status.update { it.copy(filesFoundInPass = it.filesFoundInPass + count) }
             batch.clear()
         }
     }
 
     private suspend fun extractPendingMetadata(context: Context, dao: BookDao) {
-        _status.value = _status.value.copy(phaseLabel = "Extracting EPUB covers & metadata...")
+        val totalLeft = dao.countPendingEpubs()
+        _status.update {
+            it.copy(
+                phaseLabel = "Extracting EPUB covers & metadata...",
+                metadataLeft = totalLeft
+            )
+        }
 
         while (true) {
             val pending = dao.getPendingEpubs(limit = 60)
@@ -273,9 +277,12 @@ object LibraryScanner {
                                 )
                             }
 
-                            _status.value = _status.value.copy(
-                                metadataProcessed = _status.value.metadataProcessed + 1
-                            )
+                            _status.update {
+                                it.copy(
+                                    metadataProcessed = it.metadataProcessed + 1,
+                                    metadataLeft = (it.metadataLeft - 1).coerceAtLeast(0)
+                                )
+                            }
                         }
                     }
                 }
