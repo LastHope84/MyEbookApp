@@ -82,6 +82,9 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE format = 'EPUB' AND metadataExtracted = 0 ORDER BY id ASC LIMIT :limit")
     suspend fun getPendingEpubs(limit: Int): List<BookEntity>
 
+    @Query("SELECT COUNT(*) FROM books WHERE format = 'EPUB' AND metadataExtracted = 0")
+    suspend fun countPendingEpubs(): Int
+
     @Query("SELECT COUNT(*) FROM books")
     fun observeTotalCount(): Flow<Int>
 
