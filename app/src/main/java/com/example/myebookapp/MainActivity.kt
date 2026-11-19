@@ -48,6 +48,12 @@ enum class LibraryTab {
     TO_CONVERT
 }
 
+data class PendingConvertTarget(
+    val uri: Uri,
+    val fileName: String,
+    val existingBookId: Long? = null
+)
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -92,8 +98,69 @@ fun LibraryScreen(
     var menuExpanded by remember { mutableStateOf(false) }
     var selectedBook by remember { mutableStateOf<BookEntity?>(null) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
-    var converterPromptFile by remember { mutableStateOf<String?>(null) }
+    var convertPrompt by remember { mutableStateOf<PendingConvertTarget?>(null) }
+    var isConverting by remember { mutableStateOf(false) }
+    var convertingName by remember { mutableStateOf("") }
     var savedFoldersCount by remember { mutableIntStateOf(LibraryScanner.getSavedFolders(context).size) }
+
+    fun runConversion(target: PendingConvertTarget) {
+        convertPrompt = null
+        selectedBook = null
+        isConverting = true
+        convertingName = target.fileName
+        statusMessage = null
+
+        scope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                val epubFile = MobiConverter.convertToEpub(context, target.uri, target.fileName)
+                val epubUri = Uri.fromFile(epubFile)
+                val epubUriStr = epubUri.toString()
+
+                val meta = EpubParser.parseEpub(context, epubUri, epubFile.name)
+                val coverPath = LibraryScanner.saveWebpThumbnail(
+                    context,
+                    epubUriStr,
+                    meta.coverBitmap
+                )
+
+                dao.insertIgnore(
+                    BookEntity(
+                        uriString = epubUriStr,
+                        fileName = epubFile.name,
+                        format = "EPUB",
+                        fileSize = epubFile.length(),
+                        lastModified = epubFile.lastModified(),
+                        title = meta.title,
+                        author = meta.author,
+                        publishingDate = meta.publishingDate,
+                        publisher = meta.publisher,
+                        language = meta.language,
+                        coverPath = coverPath,
+                        lastLocatorJson = null,
+                        progressPercent = 0.0,
+                        lastOpenedAt = System.currentTimeMillis(),
+                        metadataExtracted = true
+                    )
+                )
+
+                target.existingBookId?.let { oldId ->
+                    dao.deleteById(oldId)
+                }
+
+                dao.getByUri(epubUriStr)
+            }
+
+            withContext(Dispatchers.Main) {
+                isConverting = false
+                result.onSuccess { convertedBook ->
+                    statusMessage = "Converted to EPUB! Original file kept safe."
+                    selectedBook = convertedBook
+                }.onFailure { err ->
+                    statusMessage = "Conversion failed: ${err.localizedMessage ?: "Unknown error"}"
+                }
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -179,7 +246,7 @@ fun LibraryScreen(
 
         when (ext) {
             "mobi", "azw3", "azw", "prc" -> {
-                converterPromptFile = fileName
+                convertPrompt = PendingConvertTarget(uri = uri, fileName = fileName)
             }
             "epub" -> {
                 statusMessage = "Importing $fileName..."
@@ -493,8 +560,14 @@ fun LibraryScreen(
                 selectedBook = null
                 openInReader(context, book.uriString)
             },
-            onConvertPrompt = {
-                converterPromptFile = book.fileName
+            onConvertNow = {
+                runConversion(
+                    PendingConvertTarget(
+                        uri = Uri.parse(book.uriString),
+                        fileName = book.fileName,
+                        existingBookId = book.id
+                    )
+                )
             },
             onRemoveFromLibrary = {
                 val toDelete = book.id
@@ -506,20 +579,40 @@ fun LibraryScreen(
         )
     }
 
-    converterPromptFile?.let { fileName ->
+    convertPrompt?.let { target ->
         AlertDialog(
-            onDismissRequest = { converterPromptFile = null },
+            onDismissRequest = { convertPrompt = null },
             title = { Text("Convert to EPUB?") },
             text = {
                 Text(
-                    "\"$fileName\" is a MOBI/AZW3 file. We'll wire the real offline converter here right after the library & metadata editor!"
+                    "\"${target.fileName}\" is a MOBI/AZW3 file. Convert it offline into an EPUB and add it to your library? (Your original file will stay untouched.)"
                 )
             },
             confirmButton = {
-                TextButton(onClick = { converterPromptFile = null }) {
-                    Text("Got it")
+                TextButton(onClick = { runConversion(target) }) {
+                    Text("Convert Now")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { convertPrompt = null }) {
+                    Text("Cancel")
                 }
             }
+        )
+    }
+
+    if (isConverting) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Converting to EPUB...") },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(convertingName, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            },
+            confirmButton = {}
         )
     }
 }
@@ -544,9 +637,13 @@ fun HamburgerIcon() {
 }
 
 private fun openInReader(context: Context, uriString: String) {
+    val uri = Uri.parse(uriString)
     val intent = Intent(context, ReaderActivity::class.java).apply {
-        data = Uri.parse(uriString)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        putExtra("book_uri", uriString)
+        if (uri.scheme == "content") {
+            data = uri
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
     }
     context.startActivity(intent)
 }
@@ -673,7 +770,7 @@ fun BookDetailsBottomSheet(
     book: BookEntity,
     onDismiss: () -> Unit,
     onRead: () -> Unit,
-    onConvertPrompt: () -> Unit,
+    onConvertNow: () -> Unit,
     onRemoveFromLibrary: () -> Unit
 ) {
     val context = LocalContext.current
@@ -727,7 +824,7 @@ fun BookDetailsBottomSheet(
                 }
             } else {
                 Button(
-                    onClick = onConvertPrompt,
+                    onClick = onConvertNow,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Convert ${book.format} to EPUB")
