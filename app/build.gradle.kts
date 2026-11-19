@@ -1,47 +1,94 @@
-name: Build APK
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.devtools.ksp")
+}
 
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
+android {
+    namespace = "com.example.myebookapp"
+    compileSdk = 36
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    val buildNum = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
 
-      - name: Fetch libmobi v0.12
-        run: |
-          rm -rf app/src/main/cpp/libmobi
-          git clone --depth 1 --branch v0.12 https://github.com/bfabiszewski/libmobi.git app/src/main/cpp/libmobi
+    defaultConfig {
+        applicationId = "com.example.myebookapp"
+        minSdk = 24
+        targetSdk = 36
+        versionCode = buildNum
+        versionName = "0.$buildNum"
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
+    }
 
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+        }
+    }
 
-      - name: Restore permanent signing key
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-        run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > app/persistent.keystore
-          fi
+    signingConfigs {
+        create("persistentDebug") {
+            val ksFile = file("persistent.keystore")
+            if (ksFile.exists()) {
+                storeFile = ksFile
+                storePassword = "android123"
+                keyAlias = "myebook"
+                keyPassword = "android123"
+            }
+        }
+    }
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.13
+    buildTypes {
+        getByName("debug") {
+            val ksFile = file("persistent.keystore")
+            if (ksFile.exists()) {
+                signingConfig = signingConfigs.getByName("persistentDebug")
+            }
+        }
+    }
 
-      - name: Build Debug APK
-        run: gradle assembleDebug
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
+    }
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: MyEbookApp-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
-          retention-days: 14
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    buildFeatures {
+        compose = true
+    }
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+
+    implementation(platform("androidx.compose:compose-bom:2025.12.01"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.activity:activity-compose:1.11.0")
+    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.fragment:fragment-ktx:1.8.6")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+
+    val readiumVersion = "3.1.2"
+    implementation("org.readium.kotlin-toolkit:readium-shared:$readiumVersion")
+    implementation("org.readium.kotlin-toolkit:readium-streamer:$readiumVersion")
+    implementation("org.readium.kotlin-toolkit:readium-navigator:$readiumVersion")
+
+    val roomVersion = "2.7.2"
+    implementation("androidx.room:room-runtime:$roomVersion")
+    implementation("androidx.room:room-ktx:$roomVersion")
+    implementation("androidx.room:room-paging:$roomVersion")
+    ksp("androidx.room:room-compiler:$roomVersion")
+
+    val pagingVersion = "3.3.6"
+    implementation("androidx.paging:paging-runtime:$pagingVersion")
+    implementation("androidx.paging:paging-compose:$pagingVersion")
+
+    implementation("io.coil-kt:coil-compose:2.7.0")
+}
