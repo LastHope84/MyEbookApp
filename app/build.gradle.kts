@@ -9,12 +9,35 @@ android {
     namespace = "com.example.myebookapp"
     compileSdk = 36
 
+    val buildNum = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+
     defaultConfig {
         applicationId = "com.example.myebookapp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = buildNum
+        versionName = "0.$buildNum"
+    }
+
+    signingConfigs {
+        create("persistentDebug") {
+            val ksFile = file("persistent.keystore")
+            if (ksFile.exists()) {
+                storeFile = ksFile
+                storePassword = "android123"
+                keyAlias = "myebook"
+                keyPassword = "android123"
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            val ksFile = file("persistent.keystore")
+            if (ksFile.exists()) {
+                signingConfig = signingConfigs.getByName("persistentDebug")
+            }
+        }
     }
 
     compileOptions {
