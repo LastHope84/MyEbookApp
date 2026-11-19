@@ -12,6 +12,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Fetch libmobi v0.12
+        run: |
+          rm -rf app/src/main/cpp/libmobi
+          git clone --depth 1 --branch v0.12 https://github.com/bfabiszewski/libmobi.git app/src/main/cpp/libmobi
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
