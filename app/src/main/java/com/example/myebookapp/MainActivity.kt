@@ -47,11 +47,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.roundToInt
 
-enum class LibraryTab {
-    ALL,
-    RECENT,
-    TO_CONVERT
-}
+enum class LibraryTab { ALL, RECENT, TO_CONVERT }
 
 data class PendingConvertTarget(
     val uri: Uri,
@@ -65,7 +61,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             val context = LocalContext.current
             var themeMode by remember { mutableStateOf(ThemePrefs.getMode(context)) }
-
             MyEbookTheme(mode = themeMode) {
                 LibraryScreen(
                     themeMode = themeMode,
@@ -141,24 +136,16 @@ fun LibraryScreen(
 
             targets.forEachIndexed { idx, target ->
                 withContext(Dispatchers.Main) {
-                    convertingLabel = if (targets.size == 1) {
-                        target.fileName
-                    } else {
-                        "(${idx + 1}/${targets.size}) ${target.fileName}"
-                    }
+                    convertingLabel = if (targets.size == 1) target.fileName
+                    else "(${idx + 1}/${targets.size}) ${target.fileName}"
                 }
 
                 val result = runCatching {
                     val epubFile = MobiConverter.convertToEpub(context, target.uri, target.fileName)
                     val epubUri = Uri.fromFile(epubFile)
                     val epubUriStr = epubUri.toString()
-
                     val meta = EpubParser.parseEpub(context, epubUri, epubFile.name)
-                    val coverPath = LibraryScanner.saveWebpThumbnail(
-                        context,
-                        epubUriStr,
-                        meta.coverBitmap
-                    )
+                    val coverPath = LibraryScanner.saveWebpThumbnail(context, epubUriStr, meta.coverBitmap)
 
                     dao.insertIgnore(
                         BookEntity(
@@ -179,11 +166,7 @@ fun LibraryScreen(
                             metadataExtracted = true
                         )
                     )
-
-                    target.existingBookId?.let { oldId ->
-                        dao.deleteById(oldId)
-                    }
-
+                    target.existingBookId?.let { dao.deleteById(it) }
                     dao.getByUri(epubUriStr)
                 }
 
@@ -199,14 +182,10 @@ fun LibraryScreen(
             withContext(Dispatchers.Main) {
                 isConverting = false
                 statusMessage = when {
-                    targets.size == 1 && okCount == 1 ->
-                        "Converted to EPUB! Original file kept safe."
-                    targets.size == 1 && failCount == 1 ->
-                        "Conversion failed: ${lastErr ?: "Unknown error"}"
-                    failCount == 0 ->
-                        "Converted $okCount book(s) to EPUB!"
-                    else ->
-                        "Converted $okCount book(s), $failCount failed."
+                    targets.size == 1 && okCount == 1 -> "Converted to EPUB! Original file kept safe."
+                    targets.size == 1 && failCount == 1 -> "Conversion failed: ${lastErr ?: "Unknown error"}"
+                    failCount == 0 -> "Converted $okCount book(s) to EPUB!"
+                    else -> "Converted $okCount book(s), $failCount failed."
                 }
                 if (openLastOnSuccess && lastConverted != null) {
                     selectedBook = lastConverted
@@ -217,8 +196,7 @@ fun LibraryScreen(
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            val legacy = BookHistoryStore.getAll(context)
-            for (old in legacy) {
+            for (old in BookHistoryStore.getAll(context)) {
                 if (dao.getByUri(old.uriString) == null) {
                     dao.insertIgnore(
                         BookEntity(
@@ -251,12 +229,7 @@ fun LibraryScreen(
 
     val booksFlow = remember(debouncedQuery, activeTab, scope) {
         Pager(
-            config = PagingConfig(
-                pageSize = 60,
-                initialLoadSize = 180,
-                prefetchDistance = 30,
-                enablePlaceholders = true
-            ),
+            config = PagingConfig(pageSize = 60, initialLoadSize = 180, prefetchDistance = 30, enablePlaceholders = true),
             pagingSourceFactory = {
                 val fts = toFtsQuery(debouncedQuery)
                 when (activeTab) {
@@ -269,48 +242,26 @@ fun LibraryScreen(
     }
     val pagedBooks = booksFlow.collectAsLazyPagingItems()
 
-    val folderPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { treeUri: Uri? ->
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
         if (treeUri == null) return@rememberLauncherForActivityResult
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(
-                treeUri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-        }
+        runCatching { context.contentResolver.takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         LibraryScanner.addFolder(context, treeUri)
         savedFoldersCount = LibraryScanner.getSavedFolders(context).size
         LibraryScanner.scanFolders(context, listOf(treeUri))
     }
 
-    val filePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-        }
+        runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
         val fileName = EpubParser.getFileName(context, uri)
-        val ext = fileName.substringAfterLast('.', "").trim().lowercase()
-
-        when (ext) {
-            "mobi", "azw3", "azw", "prc" -> {
-                convertPrompt = PendingConvertTarget(uri = uri, fileName = fileName)
-            }
+        when (fileName.substringAfterLast('.', "").trim().lowercase()) {
+            "mobi", "azw3", "azw", "prc" -> convertPrompt = PendingConvertTarget(uri, fileName)
             "epub" -> {
                 statusMessage = "Importing $fileName..."
                 scope.launch(Dispatchers.IO) {
                     val result = runCatching {
                         val meta = EpubParser.parseEpub(context, uri, fileName)
-                        val coverPath = LibraryScanner.saveWebpThumbnail(
-                            context,
-                            uri.toString(),
-                            meta.coverBitmap
-                        )
+                        val coverPath = LibraryScanner.saveWebpThumbnail(context, uri.toString(), meta.coverBitmap)
                         val existing = dao.getByUri(uri.toString())
                         if (existing == null) {
                             dao.insertIgnore(
@@ -334,30 +285,19 @@ fun LibraryScreen(
                             )
                         } else {
                             dao.updateExtractedMetadata(
-                                id = existing.id,
-                                title = meta.title,
-                                author = meta.author,
-                                publishingDate = meta.publishingDate,
-                                publisher = meta.publisher,
-                                language = meta.language,
-                                coverPath = coverPath
+                                existing.id, meta.title, meta.author,
+                                meta.publishingDate, meta.publisher, meta.language, coverPath
                             )
                         }
                         dao.getByUri(uri.toString())
                     }
                     withContext(Dispatchers.Main) {
-                        result.onSuccess { book ->
-                            statusMessage = null
-                            selectedBook = book
-                        }.onFailure { err ->
-                            statusMessage = err.localizedMessage ?: "Failed to read EPUB."
-                        }
+                        result.onSuccess { statusMessage = null; selectedBook = it }
+                            .onFailure { statusMessage = it.localizedMessage ?: "Failed to read EPUB." }
                     }
                 }
             }
-            else -> {
-                statusMessage = "Unsupported file ($fileName). Pick an .epub, .mobi, or .azw3."
-            }
+            else -> statusMessage = "Unsupported file ($fileName). Pick an .epub, .mobi, or .azw3."
         }
     }
 
@@ -365,25 +305,11 @@ fun LibraryScreen(
         topBar = {
             if (inSelectionMode) {
                 TopAppBar(
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                    ),
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
                     navigationIcon = {
-                        TextButton(
-                            onClick = {
-                                selectedIds = emptySet()
-                                selectionModeActive = false
-                            }
-                        ) {
-                            Text("Cancel")
-                        }
+                        TextButton(onClick = { selectedIds = emptySet(); selectionModeActive = false }) { Text("Cancel") }
                     },
-                    title = {
-                        Text(
-                            text = "${selectedIds.size} selected",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                    },
+                    title = { Text("${selectedIds.size} selected", style = MaterialTheme.typography.titleMedium) },
                     actions = {
                         TextButton(
                             enabled = selectedIds.isNotEmpty(),
@@ -397,28 +323,18 @@ fun LibraryScreen(
                                             statusMessage = "Selected books are already EPUBs."
                                         } else {
                                             runBatchConversion(
-                                                targets = convertible.map {
-                                                    PendingConvertTarget(
-                                                        uri = Uri.parse(it.uriString),
-                                                        fileName = it.fileName,
-                                                        existingBookId = it.id
-                                                    )
-                                                },
+                                                convertible.map { PendingConvertTarget(Uri.parse(it.uriString), it.fileName, it.id) },
                                                 openLastOnSuccess = false
                                             )
                                         }
                                     }
                                 }
                             }
-                        ) {
-                            Text("Convert")
-                        }
+                        ) { Text("Convert") }
                         TextButton(
                             enabled = selectedIds.isNotEmpty(),
                             onClick = { showBatchRemoveConfirm = true }
-                        ) {
-                            Text("Remove", color = MaterialTheme.colorScheme.error)
-                        }
+                        ) { Text("Remove", color = MaterialTheme.colorScheme.error) }
                     }
                 )
             } else {
@@ -426,60 +342,38 @@ fun LibraryScreen(
                     title = {
                         Column {
                             Text("My Library")
-                            Text(
-                                text = "$totalCount books",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Text("$totalCount books", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     },
                     actions = {
                         Box {
-                            IconButton(onClick = { menuExpanded = true }) {
-                                HamburgerIcon()
-                            }
-                            DropdownMenu(
-                                expanded = menuExpanded,
-                                onDismissRequest = { menuExpanded = false }
-                            ) {
+                            IconButton(onClick = { menuExpanded = true }) { HamburgerIcon() }
+                            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                                 DropdownMenuItem(
                                     text = { Text("Add / Scan Folder") },
-                                    onClick = {
-                                        menuExpanded = false
-                                        folderPicker.launch(null)
-                                    }
+                                    onClick = { menuExpanded = false; folderPicker.launch(null) }
                                 )
                                 if (savedFoldersCount > 0 && !scanStatus.isScanning) {
                                     DropdownMenuItem(
                                         text = { Text("Rescan Folders ($savedFoldersCount)") },
                                         onClick = {
                                             menuExpanded = false
-                                            val uris = LibraryScanner.getSavedFolders(context)
-                                                .map { Uri.parse(it) }
-                                            LibraryScanner.scanFolders(context, uris)
+                                            LibraryScanner.scanFolders(context, LibraryScanner.getSavedFolders(context).map { Uri.parse(it) })
                                         }
                                     )
                                 }
                                 DropdownMenuItem(
                                     text = { Text("Pick Single File") },
-                                    onClick = {
-                                        menuExpanded = false
-                                        filePicker.launch(arrayOf("*/*"))
-                                    }
+                                    onClick = { menuExpanded = false; filePicker.launch(arrayOf("*/*")) }
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Select Multiple Books") },
-                                    onClick = {
-                                        menuExpanded = false
-                                        selectionModeActive = true
-                                    }
+                                    onClick = { menuExpanded = false; selectionModeActive = true }
                                 )
                                 HorizontalDivider()
                                 DropdownMenuItem(
                                     text = { Text("Theme: ${themeMode.label}") },
-                                    onClick = {
-                                        onCycleThemeMode()
-                                    }
+                                    onClick = { onCycleThemeMode() }
                                 )
                             }
                         }
@@ -499,11 +393,7 @@ fun LibraryScreen(
                 onValueChange = { searchQuery = it },
                 placeholder = {
                     if (!isSearchFocused && searchQuery.isEmpty()) {
-                        Text(
-                            text = "Search title, author, publisher...",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Text("Search title, author, publisher...", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 },
                 singleLine = true,
@@ -511,9 +401,7 @@ fun LibraryScreen(
                 shape = RoundedCornerShape(12.dp),
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
-                        TextButton(onClick = { searchQuery = "" }) {
-                            Text("Clear")
-                        }
+                        TextButton(onClick = { searchQuery = "" }) { Text("Clear") }
                     }
                 },
                 modifier = Modifier
@@ -523,25 +411,10 @@ fun LibraryScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = activeTab == LibraryTab.ALL,
-                    onClick = { activeTab = LibraryTab.ALL },
-                    label = { Text("All ($totalCount)") }
-                )
-                FilterChip(
-                    selected = activeTab == LibraryTab.RECENT,
-                    onClick = { activeTab = LibraryTab.RECENT },
-                    label = { Text("Recent") }
-                )
-                FilterChip(
-                    selected = activeTab == LibraryTab.TO_CONVERT,
-                    onClick = { activeTab = LibraryTab.TO_CONVERT },
-                    label = { Text("Convert ($toConvertCount)") }
-                )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = activeTab == LibraryTab.ALL, onClick = { activeTab = LibraryTab.ALL }, label = { Text("All ($totalCount)") })
+                FilterChip(selected = activeTab == LibraryTab.RECENT, onClick = { activeTab = LibraryTab.RECENT }, label = { Text("Recent") })
+                FilterChip(selected = activeTab == LibraryTab.TO_CONVERT, onClick = { activeTab = LibraryTab.TO_CONVERT }, label = { Text("Convert ($toConvertCount)") })
             }
 
             lastOpened?.let { recent ->
@@ -549,16 +422,10 @@ fun LibraryScreen(
                     val pct = (recent.progressPercent * 100).roundToInt()
                     OutlinedButton(
                         onClick = { openInReader(context, recent.uriString) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp)
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
                     ) {
                         Text(
-                            text = if (pct > 0) {
-                                "Continue: ${recent.title} ($pct%)"
-                            } else {
-                                "Continue: ${recent.title}"
-                            },
+                            text = if (pct > 0) "Continue: ${recent.title} ($pct%)" else "Continue: ${recent.title}",
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -568,12 +435,8 @@ fun LibraryScreen(
 
             if (scanStatus.isScanning) {
                 Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 6.dp)
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
                 ) {
                     Column(modifier = Modifier.padding(10.dp)) {
                         Row(
@@ -581,19 +444,13 @@ fun LibraryScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(
-                                text = scanStatus.phaseLabel,
-                                style = MaterialTheme.typography.labelLarge,
-                                modifier = Modifier.weight(1f)
-                            )
-                            TextButton(onClick = { LibraryScanner.stopScan() }) {
-                                Text("Stop")
-                            }
+                            Text(scanStatus.phaseLabel, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { LibraryScanner.stopScan() }) { Text("Stop") }
                         }
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Found: ${scanStatus.filesFoundInPass} • Done: ${scanStatus.metadataProcessed} • Left: ${scanStatus.metadataLeft}",
+                            "Found: ${scanStatus.filesFoundInPass} • Done: ${scanStatus.metadataProcessed} • Left: ${scanStatus.metadataLeft}",
                             style = MaterialTheme.typography.labelSmall
                         )
                     }
@@ -604,35 +461,19 @@ fun LibraryScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(
-                        text = "$pendingMetadataCount EPUBs waiting for covers",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    TextButton(onClick = { LibraryScanner.resumeMetadataOnly(context) }) {
-                        Text("Resume Covers")
-                    }
+                    Text("$pendingMetadataCount EPUBs waiting for covers", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    TextButton(onClick = { LibraryScanner.resumeMetadataOnly(context) }) { Text("Resume Covers") }
                 }
             }
 
             statusMessage?.let { msg ->
-                Text(
-                    text = msg,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(vertical = 4.dp)
-                )
+                Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 4.dp))
             }
 
             Spacer(modifier = Modifier.height(4.dp))
 
             if (pagedBooks.itemCount == 0 && !scanStatus.isScanning) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
+                Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
                     Text(
                         text = when {
                             debouncedQuery.isNotBlank() -> "No matches for \"$debouncedQuery\""
@@ -653,27 +494,15 @@ fun LibraryScreen(
                     contentPadding = PaddingValues(bottom = 24.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(
-                        count = pagedBooks.itemCount,
-                        key = pagedBooks.itemKey { it.id }
-                    ) { index ->
+                    items(count = pagedBooks.itemCount, key = pagedBooks.itemKey { it.id }) { index ->
                         val book = pagedBooks[index]
                         if (book != null) {
                             BookGridTile(
                                 book = book,
                                 inSelectionMode = inSelectionMode,
                                 isSelected = selectedIds.contains(book.id),
-                                onClick = {
-                                    if (inSelectionMode) {
-                                        toggleSelection(book.id)
-                                    } else {
-                                        selectedBook = book
-                                    }
-                                },
-                                onLongClick = {
-                                    selectionModeActive = true
-                                    toggleSelection(book.id)
-                                }
+                                onClick = { if (inSelectionMode) toggleSelection(book.id) else selectedBook = book },
+                                onLongClick = { selectionModeActive = true; toggleSelection(book.id) }
                             )
                         } else {
                             BookPlaceholderTile()
@@ -688,28 +517,17 @@ fun LibraryScreen(
         BookDetailsBottomSheet(
             book = book,
             onDismiss = { selectedBook = null },
-            onRead = {
-                selectedBook = null
-                openInReader(context, book.uriString)
-            },
+            onRead = { selectedBook = null; openInReader(context, book.uriString) },
             onConvertNow = {
                 runBatchConversion(
-                    targets = listOf(
-                        PendingConvertTarget(
-                            uri = Uri.parse(book.uriString),
-                            fileName = book.fileName,
-                            existingBookId = book.id
-                        )
-                    ),
+                    listOf(PendingConvertTarget(Uri.parse(book.uriString), book.fileName, book.id)),
                     openLastOnSuccess = true
                 )
             },
             onRemoveFromLibrary = {
-                val toDelete = book.id
+                val id = book.id
                 selectedBook = null
-                scope.launch(Dispatchers.IO) {
-                    dao.deleteById(toDelete)
-                }
+                scope.launch(Dispatchers.IO) { dao.deleteById(id) }
             }
         )
     }
@@ -718,28 +536,11 @@ fun LibraryScreen(
         AlertDialog(
             onDismissRequest = { convertPrompt = null },
             title = { Text("Convert to EPUB?") },
-            text = {
-                Text(
-                    "\"${target.fileName}\" is a MOBI/AZW3 file. Convert it offline into an EPUB and add it to your library? (Your original file will stay untouched.)"
-                )
-            },
+            text = { Text("\"${target.fileName}\" is a MOBI/AZW3 file. Convert it offline into an EPUB and add it to your library? (Your original file will stay untouched.)") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        runBatchConversion(
-                            targets = listOf(target),
-                            openLastOnSuccess = true
-                        )
-                    }
-                ) {
-                    Text("Convert Now")
-                }
+                TextButton(onClick = { runBatchConversion(listOf(target), openLastOnSuccess = true) }) { Text("Convert Now") }
             },
-            dismissButton = {
-                TextButton(onClick = { convertPrompt = null }) {
-                    Text("Cancel")
-                }
-            }
+            dismissButton = { TextButton(onClick = { convertPrompt = null }) { Text("Cancel") } }
         )
     }
 
@@ -747,9 +548,7 @@ fun LibraryScreen(
         AlertDialog(
             onDismissRequest = { showBatchRemoveConfirm = false },
             title = { Text("Remove ${selectedIds.size} book(s)?") },
-            text = {
-                Text("This only removes them from your library database. The actual files on your phone will NOT be deleted.")
-            },
+            text = { Text("This only removes them from your library database. The actual files on your phone will NOT be deleted.") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -758,21 +557,13 @@ fun LibraryScreen(
                         selectedIds = emptySet()
                         selectionModeActive = false
                         scope.launch(Dispatchers.IO) {
-                            toDelete.chunked(500).forEach { chunk ->
-                                dao.deleteByIds(chunk)
-                            }
+                            toDelete.chunked(500).forEach { dao.deleteByIds(it) }
                         }
                         statusMessage = "Removed ${toDelete.size} book(s) from library."
                     }
-                ) {
-                    Text("Remove", color = MaterialTheme.colorScheme.error)
-                }
+                ) { Text("Remove", color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = {
-                TextButton(onClick = { showBatchRemoveConfirm = false }) {
-                    Text("Cancel")
-                }
-            }
+            dismissButton = { TextButton(onClick = { showBatchRemoveConfirm = false }) { Text("Cancel") } }
         )
     }
 
@@ -795,10 +586,7 @@ fun LibraryScreen(
 @Composable
 fun HamburgerIcon() {
     val barColor = LocalContentColor.current
-    Column(
-        modifier = Modifier.size(22.dp),
-        verticalArrangement = Arrangement.SpaceEvenly
-    ) {
+    Column(modifier = Modifier.size(22.dp), verticalArrangement = Arrangement.SpaceEvenly) {
         repeat(3) {
             Box(
                 modifier = Modifier
@@ -808,3 +596,238 @@ fun HamburgerIcon() {
                     .background(barColor)
             )
         }
+    }
+}
+
+private fun openInReader(context: Context, uriString: String) {
+    val uri = Uri.parse(uriString)
+    val intent = Intent(context, ReaderActivity::class.java).apply {
+        putExtra("book_uri", uriString)
+        if (uri.scheme == "content") {
+            data = uri
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    }
+    context.startActivity(intent)
+}
+
+fun formatReadablePath(uriString: String): String {
+    val uri = Uri.parse(uriString)
+    if (uri.scheme == "file") {
+        val path = uri.path ?: return uriString
+        val idx = path.indexOf("/converted_epubs/")
+        return if (idx >= 0) "App Storage" + path.substring(idx) else path
+    }
+    val docId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+    if (!docId.isNullOrBlank()) {
+        return when {
+            docId.startsWith("primary:") -> "Internal Storage/" + docId.removePrefix("primary:")
+            docId.contains(":") -> {
+                val vol = docId.substringBefore(":")
+                val rest = docId.substringAfter(":")
+                "Storage ($vol)/$rest"
+            }
+            else -> docId
+        }
+    }
+    return Uri.decode(uriString)
+}
+
+@Composable
+fun BookPlaceholderTile() {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.68f)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.8f)
+                .height(12.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun BookGridTile(
+    book: BookEntity,
+    inSelectionMode: Boolean,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val context = LocalContext.current
+    val pct = (book.progressPercent * 100).roundToInt()
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.68f)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .then(
+                    if (isSelected) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp))
+                    else Modifier
+                )
+        ) {
+            if (!book.coverPath.isNullOrBlank()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context).data(File(book.coverPath)).crossfade(true).build(),
+                    contentDescription = book.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(8.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(book.title, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(book.author, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+
+            if (isSelected) {
+                Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)))
+            }
+
+            if (inSelectionMode) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isSelected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
+                        )
+                        .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Text("✓", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            val badgeText = when {
+                book.format != "EPUB" -> book.format
+                pct > 0 -> "$pct%"
+                else -> null
+            }
+            if (badgeText != null) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f),
+                    shape = RoundedCornerShape(4.dp),
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)
+                ) {
+                    Text(
+                        text = badgeText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(book.title, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(book.author, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BookDetailsBottomSheet(
+    book: BookEntity,
+    onDismiss: () -> Unit,
+    onRead: () -> Unit,
+    onConvertNow: () -> Unit,
+    onRemoveFromLibrary: () -> Unit
+) {
+    val context = LocalContext.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val pct = (book.progressPercent * 100).roundToInt()
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (!book.coverPath.isNullOrBlank()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context).data(File(book.coverPath)).crossfade(true).build(),
+                    contentDescription = book.title,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.height(210.dp).clip(RoundedCornerShape(8.dp))
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(width = 140.dp, height = 190.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) { Text(book.format) }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (book.format == "EPUB") {
+                Button(onClick = onRead, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (pct > 0) "Continue Reading ($pct%)" else "Read This Book")
+                }
+            } else {
+                Button(onClick = onConvertNow, modifier = Modifier.fillMaxWidth()) {
+                    Text("Convert ${book.format} to EPUB")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(12.dp))
+
+            MetadataRow("Title", book.title)
+            MetadataRow("Author", book.author)
+            MetadataRow("Publishing Date", book.publishingDate)
+            MetadataRow("Publisher", book.publisher)
+            MetadataRow("Language", book.language)
+            MetadataRow("Format", book.format)
+            MetadataRow("File", book.fileName)
+            MetadataRow("Path", formatReadablePath(book.uriString))
+
+            Spacer(modifier = Modifier.height(12.dp))
+            TextButton(onClick = onRemoveFromLibrary) {
+                Text("Remove from Library (keeps file on phone)", color = MaterialTheme.colorScheme.error)
+            }
+        }
+    }
+}
+
+@Composable
+fun MetadataRow(label: String, value: String) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Text(text = label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Text(text = value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+    }
+}
