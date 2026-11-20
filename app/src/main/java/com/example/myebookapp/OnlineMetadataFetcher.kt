@@ -21,21 +21,62 @@ object OnlineMetadataFetcher {
 
     fun search(rawTitle: String, rawAuthor: String): List<OnlineBookCandidate> {
         val cleanTitle = cleanTitleForSearch(rawTitle)
+        val shortTitle = cleanTitle.substringBefore(":").substringBefore(" - ").trim()
         val cleanAuthor = cleanAuthorForSearch(rawAuthor)
+
         if (cleanTitle.isBlank() && cleanAuthor.isBlank()) return emptyList()
 
-        val results = mutableListOf<OnlineBookCandidate>()
-        runCatching { results.addAll(searchGoogleBooks(cleanTitle, cleanAuthor)) }
+        val fullTerm = listOf(cleanTitle, cleanAuthor).filter { it.isNotBlank() }.joinToString(" ")
+        val shortTerm = listOf(shortTitle, cleanAuthor).filter { it.isNotBlank() }.joinToString(" ")
 
-        if (results.size < 3) {
-            runCatching { results.addAll(searchOpenLibrary(cleanTitle, cleanAuthor)) }
+        val results = mutableListOf<OnlineBookCandidate>()
+
+        // 1. Apple Books Italy (huge Italian ebook & cover catalog)
+        runCatching {
+            val itBooks = searchAppleBooks(fullTerm, country = "IT")
+            if (itBooks.isNotEmpty()) {
+                results.addAll(itBooks)
+            } else if (shortTerm != fullTerm && shortTerm.isNotBlank()) {
+                results.addAll(searchAppleBooks(shortTerm, country = "IT"))
+            }
         }
-        return results.take(8)
+
+        // 2. Google Books (relaxed query, with short-title retry)
+        runCatching {
+            val gb = searchGoogleBooks(fullTerm)
+            if (gb.isNotEmpty()) {
+                results.addAll(gb)
+            } else if (shortTerm != fullTerm && shortTerm.isNotBlank()) {
+                results.addAll(searchGoogleBooks(shortTerm))
+            }
+        }
+
+        // 3. OPAC SBN (Italy's National Library Catalog - great for Italian publishers/dates)
+        runCatching {
+            val sbnTerm = if (shortTerm.isNotBlank()) shortTerm else fullTerm
+            results.addAll(searchOpacSbn(sbnTerm))
+        }
+
+        // 4. Apple Books US fallback if still sparse (for English / international books)
+        if (results.size < 3) {
+            runCatching {
+                results.addAll(searchAppleBooks(shortTerm.ifBlank { fullTerm }, country = "US"))
+            }
+        }
+
+        // 5. Open Library relaxed fallback
+        if (results.size < 4) {
+            runCatching {
+                results.addAll(searchOpenLibrary(shortTerm.ifBlank { fullTerm }))
+            }
+        }
+
+        return results.take(12)
     }
 
     fun downloadCoverBitmap(urlString: String, maxDimension: Int = 1400): Bitmap? {
         return runCatching {
-            val bytes = fetchBytes(urlString) ?: return null
+            val bytes = fetchBytes(urlString, timeoutMs = 12_000) ?: return null
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
             if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
@@ -51,16 +92,48 @@ object OnlineMetadataFetcher {
         }.getOrNull()
     }
 
-    private fun searchGoogleBooks(title: String, author: String): List<OnlineBookCandidate> {
-        val parts = mutableListOf<String>()
-        if (title.isNotBlank()) parts.add("intitle:$title")
-        if (author.isNotBlank()) parts.add("inauthor:$author")
-        val query = URLEncoder.encode(parts.joinToString(" "), "UTF-8")
+    private fun searchAppleBooks(term: String, country: String): List<OnlineBookCandidate> {
+        val encoded = URLEncoder.encode(term, "UTF-8")
+        val url = "https://itunes.apple.com/search?term=$encoded&media=ebook&country=$country&limit=6"
+        val body = fetchText(url) ?: return emptyList()
+        val items = JSONObject(body).optJSONArray("results") ?: return emptyList()
+
+        val list = mutableListOf<OnlineBookCandidate>()
+        for (i in 0 until items.length()) {
+            val obj = items.optJSONObject(i) ?: continue
+            val t = obj.optString("trackName", "").trim()
+            if (t.isBlank()) continue
+
+            val author = obj.optString("artistName", "").trim()
+            val rawDate = obj.optString("releaseDate", "").trim()
+            val date = if (rawDate.length >= 10) rawDate.take(10) else rawDate
+            val rawArt = obj.optString("artworkUrl100", "").trim()
+            val hiResCover = rawArt
+                .takeIf { it.isNotBlank() }
+                ?.replace("100x100bb", "600x600bb")
+                ?.replace("http://", "https://")
+
+            list.add(
+                OnlineBookCandidate(
+                    source = if (country == "IT") "Apple Books IT" else "Apple Books",
+                    title = t,
+                    author = author,
+                    publishingDate = date,
+                    publisher = "",
+                    language = if (country == "IT") "it" else "",
+                    coverUrl = hiResCover
+                )
+            )
+        }
+        return list
+    }
+
+    private fun searchGoogleBooks(term: String): List<OnlineBookCandidate> {
+        val query = URLEncoder.encode(term, "UTF-8")
         val url = "https://www.googleapis.com/books/v1/volumes?q=$query&maxResults=6"
 
         val body = fetchText(url) ?: return emptyList()
-        val json = JSONObject(body)
-        val items = json.optJSONArray("items") ?: return emptyList()
+        val items = JSONObject(body).optJSONArray("items") ?: return emptyList()
         val list = mutableListOf<OnlineBookCandidate>()
 
         for (i in 0 until items.length()) {
@@ -103,16 +176,49 @@ object OnlineMetadataFetcher {
         return list
     }
 
-    private fun searchOpenLibrary(title: String, author: String): List<OnlineBookCandidate> {
-        val params = mutableListOf<String>()
-        if (title.isNotBlank()) params.add("title=${URLEncoder.encode(title, "UTF-8")}")
-        if (author.isNotBlank()) params.add("author=${URLEncoder.encode(author, "UTF-8")}")
-        params.add("limit=6")
-        val url = "https://openlibrary.org/search.json?${params.joinToString("&")}"
+    private fun searchOpacSbn(term: String): List<OnlineBookCandidate> {
+        val query = URLEncoder.encode(term, "UTF-8")
+        val url = "https://opac.sbn.it/opacmobilegw/search.json?any=$query&type=0&start=0&rows=4"
+        val body = fetchText(url, timeoutMs = 5_000) ?: return emptyList()
+        val records = JSONObject(body).optJSONArray("records") ?: return emptyList()
+        val list = mutableListOf<OnlineBookCandidate>()
+
+        for (i in 0 until records.length()) {
+            val rec = records.optJSONObject(i) ?: continue
+            val rawTitle = rec.optString("titolo", "").trim()
+            val cleanTitle = rawTitle.substringBefore(" / ").trim()
+            if (cleanTitle.isBlank()) continue
+
+            val author = rec.optString("autorePrincipale", "").trim()
+            val pubRaw = rec.optString("pubblicazione", "").trim()
+            val year = Regex("(19|20)\\d{2}").find(pubRaw)?.value ?: ""
+            val publisher = if (pubRaw.contains(":")) {
+                pubRaw.substringAfter(":").substringBefore(",").trim()
+            } else {
+                ""
+            }
+
+            list.add(
+                OnlineBookCandidate(
+                    source = "OPAC SBN (IT)",
+                    title = cleanTitle,
+                    author = author,
+                    publishingDate = year,
+                    publisher = publisher,
+                    language = "it",
+                    coverUrl = null
+                )
+            )
+        }
+        return list
+    }
+
+    private fun searchOpenLibrary(term: String): List<OnlineBookCandidate> {
+        val query = URLEncoder.encode(term, "UTF-8")
+        val url = "https://openlibrary.org/search.json?q=$query&limit=5"
 
         val body = fetchText(url) ?: return emptyList()
-        val json = JSONObject(body)
-        val docs = json.optJSONArray("docs") ?: return emptyList()
+        val docs = JSONObject(body).optJSONArray("docs") ?: return emptyList()
         val list = mutableListOf<OnlineBookCandidate>()
 
         for (i in 0 until docs.length()) {
@@ -152,16 +258,20 @@ object OnlineMetadataFetcher {
         return list
     }
 
-    private fun fetchText(urlString: String): String? {
-        val bytes = fetchBytes(urlString) ?: return null
+    private fun fetchText(urlString: String, timeoutMs: Int = 8_000): String? {
+        val bytes = fetchBytes(urlString, timeoutMs = timeoutMs) ?: return null
         return String(bytes, Charsets.UTF_8)
     }
 
-    private fun fetchBytes(urlString: String, redirectsLeft: Int = 4): ByteArray? {
+    private fun fetchBytes(
+        urlString: String,
+        timeoutMs: Int = 8_000,
+        redirectsLeft: Int = 4
+    ): ByteArray? {
         val conn = (URL(urlString).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
-            connectTimeout = 10_000
-            readTimeout = 12_000
+            connectTimeout = timeoutMs
+            readTimeout = timeoutMs
             instanceFollowRedirects = true
             setRequestProperty("User-Agent", "MyEbookApp/1.0 (Android)")
         }
@@ -170,7 +280,7 @@ object OnlineMetadataFetcher {
             if (code in 300..399 && redirectsLeft > 0) {
                 val loc = conn.getHeaderField("Location") ?: return null
                 val nextUrl = if (loc.startsWith("http://")) loc.replaceFirst("http://", "https://") else loc
-                return fetchBytes(nextUrl, redirectsLeft - 1)
+                return fetchBytes(nextUrl, timeoutMs, redirectsLeft - 1)
             }
             if (code !in 200..299) return null
             return conn.inputStream.use { it.readBytes() }
@@ -181,6 +291,7 @@ object OnlineMetadataFetcher {
 
     private fun cleanTitleForSearch(raw: String): String {
         return raw
+            .replace(Regex("^\"[^\"]*\\d+[^\"]*\"\\s*"), "")
             .replace(Regex("\\([^)]*edition[^)]*\\)", RegexOption.IGNORE_CASE), "")
             .replace(Regex("\\[[^]]*]"), "")
             .replace("\"", "")
