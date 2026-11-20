@@ -4,16 +4,21 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.provider.DocumentsContract
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -100,63 +105,111 @@ fun LibraryScreen(
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var convertPrompt by remember { mutableStateOf<PendingConvertTarget?>(null) }
     var isConverting by remember { mutableStateOf(false) }
-    var convertingName by remember { mutableStateOf("") }
+    var convertingLabel by remember { mutableStateOf("") }
     var savedFoldersCount by remember { mutableIntStateOf(LibraryScanner.getSavedFolders(context).size) }
 
-    fun runConversion(target: PendingConvertTarget) {
+    var selectionModeActive by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var showBatchRemoveConfirm by remember { mutableStateOf(false) }
+    val inSelectionMode = selectionModeActive || selectedIds.isNotEmpty()
+
+    BackHandler(enabled = inSelectionMode) {
+        selectedIds = emptySet()
+        selectionModeActive = false
+    }
+
+    fun toggleSelection(id: Long) {
+        val next = if (selectedIds.contains(id)) selectedIds - id else selectedIds + id
+        selectedIds = next
+        if (next.isEmpty()) selectionModeActive = false
+    }
+
+    fun runBatchConversion(targets: List<PendingConvertTarget>, openLastOnSuccess: Boolean) {
+        if (targets.isEmpty()) return
         convertPrompt = null
         selectedBook = null
+        selectedIds = emptySet()
+        selectionModeActive = false
         isConverting = true
-        convertingName = target.fileName
         statusMessage = null
 
         scope.launch(Dispatchers.IO) {
-            val result = runCatching {
-                val epubFile = MobiConverter.convertToEpub(context, target.uri, target.fileName)
-                val epubUri = Uri.fromFile(epubFile)
-                val epubUriStr = epubUri.toString()
+            var okCount = 0
+            var failCount = 0
+            var lastConverted: BookEntity? = null
+            var lastErr: String? = null
 
-                val meta = EpubParser.parseEpub(context, epubUri, epubFile.name)
-                val coverPath = LibraryScanner.saveWebpThumbnail(
-                    context,
-                    epubUriStr,
-                    meta.coverBitmap
-                )
-
-                dao.insertIgnore(
-                    BookEntity(
-                        uriString = epubUriStr,
-                        fileName = epubFile.name,
-                        format = "EPUB",
-                        fileSize = epubFile.length(),
-                        lastModified = epubFile.lastModified(),
-                        title = meta.title,
-                        author = meta.author,
-                        publishingDate = meta.publishingDate,
-                        publisher = meta.publisher,
-                        language = meta.language,
-                        coverPath = coverPath,
-                        lastLocatorJson = null,
-                        progressPercent = 0.0,
-                        lastOpenedAt = System.currentTimeMillis(),
-                        metadataExtracted = true
-                    )
-                )
-
-                target.existingBookId?.let { oldId ->
-                    dao.deleteById(oldId)
+            targets.forEachIndexed { idx, target ->
+                withContext(Dispatchers.Main) {
+                    convertingLabel = if (targets.size == 1) {
+                        target.fileName
+                    } else {
+                        "(${idx + 1}/${targets.size}) ${target.fileName}"
+                    }
                 }
 
-                dao.getByUri(epubUriStr)
+                val result = runCatching {
+                    val epubFile = MobiConverter.convertToEpub(context, target.uri, target.fileName)
+                    val epubUri = Uri.fromFile(epubFile)
+                    val epubUriStr = epubUri.toString()
+
+                    val meta = EpubParser.parseEpub(context, epubUri, epubFile.name)
+                    val coverPath = LibraryScanner.saveWebpThumbnail(
+                        context,
+                        epubUriStr,
+                        meta.coverBitmap
+                    )
+
+                    dao.insertIgnore(
+                        BookEntity(
+                            uriString = epubUriStr,
+                            fileName = epubFile.name,
+                            format = "EPUB",
+                            fileSize = epubFile.length(),
+                            lastModified = epubFile.lastModified(),
+                            title = meta.title,
+                            author = meta.author,
+                            publishingDate = meta.publishingDate,
+                            publisher = meta.publisher,
+                            language = meta.language,
+                            coverPath = coverPath,
+                            lastLocatorJson = null,
+                            progressPercent = 0.0,
+                            lastOpenedAt = System.currentTimeMillis(),
+                            metadataExtracted = true
+                        )
+                    )
+
+                    target.existingBookId?.let { oldId ->
+                        dao.deleteById(oldId)
+                    }
+
+                    dao.getByUri(epubUriStr)
+                }
+
+                result.onSuccess { book ->
+                    okCount++
+                    if (book != null) lastConverted = book
+                }.onFailure { err ->
+                    failCount++
+                    lastErr = err.localizedMessage
+                }
             }
 
             withContext(Dispatchers.Main) {
                 isConverting = false
-                result.onSuccess { convertedBook ->
-                    statusMessage = "Converted to EPUB! Original file kept safe."
-                    selectedBook = convertedBook
-                }.onFailure { err ->
-                    statusMessage = "Conversion failed: ${err.localizedMessage ?: "Unknown error"}"
+                statusMessage = when {
+                    targets.size == 1 && okCount == 1 ->
+                        "Converted to EPUB! Original file kept safe."
+                    targets.size == 1 && failCount == 1 ->
+                        "Conversion failed: ${lastErr ?: "Unknown error"}"
+                    failCount == 0 ->
+                        "Converted $okCount book(s) to EPUB!"
+                    else ->
+                        "Converted $okCount book(s), $failCount failed."
+                }
+                if (openLastOnSuccess && lastConverted != null) {
+                    selectedBook = lastConverted
                 }
             }
         }
@@ -310,62 +363,129 @@ fun LibraryScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("My Library")
-                        Text(
-                            text = "$totalCount books",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
-                actions = {
-                    Box {
-                        IconButton(onClick = { menuExpanded = true }) {
-                            HamburgerIcon()
-                        }
-                        DropdownMenu(
-                            expanded = menuExpanded,
-                            onDismissRequest = { menuExpanded = false }
+            if (inSelectionMode) {
+                TopAppBar(
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    ),
+                    navigationIcon = {
+                        TextButton(
+                            onClick = {
+                                selectedIds = emptySet()
+                                selectionModeActive = false
+                            }
                         ) {
-                            DropdownMenuItem(
-                                text = { Text("Add / Scan Folder") },
-                                onClick = {
-                                    menuExpanded = false
-                                    folderPicker.launch(null)
+                            Text("Cancel")
+                        }
+                    },
+                    title = {
+                        Text(
+                            text = "${selectedIds.size} selected",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    },
+                    actions = {
+                        TextButton(
+                            enabled = selectedIds.isNotEmpty(),
+                            onClick = {
+                                val idsToCheck = selectedIds.toList()
+                                scope.launch(Dispatchers.IO) {
+                                    val books = idsToCheck.chunked(500).flatMap { dao.getByIds(it) }
+                                    val convertible = books.filter { it.format != "EPUB" }
+                                    withContext(Dispatchers.Main) {
+                                        if (convertible.isEmpty()) {
+                                            statusMessage = "Selected books are already EPUBs."
+                                        } else {
+                                            runBatchConversion(
+                                                targets = convertible.map {
+                                                    PendingConvertTarget(
+                                                        uri = Uri.parse(it.uriString),
+                                                        fileName = it.fileName,
+                                                        existingBookId = it.id
+                                                    )
+                                                },
+                                                openLastOnSuccess = false
+                                            )
+                                        }
+                                    }
                                 }
+                            }
+                        ) {
+                            Text("Convert")
+                        }
+                        TextButton(
+                            enabled = selectedIds.isNotEmpty(),
+                            onClick = { showBatchRemoveConfirm = true }
+                        ) {
+                            Text("Remove", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text("My Library")
+                            Text(
+                                text = "$totalCount books",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            if (savedFoldersCount > 0 && !scanStatus.isScanning) {
+                        }
+                    },
+                    actions = {
+                        Box {
+                            IconButton(onClick = { menuExpanded = true }) {
+                                HamburgerIcon()
+                            }
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = { menuExpanded = false }
+                            ) {
                                 DropdownMenuItem(
-                                    text = { Text("Rescan Folders ($savedFoldersCount)") },
+                                    text = { Text("Add / Scan Folder") },
                                     onClick = {
                                         menuExpanded = false
-                                        val uris = LibraryScanner.getSavedFolders(context)
-                                            .map { Uri.parse(it) }
-                                        LibraryScanner.scanFolders(context, uris)
+                                        folderPicker.launch(null)
+                                    }
+                                )
+                                if (savedFoldersCount > 0 && !scanStatus.isScanning) {
+                                    DropdownMenuItem(
+                                        text = { Text("Rescan Folders ($savedFoldersCount)") },
+                                        onClick = {
+                                            menuExpanded = false
+                                            val uris = LibraryScanner.getSavedFolders(context)
+                                                .map { Uri.parse(it) }
+                                            LibraryScanner.scanFolders(context, uris)
+                                        }
+                                    )
+                                }
+                                DropdownMenuItem(
+                                    text = { Text("Pick Single File") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        filePicker.launch(arrayOf("*/*"))
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Select Multiple Books") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        selectionModeActive = true
+                                    }
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("Theme: ${themeMode.label}") },
+                                    onClick = {
+                                        onCycleThemeMode()
                                     }
                                 )
                             }
-                            DropdownMenuItem(
-                                text = { Text("Pick Single File") },
-                                onClick = {
-                                    menuExpanded = false
-                                    filePicker.launch(arrayOf("*/*"))
-                                }
-                            )
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = { Text("Theme: ${themeMode.label}") },
-                                onClick = {
-                                    onCycleThemeMode()
-                                }
-                            )
                         }
                     }
-                }
-            )
+                )
+            }
         }
     ) { innerPadding ->
         Column(
@@ -425,7 +545,7 @@ fun LibraryScreen(
             }
 
             lastOpened?.let { recent ->
-                if (recent.format == "EPUB") {
+                if (recent.format == "EPUB" && !inSelectionMode) {
                     val pct = (recent.progressPercent * 100).roundToInt()
                     OutlinedButton(
                         onClick = { openInReader(context, recent.uriString) },
@@ -541,7 +661,19 @@ fun LibraryScreen(
                         if (book != null) {
                             BookGridTile(
                                 book = book,
-                                onClick = { selectedBook = book }
+                                inSelectionMode = inSelectionMode,
+                                isSelected = selectedIds.contains(book.id),
+                                onClick = {
+                                    if (inSelectionMode) {
+                                        toggleSelection(book.id)
+                                    } else {
+                                        selectedBook = book
+                                    }
+                                },
+                                onLongClick = {
+                                    selectionModeActive = true
+                                    toggleSelection(book.id)
+                                }
                             )
                         } else {
                             BookPlaceholderTile()
@@ -561,12 +693,15 @@ fun LibraryScreen(
                 openInReader(context, book.uriString)
             },
             onConvertNow = {
-                runConversion(
-                    PendingConvertTarget(
-                        uri = Uri.parse(book.uriString),
-                        fileName = book.fileName,
-                        existingBookId = book.id
-                    )
+                runBatchConversion(
+                    targets = listOf(
+                        PendingConvertTarget(
+                            uri = Uri.parse(book.uriString),
+                            fileName = book.fileName,
+                            existingBookId = book.id
+                        )
+                    ),
+                    openLastOnSuccess = true
                 )
             },
             onRemoveFromLibrary = {
@@ -589,12 +724,52 @@ fun LibraryScreen(
                 )
             },
             confirmButton = {
-                TextButton(onClick = { runConversion(target) }) {
+                TextButton(
+                    onClick = {
+                        runBatchConversion(
+                            targets = listOf(target),
+                            openLastOnSuccess = true
+                        )
+                    }
+                ) {
                     Text("Convert Now")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { convertPrompt = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showBatchRemoveConfirm) {
+        AlertDialog(
+            onDismissRequest = { showBatchRemoveConfirm = false },
+            title = { Text("Remove ${selectedIds.size} book(s)?") },
+            text = {
+                Text("This only removes them from your library database. The actual files on your phone will NOT be deleted.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val toDelete = selectedIds.toList()
+                        showBatchRemoveConfirm = false
+                        selectedIds = emptySet()
+                        selectionModeActive = false
+                        scope.launch(Dispatchers.IO) {
+                            toDelete.chunked(500).forEach { chunk ->
+                                dao.deleteByIds(chunk)
+                            }
+                        }
+                        statusMessage = "Removed ${toDelete.size} book(s) from library."
+                    }
+                ) {
+                    Text("Remove", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBatchRemoveConfirm = false }) {
                     Text("Cancel")
                 }
             }
@@ -609,7 +784,7 @@ fun LibraryScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text(convertingName, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(convertingLabel, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             },
             confirmButton = {}
@@ -633,243 +808,3 @@ fun HamburgerIcon() {
                     .background(barColor)
             )
         }
-    }
-}
-
-private fun openInReader(context: Context, uriString: String) {
-    val uri = Uri.parse(uriString)
-    val intent = Intent(context, ReaderActivity::class.java).apply {
-        putExtra("book_uri", uriString)
-        if (uri.scheme == "content") {
-            data = uri
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-    }
-    context.startActivity(intent)
-}
-
-@Composable
-fun BookPlaceholderTile() {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(0.68f)
-                .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(0.8f)
-                .height(12.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-        )
-    }
-}
-
-@Composable
-fun BookGridTile(book: BookEntity, onClick: () -> Unit) {
-    val context = LocalContext.current
-    val pct = (book.progressPercent * 100).roundToInt()
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(0.68f)
-                .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-        ) {
-            if (!book.coverPath.isNullOrBlank()) {
-                AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(File(book.coverPath))
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = book.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(8.dp),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = book.title,
-                        style = MaterialTheme.typography.labelMedium,
-                        textAlign = TextAlign.Center,
-                        maxLines = 4,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = book.author,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            val badgeText = when {
-                book.format != "EPUB" -> book.format
-                pct > 0 -> "$pct%"
-                else -> null
-            }
-            if (badgeText != null) {
-                Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f),
-                    shape = RoundedCornerShape(4.dp),
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(4.dp)
-                ) {
-                    Text(
-                        text = badgeText,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = book.title,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Medium,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            text = book.author,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun BookDetailsBottomSheet(
-    book: BookEntity,
-    onDismiss: () -> Unit,
-    onRead: () -> Unit,
-    onConvertNow: () -> Unit,
-    onRemoveFromLibrary: () -> Unit
-) {
-    val context = LocalContext.current
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val pct = (book.progressPercent * 100).roundToInt()
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            if (!book.coverPath.isNullOrBlank()) {
-                AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(File(book.coverPath))
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = book.title,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .height(210.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(width = 140.dp, height = 190.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(book.format)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            if (book.format == "EPUB") {
-                Button(
-                    onClick = onRead,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(if (pct > 0) "Continue Reading ($pct%)" else "Read This Book")
-                }
-            } else {
-                Button(
-                    onClick = onConvertNow,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Convert ${book.format} to EPUB")
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-            HorizontalDivider()
-            Spacer(modifier = Modifier.height(12.dp))
-
-            MetadataRow("Title", book.title)
-            MetadataRow("Author", book.author)
-            MetadataRow("Publishing Date", book.publishingDate)
-            MetadataRow("Publisher", book.publisher)
-            MetadataRow("Language", book.language)
-            MetadataRow("Format", book.format)
-            MetadataRow("File", book.fileName)
-
-            Spacer(modifier = Modifier.height(12.dp))
-            TextButton(onClick = onRemoveFromLibrary) {
-                Text(
-                    text = "Remove from Library (keeps file on phone)",
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun MetadataRow(label: String, value: String) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Medium
-        )
-    }
-}
