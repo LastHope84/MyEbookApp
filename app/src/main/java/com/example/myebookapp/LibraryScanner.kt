@@ -28,6 +28,7 @@ data class ScanStatus(
     val filesFoundInPass: Int = 0,
     val metadataProcessed: Int = 0,
     val metadataLeft: Int = 0,
+    val queuedFolders: Int = 0,
     val error: String? = null
 )
 
@@ -37,6 +38,8 @@ object LibraryScanner {
     private const val KEY_FOLDERS = "folder_uris"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val queueLock = Any()
+    private val pendingFolders = ArrayDeque<Uri>()
     private var activeJob: Job? = null
 
     private val _status = MutableStateFlow(ScanStatus())
@@ -56,32 +59,58 @@ object LibraryScanner {
 
     fun scanFolders(context: Context, folderUris: List<Uri>) {
         if (folderUris.isEmpty()) return
-        activeJob?.cancel()
         val appContext = context.applicationContext
+        synchronized(queueLock) {
+            for (uri in folderUris) {
+                if (!pendingFolders.contains(uri)) {
+                    pendingFolders.addLast(uri)
+                }
+            }
+            _status.update { it.copy(queuedFolders = pendingFolders.size) }
+        }
+        if (activeJob?.isActive == true) return
+        startWorkerLoop(appContext)
+    }
 
+    fun resumeMetadataOnly(context: Context) {
+        if (activeJob?.isActive == true) return
+        startWorkerLoop(context.applicationContext)
+    }
+
+    fun stopScan() {
+        synchronized(queueLock) {
+            pendingFolders.clear()
+        }
+        activeJob?.cancel()
+        activeJob = null
+        _status.update { it.copy(isScanning = false, phaseLabel = "", queuedFolders = 0) }
+    }
+
+    private fun startWorkerLoop(appContext: Context) {
         activeJob = scope.launch {
             _status.value = ScanStatus(
                 isScanning = true,
-                phaseLabel = "Scanning folders..."
+                phaseLabel = "Preparing scan...",
+                queuedFolders = synchronized(queueLock) { pendingFolders.size }
             )
 
             try {
                 val dao = AppDatabase.getInstance(appContext).bookDao()
-                for (treeUri in folderUris) {
-                    if (!isActive) break
-                    walkTreeAndInsert(appContext, dao, treeUri)
+                while (isActive) {
+                    val walkedAny = drainPendingFolders(appContext, dao)
+                    val processedAny = if (isActive) processOneMetadataBatch(appContext, dao) else false
+                    val moreFolders = synchronized(queueLock) { pendingFolders.isNotEmpty() }
+                    if (!walkedAny && !processedAny && !moreFolders) {
+                        break
+                    }
                 }
-
-                if (isActive) {
-                    extractPendingMetadata(appContext, dao)
-                }
-
-                _status.update { it.copy(isScanning = false, phaseLabel = "") }
+                _status.update { it.copy(isScanning = false, phaseLabel = "", queuedFolders = 0) }
             } catch (e: Exception) {
                 _status.update {
                     it.copy(
                         isScanning = false,
                         phaseLabel = "",
+                        queuedFolders = 0,
                         error = e.localizedMessage ?: "Scan interrupted."
                     )
                 }
@@ -89,34 +118,28 @@ object LibraryScanner {
         }
     }
 
-    fun resumeMetadataOnly(context: Context) {
-        if (_status.value.isScanning) return
-        val appContext = context.applicationContext
-        activeJob = scope.launch {
-            _status.value = ScanStatus(
-                isScanning = true,
-                phaseLabel = "Extracting EPUB covers & metadata..."
-            )
-            try {
-                val dao = AppDatabase.getInstance(appContext).bookDao()
-                extractPendingMetadata(appContext, dao)
-                _status.update { it.copy(isScanning = false, phaseLabel = "") }
-            } catch (e: Exception) {
-                _status.update {
-                    it.copy(
-                        isScanning = false,
-                        phaseLabel = "",
-                        error = e.localizedMessage
-                    )
-                }
-            }
-        }
-    }
+    private suspend fun drainPendingFolders(context: Context, dao: BookDao): Boolean {
+        var walkedAny = false
+        while (true) {
+            val nextFolder = synchronized(queueLock) {
+                if (pendingFolders.isNotEmpty()) pendingFolders.removeFirst() else null
+            } ?: break
 
-    fun stopScan() {
-        activeJob?.cancel()
-        activeJob = null
-        _status.update { it.copy(isScanning = false, phaseLabel = "") }
+            walkedAny = true
+            val remaining = synchronized(queueLock) { pendingFolders.size }
+            _status.update {
+                it.copy(
+                    phaseLabel = if (remaining > 0) "Scanning folder (+$remaining queued)..." else "Scanning folder...",
+                    queuedFolders = remaining
+                )
+            }
+            walkTreeAndInsert(context, dao, nextFolder)
+        }
+        if (walkedAny) {
+            val left = dao.countPendingEpubs()
+            _status.update { it.copy(metadataLeft = left) }
+        }
+        return walkedAny
     }
 
     private suspend fun walkTreeAndInsert(
@@ -217,81 +240,78 @@ object LibraryScanner {
         }
     }
 
-    private suspend fun extractPendingMetadata(context: Context, dao: BookDao) {
+    private suspend fun processOneMetadataBatch(context: Context, dao: BookDao): Boolean {
+        val pending = dao.getPendingEpubs(limit = 60)
+        if (pending.isEmpty()) return false
+
         val totalLeft = dao.countPendingEpubs()
+        val queued = synchronized(queueLock) { pendingFolders.size }
         _status.update {
             it.copy(
-                phaseLabel = "Extracting EPUB covers & metadata...",
-                metadataLeft = totalLeft
+                phaseLabel = if (queued > 0) "Extracting covers (+$queued folder queued)..." else "Extracting EPUB covers & metadata...",
+                metadataLeft = totalLeft,
+                queuedFolders = queued
             )
         }
 
-        while (true) {
-            val pending = dao.getPendingEpubs(limit = 60)
-            if (pending.isEmpty()) break
+        val updates = Collections.synchronizedList(mutableListOf<ExtractedBookMeta>())
 
-            val updates = Collections.synchronizedList(mutableListOf<ExtractedBookMeta>())
+        coroutineScope {
+            val channel = Channel<BookEntity>(Channel.UNLIMITED)
+            for (item in pending) channel.trySend(item)
+            channel.close()
 
-            coroutineScope {
-                val channel = Channel<BookEntity>(Channel.UNLIMITED)
-                for (item in pending) channel.trySend(item)
-                channel.close()
+            repeat(4) {
+                launch(Dispatchers.IO) {
+                    for (book in channel) {
+                        if (!isActive) break
+                        val uri = Uri.parse(book.uriString)
+                        val parsed = runCatching {
+                            EpubParser.parseEpub(context, uri, book.fileName)
+                        }.getOrNull()
 
-                repeat(4) {
-                    launch(Dispatchers.IO) {
-                        for (book in channel) {
-                            if (!isActive) break
-                            val uri = Uri.parse(book.uriString)
-                            val parsed = runCatching {
-                                EpubParser.parseEpub(context, uri, book.fileName)
-                            }.getOrNull()
-
-                            if (parsed != null) {
-                                val coverPath = saveWebpThumbnail(
-                                    context,
-                                    book.uriString,
-                                    parsed.coverBitmap
+                        if (parsed != null) {
+                            val coverPath = saveWebpThumbnail(context, book.uriString, parsed.coverBitmap)
+                            updates.add(
+                                ExtractedBookMeta(
+                                    id = book.id,
+                                    title = parsed.title,
+                                    author = parsed.author,
+                                    publishingDate = parsed.publishingDate,
+                                    publisher = parsed.publisher,
+                                    language = parsed.language,
+                                    coverPath = coverPath
                                 )
-                                updates.add(
-                                    ExtractedBookMeta(
-                                        id = book.id,
-                                        title = parsed.title,
-                                        author = parsed.author,
-                                        publishingDate = parsed.publishingDate,
-                                        publisher = parsed.publisher,
-                                        language = parsed.language,
-                                        coverPath = coverPath
-                                    )
+                            )
+                        } else {
+                            updates.add(
+                                ExtractedBookMeta(
+                                    id = book.id,
+                                    title = book.title,
+                                    author = book.author,
+                                    publishingDate = book.publishingDate,
+                                    publisher = book.publisher,
+                                    language = book.language,
+                                    coverPath = null
                                 )
-                            } else {
-                                updates.add(
-                                    ExtractedBookMeta(
-                                        id = book.id,
-                                        title = book.title,
-                                        author = book.author,
-                                        publishingDate = book.publishingDate,
-                                        publisher = book.publisher,
-                                        language = book.language,
-                                        coverPath = null
-                                    )
-                                )
-                            }
+                            )
+                        }
 
-                            _status.update {
-                                it.copy(
-                                    metadataProcessed = it.metadataProcessed + 1,
-                                    metadataLeft = (it.metadataLeft - 1).coerceAtLeast(0)
-                                )
-                            }
+                        _status.update {
+                            it.copy(
+                                metadataProcessed = it.metadataProcessed + 1,
+                                metadataLeft = (it.metadataLeft - 1).coerceAtLeast(0)
+                            )
                         }
                     }
                 }
             }
-
-            if (updates.isNotEmpty()) {
-                dao.updateExtractedMetadataBatch(updates.toList())
-            }
         }
+
+        if (updates.isNotEmpty()) {
+            dao.updateExtractedMetadataBatch(updates.toList())
+        }
+        return true
     }
 
     fun saveWebpThumbnail(context: Context, uriString: String, bitmap: Bitmap?): String? {
