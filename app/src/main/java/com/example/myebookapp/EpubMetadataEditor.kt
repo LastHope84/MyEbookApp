@@ -27,7 +27,8 @@ data class EpubEditRequest(
     val publishingDate: String,
     val publisher: String,
     val language: String,
-    val newCoverBitmap: Bitmap? = null
+    val newCoverBitmap: Bitmap? = null,
+    val removeCover: Boolean = false
 )
 
 sealed class EpubWriteResult {
@@ -38,6 +39,12 @@ sealed class EpubWriteResult {
 object EpubMetadataEditor {
 
     private const val DC_NS = "http://purl.org/dc/elements/1.1/"
+
+    private data class OpfEditOutcome(
+        val updatedOpfBytes: ByteArray,
+        val coverReplacement: Pair<String, ByteArray>?,
+        val zipPathsToSkip: Set<String>
+    )
 
     fun writeMetadataToEpub(
         context: Context,
@@ -71,7 +78,7 @@ object EpubMetadataEditor {
                     ?: return EpubWriteResult.ReadOnlyFallback("OPF entry not found in EPUB.")
 
                 val opfBytes = zip.getInputStream(opfEntry).readBytes()
-                val (updatedOpfBytes, coverReplacement) = updateOpfAndPrepareCover(
+                val outcome = updateOpfAndPrepareCover(
                     opfPath = opfPath,
                     opfBytes = opfBytes,
                     edit = edit
@@ -81,12 +88,10 @@ object EpubMetadataEditor {
                     sourceZip = zip,
                     outputFile = outFile,
                     opfPath = opfPath,
-                    updatedOpfBytes = updatedOpfBytes,
-                    coverReplacement = coverReplacement
+                    outcome = outcome
                 )
             }
 
-            // Sanity-verify the repacked archive before touching original file
             ZipFile(outFile).use { verifyZip ->
                 if (!verifyZip.entries().hasMoreElements()) {
                     return EpubWriteResult.ReadOnlyFallback("Repack verification failed.")
@@ -195,7 +200,7 @@ object EpubMetadataEditor {
         opfPath: String,
         opfBytes: ByteArray,
         edit: EpubEditRequest
-    ): Pair<ByteArray, Pair<String, ByteArray>?> {
+    ): OpfEditOutcome {
         val factory = DocumentBuilderFactory.newInstance().apply {
             isNamespaceAware = true
         }
@@ -216,8 +221,13 @@ object EpubMetadataEditor {
         replaceDcValues(doc, metadataEl, "publisher", cleanSingleField(edit.publisher))
         replaceDcValues(doc, metadataEl, "language", cleanSingleField(edit.language))
 
-        val coverReplacement = edit.newCoverBitmap?.let { bitmap ->
-            applyCoverInDom(doc, packageEl, metadataEl, opfNs, opfPath, bitmap)
+        var coverReplacement: Pair<String, ByteArray>? = null
+        val pathsToSkip = mutableSetOf<String>()
+
+        if (edit.removeCover) {
+            pathsToSkip.addAll(removeCoverInDom(doc, metadataEl, opfPath))
+        } else if (edit.newCoverBitmap != null) {
+            coverReplacement = applyCoverInDom(doc, packageEl, metadataEl, opfNs, opfPath, edit.newCoverBitmap)
         }
 
         val transformer = TransformerFactory.newInstance().newTransformer().apply {
@@ -226,7 +236,46 @@ object EpubMetadataEditor {
         }
         val out = ByteArrayOutputStream()
         transformer.transform(DOMSource(doc), StreamResult(out))
-        return out.toByteArray() to coverReplacement
+        return OpfEditOutcome(out.toByteArray(), coverReplacement, pathsToSkip)
+    }
+
+    private fun removeCoverInDom(
+        doc: Document,
+        metadataEl: Element,
+        opfPath: String
+    ): Set<String> {
+        val removedZipPaths = mutableSetOf<String>()
+        val coverIds = mutableSetOf<String>()
+
+        val metas = collectChildElementsByLocalName(metadataEl, "meta")
+        for (meta in metas) {
+            if (meta.getAttribute("name").equals("cover", ignoreCase = true)) {
+                val content = meta.getAttribute("content")
+                if (content.isNotBlank()) coverIds.add(content)
+                metadataEl.removeChild(meta)
+            }
+        }
+
+        val manifestEl = findFirstElementByLocalName(doc, "manifest") ?: return removedZipPaths
+        val items = collectChildElementsByLocalName(manifestEl, "item")
+        for (item in items) {
+            val id = item.getAttribute("id")
+            val href = item.getAttribute("href")
+            val mediaType = item.getAttribute("media-type")
+            val props = item.getAttribute("properties").split(' ')
+            val isCoverProp = props.any { it == "cover-image" }
+            val isMetaCover = id in coverIds
+            val isFallbackCoverImg = mediaType.startsWith("image/", ignoreCase = true) &&
+                (id.contains("cover", ignoreCase = true) || href.contains("cover", ignoreCase = true))
+
+            if (isCoverProp || isMetaCover || isFallbackCoverImg) {
+                if (href.isNotBlank()) {
+                    removedZipPaths.add(resolveZipPath(opfPath, href).lowercase())
+                }
+                manifestEl.removeChild(item)
+            }
+        }
+        return removedZipPaths
     }
 
     private fun applyCoverInDom(
@@ -322,15 +371,13 @@ object EpubMetadataEditor {
         sourceZip: ZipFile,
         outputFile: File,
         opfPath: String,
-        updatedOpfBytes: ByteArray,
-        coverReplacement: Pair<String, ByteArray>?
+        outcome: OpfEditOutcome
     ) {
         val normalizedOpf = opfPath.trimStart('/')
-        val normalizedCover = coverReplacement?.first?.trimStart('/')
+        val normalizedCover = outcome.coverReplacement?.first?.trimStart('/')
         var coverWritten = false
 
         ZipOutputStream(outputFile.outputStream().buffered()).use { zos ->
-            // 1. mimetype MUST be first and uncompressed (STORED)
             val mimeBytes = "application/epub+zip".toByteArray(Charsets.US_ASCII)
             val crc = CRC32().apply { update(mimeBytes) }.value
             val mimeEntry = ZipEntry("mimetype").apply {
@@ -348,14 +395,15 @@ object EpubMetadataEditor {
                 val entry = entries.nextElement()
                 val name = entry.name.trimStart('/')
                 if (entry.isDirectory || name.equals("mimetype", ignoreCase = true)) continue
+                if (name.lowercase() in outcome.zipPathsToSkip) continue
 
                 zos.putNextEntry(ZipEntry(entry.name))
                 when {
                     name.equals(normalizedOpf, ignoreCase = true) -> {
-                        zos.write(updatedOpfBytes)
+                        zos.write(outcome.updatedOpfBytes)
                     }
                     normalizedCover != null && name.equals(normalizedCover, ignoreCase = true) -> {
-                        zos.write(coverReplacement.second)
+                        zos.write(outcome.coverReplacement.second)
                         coverWritten = true
                     }
                     else -> {
@@ -365,9 +413,9 @@ object EpubMetadataEditor {
                 zos.closeEntry()
             }
 
-            if (coverReplacement != null && !coverWritten) {
-                zos.putNextEntry(ZipEntry(coverReplacement.first))
-                zos.write(coverReplacement.second)
+            if (outcome.coverReplacement != null && !coverWritten) {
+                zos.putNextEntry(ZipEntry(outcome.coverReplacement.first))
+                zos.write(outcome.coverReplacement.second)
                 zos.closeEntry()
             }
         }
