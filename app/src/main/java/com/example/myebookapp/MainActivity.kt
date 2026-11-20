@@ -109,6 +109,7 @@ fun LibraryScreen(
     var convertPrompt by remember { mutableStateOf<PendingConvertTarget?>(null) }
     var isConverting by remember { mutableStateOf(false) }
     var convertingLabel by remember { mutableStateOf("") }
+    var isSharing by remember { mutableStateOf(false) }
     var savedFoldersCount by remember { mutableIntStateOf(LibraryScanner.getSavedFolders(context).size) }
 
     var selectionModeActive by remember { mutableStateOf(false) }
@@ -129,6 +130,28 @@ fun LibraryScreen(
         val next = if (selectedIds.contains(id)) selectedIds - id else selectedIds + id
         selectedIds = next
         if (next.isEmpty()) selectionModeActive = false
+    }
+
+    fun runShareBooks(books: List<BookEntity>) {
+        if (books.isEmpty()) return
+        selectedBook = null
+        selectedIds = emptySet()
+        selectionModeActive = false
+        isSharing = true
+        statusMessage = null
+
+        scope.launch(Dispatchers.IO) {
+            val result = runCatching { FileOpener.prepareShareIntent(context, books) }
+            withContext(Dispatchers.Main) {
+                isSharing = false
+                result.onSuccess { chooser ->
+                    runCatching { context.startActivity(chooser) }
+                        .onFailure { statusMessage = "No app available to share files." }
+                }.onFailure { err ->
+                    statusMessage = "Share failed: ${err.localizedMessage ?: "Could not read file"}"
+                }
+            }
+        }
     }
 
     fun runBatchConversion(targets: List<PendingConvertTarget>, openLastOnSuccess: Boolean) {
@@ -443,10 +466,20 @@ fun LibraryScreen(
                     TopAppBar(
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
                         navigationIcon = {
-                            TextButton(onClick = { selectedIds = emptySet(); selectionModeActive = false }) { Text("Cancel") }
+                            TextButton(onClick = { selectedIds = emptySet(); selectionModeActive = false }) { Text("✕") }
                         },
-                        title = { Text("${selectedIds.size} selected", style = MaterialTheme.typography.titleMedium) },
+                        title = { Text("${selectedIds.size}", style = MaterialTheme.typography.titleMedium) },
                         actions = {
+                            TextButton(
+                                enabled = selectedIds.isNotEmpty(),
+                                onClick = {
+                                    val ids = selectedIds.toList()
+                                    scope.launch(Dispatchers.IO) {
+                                        val books = ids.chunked(500).flatMap { dao.getByIds(it) }
+                                        withContext(Dispatchers.Main) { runShareBooks(books) }
+                                    }
+                                }
+                            ) { Text("Share") }
                             TextButton(
                                 enabled = selectedIds.isNotEmpty(),
                                 onClick = {
@@ -591,6 +624,7 @@ fun LibraryScreen(
             book = book,
             onDismiss = { selectedBook = null },
             onRead = { selectedBook = null; openInReader(context, book.uriString) },
+            onShare = { runShareBooks(listOf(book)) },
             onConvertNow = {
                 runBatchConversion(
                     listOf(PendingConvertTarget(Uri.parse(book.uriString), book.fileName, book.id)),
@@ -651,6 +685,15 @@ fun LibraryScreen(
                     Text(convertingLabel, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             },
+            confirmButton = {}
+        )
+    }
+
+    if (isSharing) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Preparing to share...") },
+            text = { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) },
             confirmButton = {}
         )
     }
@@ -809,6 +852,7 @@ fun BookDetailsBottomSheet(
     book: BookEntity,
     onDismiss: () -> Unit,
     onRead: () -> Unit,
+    onShare: () -> Unit,
     onConvertNow: () -> Unit,
     onRemoveFromLibrary: () -> Unit
 ) {
@@ -853,6 +897,11 @@ fun BookDetailsBottomSheet(
                 Button(onClick = onConvertNow, modifier = Modifier.fillMaxWidth()) {
                     Text("Convert ${book.format} to EPUB")
                 }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(onClick = onShare, modifier = Modifier.fillMaxWidth()) {
+                Text("Share Ebook File")
             }
 
             Spacer(modifier = Modifier.height(12.dp))
