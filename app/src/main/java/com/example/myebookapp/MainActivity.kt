@@ -178,8 +178,14 @@ fun LibraryScreen(
         statusMessage = null
 
         scope.launch(Dispatchers.IO) {
-            val newCoverPath = req.newCoverBitmap?.let { bmp ->
-                EpubMetadataEditor.saveFreshWebpCover(context, book.uriString, book.coverPath, bmp)
+            val newCoverPath = if (req.removeCover) {
+                book.coverPath?.let { path -> runCatching { File(path).delete() } }
+                dao.clearCover(book.id)
+                null
+            } else {
+                req.newCoverBitmap?.let { bmp ->
+                    EpubMetadataEditor.saveFreshWebpCover(context, book.uriString, book.coverPath, bmp)
+                }
             }
 
             dao.updateExtractedMetadata(
