@@ -154,6 +154,9 @@ interface BookDao {
         coverPath: String?
     )
 
+    @Query("UPDATE books SET coverPath = NULL WHERE id = :id")
+    suspend fun clearCover(id: Long)
+
     @Transaction
     suspend fun updateExtractedMetadataBatch(items: List<ExtractedBookMeta>) {
         for (item in items) {
