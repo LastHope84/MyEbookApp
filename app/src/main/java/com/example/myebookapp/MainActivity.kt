@@ -105,16 +105,18 @@ fun LibraryScreen(
     var debouncedQuery by remember { mutableStateOf("") }
     var isSearchFocused by remember { mutableStateOf(false) }
     var selectedBook by remember { mutableStateOf<BookEntity?>(null) }
+    var editingBook by remember { mutableStateOf<BookEntity?>(null) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var convertPrompt by remember { mutableStateOf<PendingConvertTarget?>(null) }
-    var isConverting by remember { mutableStateOf(false) }
-    var convertingLabel by remember { mutableStateOf("") }
-    var isSharing by remember { mutableStateOf(false) }
+    var busyTitle by remember { mutableStateOf<String?>(null) }
+    var busyDetail by remember { mutableStateOf("") }
     var savedFoldersCount by remember { mutableIntStateOf(LibraryScanner.getSavedFolders(context).size) }
 
     var selectionModeActive by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var selectionMoreMenu by remember { mutableStateOf(false) }
     var showBatchRemoveConfirm by remember { mutableStateOf(false) }
+    var showBatchEditDialog by remember { mutableStateOf(false) }
     val inSelectionMode = selectionModeActive || selectedIds.isNotEmpty()
 
     BackHandler(enabled = drawerState.isOpen || inSelectionMode) {
@@ -132,23 +134,143 @@ fun LibraryScreen(
         if (next.isEmpty()) selectionModeActive = false
     }
 
+    fun takeReadWritePermission(uri: Uri) {
+        val rw = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        runCatching { context.contentResolver.takePersistableUriPermission(uri, rw) }
+            .onFailure {
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
+            }
+    }
+
     fun runShareBooks(books: List<BookEntity>) {
         if (books.isEmpty()) return
         selectedBook = null
         selectedIds = emptySet()
         selectionModeActive = false
-        isSharing = true
+        busyTitle = "Preparing to share..."
+        busyDetail = if (books.size == 1) books.first().title else "${books.size} ebooks"
         statusMessage = null
 
         scope.launch(Dispatchers.IO) {
             val result = runCatching { FileOpener.prepareShareIntent(context, books) }
             withContext(Dispatchers.Main) {
-                isSharing = false
+                busyTitle = null
                 result.onSuccess { chooser ->
                     runCatching { context.startActivity(chooser) }
                         .onFailure { statusMessage = "No app available to share files." }
                 }.onFailure { err ->
                     statusMessage = "Share failed: ${err.localizedMessage ?: "Could not read file"}"
+                }
+            }
+        }
+    }
+
+    fun runSingleMetadataSave(book: BookEntity, req: EpubEditRequest, writeToFile: Boolean) {
+        editingBook = null
+        selectedBook = null
+        busyTitle = "Saving metadata..."
+        busyDetail = req.title
+        statusMessage = null
+
+        scope.launch(Dispatchers.IO) {
+            val newCoverPath = req.newCoverBitmap?.let { bmp ->
+                EpubMetadataEditor.saveFreshWebpCover(context, book.uriString, book.coverPath, bmp)
+            }
+
+            dao.updateExtractedMetadata(
+                id = book.id,
+                title = req.title,
+                author = req.author,
+                publishingDate = req.publishingDate,
+                publisher = req.publisher,
+                language = req.language,
+                coverPath = newCoverPath
+            )
+
+            val writeStatus = if (writeToFile && book.format == "EPUB") {
+                runCatching {
+                    EpubMetadataEditor.writeMetadataToEpub(context, Uri.parse(book.uriString), req)
+                }.getOrElse {
+                    EpubWriteResult.ReadOnlyFallback("Saved in library! File update skipped: ${it.localizedMessage}")
+                }
+            } else {
+                null
+            }
+
+            val refreshed = dao.getByUri(book.uriString)
+            withContext(Dispatchers.Main) {
+                busyTitle = null
+                statusMessage = when (writeStatus) {
+                    is EpubWriteResult.WrittenToFile -> "Saved to library & updated .epub file!"
+                    is EpubWriteResult.ReadOnlyFallback -> writeStatus.reason
+                    null -> "Saved metadata to library!"
+                }
+                selectedBook = refreshed
+            }
+        }
+    }
+
+    fun runBatchMetadataSave(ids: List<Long>, req: BatchMetadataRequest) {
+        if (ids.isEmpty()) return
+        showBatchEditDialog = false
+        selectedIds = emptySet()
+        selectionModeActive = false
+        busyTitle = "Bulk updating metadata..."
+        busyDetail = "${ids.size} book(s)"
+        statusMessage = null
+
+        scope.launch(Dispatchers.IO) {
+            val books = ids.chunked(500).flatMap { dao.getByIds(it) }
+            var filesWritten = 0
+            var filesReadOnly = 0
+
+            books.forEachIndexed { idx, book ->
+                val newAuthor = req.author ?: book.author
+                val newDate = req.publishingDate ?: book.publishingDate
+                val newPublisher = req.publisher ?: book.publisher
+                val newLang = req.language ?: book.language
+
+                withContext(Dispatchers.Main) {
+                    busyDetail = "(${idx + 1}/${books.size}) ${book.title}"
+                }
+
+                dao.updateExtractedMetadata(
+                    id = book.id,
+                    title = book.title,
+                    author = newAuthor,
+                    publishingDate = newDate,
+                    publisher = newPublisher,
+                    language = newLang,
+                    coverPath = null
+                )
+
+                if (req.writeToEpubFiles && book.format == "EPUB") {
+                    val editReq = EpubEditRequest(
+                        title = book.title,
+                        author = newAuthor,
+                        publishingDate = newDate,
+                        publisher = newPublisher,
+                        language = newLang,
+                        newCoverBitmap = null
+                    )
+                    val res = runCatching {
+                        EpubMetadataEditor.writeMetadataToEpub(context, Uri.parse(book.uriString), editReq)
+                    }.getOrNull()
+                    if (res is EpubWriteResult.WrittenToFile) filesWritten++ else filesReadOnly++
+                }
+            }
+
+            withContext(Dispatchers.Main) {
+                busyTitle = null
+                statusMessage = when {
+                    !req.writeToEpubFiles -> "Updated ${books.size} book(s) in library!"
+                    filesReadOnly == 0 -> "Updated ${books.size} book(s) & wrote $filesWritten .epub file(s)!"
+                    else -> "Updated ${books.size} book(s) in library ($filesWritten .epub written, $filesReadOnly read-only)."
                 }
             }
         }
@@ -160,7 +282,7 @@ fun LibraryScreen(
         selectedBook = null
         selectedIds = emptySet()
         selectionModeActive = false
-        isConverting = true
+        busyTitle = "Converting to EPUB..."
         statusMessage = null
 
         scope.launch(Dispatchers.IO) {
@@ -171,7 +293,7 @@ fun LibraryScreen(
 
             targets.forEachIndexed { idx, target ->
                 withContext(Dispatchers.Main) {
-                    convertingLabel = if (targets.size == 1) target.fileName
+                    busyDetail = if (targets.size == 1) target.fileName
                     else "(${idx + 1}/${targets.size}) ${target.fileName}"
                 }
 
@@ -215,7 +337,7 @@ fun LibraryScreen(
             }
 
             withContext(Dispatchers.Main) {
-                isConverting = false
+                busyTitle = null
                 statusMessage = when {
                     targets.size == 1 && okCount == 1 -> "Converted to EPUB! Original file kept safe."
                     targets.size == 1 && failCount == 1 -> "Conversion failed: ${lastErr ?: "Unknown error"}"
@@ -279,7 +401,7 @@ fun LibraryScreen(
 
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
         if (treeUri == null) return@rememberLauncherForActivityResult
-        runCatching { context.contentResolver.takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        takeReadWritePermission(treeUri)
         LibraryScanner.addFolder(context, treeUri)
         savedFoldersCount = LibraryScanner.getSavedFolders(context).size
         LibraryScanner.scanFolders(context, listOf(treeUri))
@@ -288,7 +410,7 @@ fun LibraryScreen(
 
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        takeReadWritePermission(uri)
         val fileName = EpubParser.getFileName(context, uri)
         when (fileName.substringAfterLast('.', "").trim().lowercase()) {
             "mobi", "azw3", "azw", "prc" -> convertPrompt = PendingConvertTarget(uri, fileName)
@@ -472,6 +594,10 @@ fun LibraryScreen(
                         actions = {
                             TextButton(
                                 enabled = selectedIds.isNotEmpty(),
+                                onClick = { showBatchEditDialog = true }
+                            ) { Text("Edit") }
+                            TextButton(
+                                enabled = selectedIds.isNotEmpty(),
                                 onClick = {
                                     val ids = selectedIds.toList()
                                     scope.launch(Dispatchers.IO) {
@@ -480,30 +606,45 @@ fun LibraryScreen(
                                     }
                                 }
                             ) { Text("Share") }
-                            TextButton(
-                                enabled = selectedIds.isNotEmpty(),
-                                onClick = {
-                                    val idsToCheck = selectedIds.toList()
-                                    scope.launch(Dispatchers.IO) {
-                                        val books = idsToCheck.chunked(500).flatMap { dao.getByIds(it) }
-                                        val convertible = books.filter { it.format != "EPUB" }
-                                        withContext(Dispatchers.Main) {
-                                            if (convertible.isEmpty()) {
-                                                statusMessage = "Selected books are already EPUBs."
-                                            } else {
-                                                runBatchConversion(
-                                                    convertible.map { PendingConvertTarget(Uri.parse(it.uriString), it.fileName, it.id) },
-                                                    openLastOnSuccess = false
-                                                )
+                            Box {
+                                TextButton(
+                                    enabled = selectedIds.isNotEmpty(),
+                                    onClick = { selectionMoreMenu = true }
+                                ) { Text("⋮", style = MaterialTheme.typography.titleMedium) }
+                                DropdownMenu(
+                                    expanded = selectionMoreMenu,
+                                    onDismissRequest = { selectionMoreMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Convert to EPUB") },
+                                        onClick = {
+                                            selectionMoreMenu = false
+                                            val idsToCheck = selectedIds.toList()
+                                            scope.launch(Dispatchers.IO) {
+                                                val books = idsToCheck.chunked(500).flatMap { dao.getByIds(it) }
+                                                val convertible = books.filter { it.format != "EPUB" }
+                                                withContext(Dispatchers.Main) {
+                                                    if (convertible.isEmpty()) {
+                                                        statusMessage = "Selected books are already EPUBs."
+                                                    } else {
+                                                        runBatchConversion(
+                                                            convertible.map { PendingConvertTarget(Uri.parse(it.uriString), it.fileName, it.id) },
+                                                            openLastOnSuccess = false
+                                                        )
+                                                    }
+                                                }
                                             }
                                         }
-                                    }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Remove from Library", color = MaterialTheme.colorScheme.error) },
+                                        onClick = {
+                                            selectionMoreMenu = false
+                                            showBatchRemoveConfirm = true
+                                        }
+                                    )
                                 }
-                            ) { Text("Convert") }
-                            TextButton(
-                                enabled = selectedIds.isNotEmpty(),
-                                onClick = { showBatchRemoveConfirm = true }
-                            ) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+                            }
                         }
                     )
                 } else {
@@ -624,6 +765,7 @@ fun LibraryScreen(
             book = book,
             onDismiss = { selectedBook = null },
             onRead = { selectedBook = null; openInReader(context, book.uriString) },
+            onEdit = { selectedBook = null; editingBook = book },
             onShare = { runShareBooks(listOf(book)) },
             onConvertNow = {
                 runBatchConversion(
@@ -636,6 +778,22 @@ fun LibraryScreen(
                 selectedBook = null
                 scope.launch(Dispatchers.IO) { dao.deleteById(id) }
             }
+        )
+    }
+
+    editingBook?.let { book ->
+        MetadataEditorBottomSheet(
+            book = book,
+            onDismiss = { editingBook = null },
+            onSave = { req, writeToFile -> runSingleMetadataSave(book, req, writeToFile) }
+        )
+    }
+
+    if (showBatchEditDialog) {
+        BatchMetadataDialog(
+            selectedCount = selectedIds.size,
+            onDismiss = { showBatchEditDialog = false },
+            onApply = { req -> runBatchMetadataSave(selectedIds.toList(), req) }
         )
     }
 
@@ -674,26 +832,19 @@ fun LibraryScreen(
         )
     }
 
-    if (isConverting) {
+    busyTitle?.let { title ->
         AlertDialog(
             onDismissRequest = {},
-            title = { Text("Converting to EPUB...") },
+            title = { Text(title) },
             text = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(convertingLabel, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (busyDetail.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(busyDetail, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             },
-            confirmButton = {}
-        )
-    }
-
-    if (isSharing) {
-        AlertDialog(
-            onDismissRequest = {},
-            title = { Text("Preparing to share...") },
-            text = { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) },
             confirmButton = {}
         )
     }
@@ -852,6 +1003,7 @@ fun BookDetailsBottomSheet(
     book: BookEntity,
     onDismiss: () -> Unit,
     onRead: () -> Unit,
+    onEdit: () -> Unit,
     onShare: () -> Unit,
     onConvertNow: () -> Unit,
     onRemoveFromLibrary: () -> Unit
@@ -900,8 +1052,16 @@ fun BookDetailsBottomSheet(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            OutlinedButton(onClick = onShare, modifier = Modifier.fillMaxWidth()) {
-                Text("Share Ebook File")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f)) {
+                    Text("Edit Metadata")
+                }
+                OutlinedButton(onClick = onShare, modifier = Modifier.weight(1f)) {
+                    Text("Share File")
+                }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
