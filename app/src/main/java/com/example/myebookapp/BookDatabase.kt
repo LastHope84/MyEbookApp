@@ -79,6 +79,9 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE uriString = :uriString LIMIT 1")
     suspend fun getByUri(uriString: String): BookEntity?
 
+    @Query("SELECT * FROM books WHERE id IN (:ids)")
+    suspend fun getByIds(ids: List<Long>): List<BookEntity>
+
     @Query("SELECT * FROM books WHERE format = 'EPUB' AND metadataExtracted = 0 ORDER BY id ASC LIMIT :limit")
     suspend fun getPendingEpubs(limit: Int): List<BookEntity>
 
@@ -185,6 +188,9 @@ interface BookDao {
 
     @Query("DELETE FROM books WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM books WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>)
 }
 
 @Database(
