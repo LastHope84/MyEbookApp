@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.provider.DocumentsContract
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -13,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -20,6 +20,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,7 +32,9 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.paging.Pager
@@ -47,7 +51,11 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.roundToInt
 
-enum class LibraryTab { ALL, RECENT, TO_CONVERT }
+enum class LibraryTab(val title: String) {
+    ALL("My Library"),
+    RECENT("Recently Read"),
+    TO_CONVERT("To Convert")
+}
 
 data class PendingConvertTarget(
     val uri: Uri,
@@ -84,6 +92,7 @@ fun LibraryScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val dao = remember { AppDatabase.getInstance(context).bookDao() }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 
     val totalCount by dao.observeTotalCount().collectAsState(initial = 0)
     val pendingMetadataCount by dao.observePendingMetadataCount().collectAsState(initial = 0)
@@ -95,7 +104,6 @@ fun LibraryScreen(
     var searchQuery by remember { mutableStateOf("") }
     var debouncedQuery by remember { mutableStateOf("") }
     var isSearchFocused by remember { mutableStateOf(false) }
-    var menuExpanded by remember { mutableStateOf(false) }
     var selectedBook by remember { mutableStateOf<BookEntity?>(null) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var convertPrompt by remember { mutableStateOf<PendingConvertTarget?>(null) }
@@ -108,9 +116,13 @@ fun LibraryScreen(
     var showBatchRemoveConfirm by remember { mutableStateOf(false) }
     val inSelectionMode = selectionModeActive || selectedIds.isNotEmpty()
 
-    BackHandler(enabled = inSelectionMode) {
-        selectedIds = emptySet()
-        selectionModeActive = false
+    BackHandler(enabled = drawerState.isOpen || inSelectionMode) {
+        if (drawerState.isOpen) {
+            scope.launch { drawerState.close() }
+        } else {
+            selectedIds = emptySet()
+            selectionModeActive = false
+        }
     }
 
     fun toggleSelection(id: Long) {
@@ -248,6 +260,7 @@ fun LibraryScreen(
         LibraryScanner.addFolder(context, treeUri)
         savedFoldersCount = LibraryScanner.getSavedFolders(context).size
         LibraryScanner.scanFolders(context, listOf(treeUri))
+        statusMessage = "Folder added to scan queue."
     }
 
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -301,211 +314,271 @@ fun LibraryScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            if (inSelectionMode) {
-                TopAppBar(
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                    navigationIcon = {
-                        TextButton(onClick = { selectedIds = emptySet(); selectionModeActive = false }) { Text("Cancel") }
-                    },
-                    title = { Text("${selectedIds.size} selected", style = MaterialTheme.typography.titleMedium) },
-                    actions = {
-                        TextButton(
-                            enabled = selectedIds.isNotEmpty(),
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        gesturesEnabled = !inSelectionMode,
+        drawerContent = {
+            ModalDrawerSheet(modifier = Modifier.width(300.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp)
+                ) {
+                    Text("My Ebook Library", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text("$totalCount books", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = {
+                            if (!isSearchFocused && searchQuery.isEmpty()) {
+                                Text("Search books...", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        },
+                        singleLine = true,
+                        maxLines = 1,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = { scope.launch { drawerState.close() } }),
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                TextButton(onClick = { searchQuery = "" }) { Text("Clear") }
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { isSearchFocused = it.isFocused }
+                    )
+
+                    lastOpened?.let { recent ->
+                        if (recent.format == "EPUB") {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            val pct = (recent.progressPercent * 100).roundToInt()
+                            Button(
+                                onClick = {
+                                    scope.launch { drawerState.close() }
+                                    openInReader(context, recent.uriString)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = if (pct > 0) "Continue: ${recent.title} ($pct%)" else "Continue: ${recent.title}",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    NavigationDrawerItem(
+                        label = { Text("All Books ($totalCount)") },
+                        selected = activeTab == LibraryTab.ALL,
+                        onClick = { activeTab = LibraryTab.ALL; scope.launch { drawerState.close() } }
+                    )
+                    NavigationDrawerItem(
+                        label = { Text("Recently Read") },
+                        selected = activeTab == LibraryTab.RECENT,
+                        onClick = { activeTab = LibraryTab.RECENT; scope.launch { drawerState.close() } }
+                    )
+                    NavigationDrawerItem(
+                        label = { Text("To Convert ($toConvertCount)") },
+                        selected = activeTab == LibraryTab.TO_CONVERT,
+                        onClick = { activeTab = LibraryTab.TO_CONVERT; scope.launch { drawerState.close() } }
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    NavigationDrawerItem(
+                        label = { Text("Add / Scan Folder") },
+                        selected = false,
+                        onClick = { scope.launch { drawerState.close() }; folderPicker.launch(null) }
+                    )
+                    if (savedFoldersCount > 0) {
+                        NavigationDrawerItem(
+                            label = { Text("Rescan Folders ($savedFoldersCount)") },
+                            selected = false,
                             onClick = {
-                                val idsToCheck = selectedIds.toList()
-                                scope.launch(Dispatchers.IO) {
-                                    val books = idsToCheck.chunked(500).flatMap { dao.getByIds(it) }
-                                    val convertible = books.filter { it.format != "EPUB" }
-                                    withContext(Dispatchers.Main) {
-                                        if (convertible.isEmpty()) {
-                                            statusMessage = "Selected books are already EPUBs."
-                                        } else {
-                                            runBatchConversion(
-                                                convertible.map { PendingConvertTarget(Uri.parse(it.uriString), it.fileName, it.id) },
-                                                openLastOnSuccess = false
-                                            )
+                                scope.launch { drawerState.close() }
+                                LibraryScanner.scanFolders(context, LibraryScanner.getSavedFolders(context).map { Uri.parse(it) })
+                                statusMessage = "Queued $savedFoldersCount folder(s) for rescan."
+                            }
+                        )
+                    }
+                    NavigationDrawerItem(
+                        label = { Text("Pick Single File") },
+                        selected = false,
+                        onClick = { scope.launch { drawerState.close() }; filePicker.launch(arrayOf("*/*")) }
+                    )
+                    NavigationDrawerItem(
+                        label = { Text("Select Multiple Books") },
+                        selected = false,
+                        onClick = { scope.launch { drawerState.close() }; selectionModeActive = true }
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    NavigationDrawerItem(
+                        label = { Text("Theme: ${themeMode.label}") },
+                        selected = false,
+                        onClick = { onCycleThemeMode() }
+                    )
+                }
+            }
+        }
+    ) {
+        Scaffold(
+            topBar = {
+                if (inSelectionMode) {
+                    TopAppBar(
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                        navigationIcon = {
+                            TextButton(onClick = { selectedIds = emptySet(); selectionModeActive = false }) { Text("Cancel") }
+                        },
+                        title = { Text("${selectedIds.size} selected", style = MaterialTheme.typography.titleMedium) },
+                        actions = {
+                            TextButton(
+                                enabled = selectedIds.isNotEmpty(),
+                                onClick = {
+                                    val idsToCheck = selectedIds.toList()
+                                    scope.launch(Dispatchers.IO) {
+                                        val books = idsToCheck.chunked(500).flatMap { dao.getByIds(it) }
+                                        val convertible = books.filter { it.format != "EPUB" }
+                                        withContext(Dispatchers.Main) {
+                                            if (convertible.isEmpty()) {
+                                                statusMessage = "Selected books are already EPUBs."
+                                            } else {
+                                                runBatchConversion(
+                                                    convertible.map { PendingConvertTarget(Uri.parse(it.uriString), it.fileName, it.id) },
+                                                    openLastOnSuccess = false
+                                                )
+                                            }
                                         }
                                     }
                                 }
-                            }
-                        ) { Text("Convert") }
-                        TextButton(
-                            enabled = selectedIds.isNotEmpty(),
-                            onClick = { showBatchRemoveConfirm = true }
-                        ) { Text("Remove", color = MaterialTheme.colorScheme.error) }
-                    }
-                )
-            } else {
-                TopAppBar(
-                    title = {
-                        Column {
-                            Text("My Library")
-                            Text("$totalCount books", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            ) { Text("Convert") }
+                            TextButton(
+                                enabled = selectedIds.isNotEmpty(),
+                                onClick = { showBatchRemoveConfirm = true }
+                            ) { Text("Remove", color = MaterialTheme.colorScheme.error) }
                         }
-                    },
-                    actions = {
-                        Box {
-                            IconButton(onClick = { menuExpanded = true }) { HamburgerIcon() }
-                            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                                DropdownMenuItem(
-                                    text = { Text("Add / Scan Folder") },
-                                    onClick = { menuExpanded = false; folderPicker.launch(null) }
-                                )
-                                if (savedFoldersCount > 0 && !scanStatus.isScanning) {
-                                    DropdownMenuItem(
-                                        text = { Text("Rescan Folders ($savedFoldersCount)") },
-                                        onClick = {
-                                            menuExpanded = false
-                                            LibraryScanner.scanFolders(context, LibraryScanner.getSavedFolders(context).map { Uri.parse(it) })
-                                        }
-                                    )
-                                }
-                                DropdownMenuItem(
-                                    text = { Text("Pick Single File") },
-                                    onClick = { menuExpanded = false; filePicker.launch(arrayOf("*/*")) }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Select Multiple Books") },
-                                    onClick = { menuExpanded = false; selectionModeActive = true }
-                                )
-                                HorizontalDivider()
-                                DropdownMenuItem(
-                                    text = { Text("Theme: ${themeMode.label}") },
-                                    onClick = { onCycleThemeMode() }
-                                )
-                            }
-                        }
-                    }
-                )
-            }
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 12.dp)
-        ) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = {
-                    if (!isSearchFocused && searchQuery.isEmpty()) {
-                        Text("Search title, author, publisher...", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                },
-                singleLine = true,
-                maxLines = 1,
-                shape = RoundedCornerShape(12.dp),
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        TextButton(onClick = { searchQuery = "" }) { Text("Clear") }
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onFocusChanged { isSearchFocused = it.isFocused }
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = activeTab == LibraryTab.ALL, onClick = { activeTab = LibraryTab.ALL }, label = { Text("All ($totalCount)") })
-                FilterChip(selected = activeTab == LibraryTab.RECENT, onClick = { activeTab = LibraryTab.RECENT }, label = { Text("Recent") })
-                FilterChip(selected = activeTab == LibraryTab.TO_CONVERT, onClick = { activeTab = LibraryTab.TO_CONVERT }, label = { Text("Convert ($toConvertCount)") })
-            }
-
-            lastOpened?.let { recent ->
-                if (recent.format == "EPUB" && !inSelectionMode) {
-                    val pct = (recent.progressPercent * 100).roundToInt()
-                    OutlinedButton(
-                        onClick = { openInReader(context, recent.uriString) },
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
-                    ) {
-                        Text(
-                            text = if (pct > 0) "Continue: ${recent.title} ($pct%)" else "Continue: ${recent.title}",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            }
-
-            if (scanStatus.isScanning) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
-                ) {
-                    Column(modifier = Modifier.padding(10.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(scanStatus.phaseLabel, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
-                            TextButton(onClick = { LibraryScanner.stopScan() }) { Text("Stop") }
-                        }
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            "Found: ${scanStatus.filesFoundInPass} • Done: ${scanStatus.metadataProcessed} • Left: ${scanStatus.metadataLeft}",
-                            style = MaterialTheme.typography.labelSmall
-                        )
-                    }
-                }
-            } else if (pendingMetadataCount > 0) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("$pendingMetadataCount EPUBs waiting for covers", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                    TextButton(onClick = { LibraryScanner.resumeMetadataOnly(context) }) { Text("Resume Covers") }
-                }
-            }
-
-            statusMessage?.let { msg ->
-                Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 4.dp))
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            if (pagedBooks.itemCount == 0 && !scanStatus.isScanning) {
-                Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = when {
-                            debouncedQuery.isNotBlank() -> "No matches for \"$debouncedQuery\""
-                            activeTab == LibraryTab.RECENT -> "No books opened yet."
-                            activeTab == LibraryTab.TO_CONVERT -> "No MOBI/AZW3 files found yet."
-                            else -> "Tap the ☰ menu at the top-right to add a folder!"
+                    )
+                } else {
+                    TopAppBar(
+                        navigationIcon = {
+                            IconButton(onClick = { scope.launch { drawerState.open() } }) { HamburgerIcon() }
                         },
-                        style = MaterialTheme.typography.bodyLarge,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        title = {
+                            Column {
+                                Text(activeTab.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                val sub = if (debouncedQuery.isNotBlank()) "Search: \"$debouncedQuery\"" else "$totalCount books"
+                                Text(sub, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        },
+                        actions = {
+                            if (searchQuery.isNotEmpty()) {
+                                TextButton(onClick = { searchQuery = "" }) { Text("Clear") }
+                            }
+                        }
                     )
                 }
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(bottom = 24.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(count = pagedBooks.itemCount, key = pagedBooks.itemKey { it.id }) { index ->
-                        val book = pagedBooks[index]
-                        if (book != null) {
-                            BookGridTile(
-                                book = book,
-                                inSelectionMode = inSelectionMode,
-                                isSelected = selectedIds.contains(book.id),
-                                onClick = { if (inSelectionMode) toggleSelection(book.id) else selectedBook = book },
-                                onLongClick = { selectionModeActive = true; toggleSelection(book.id) }
+            }
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(horizontal = 12.dp)
+            ) {
+                if (scanStatus.isScanning) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(scanStatus.phaseLabel, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                                TextButton(onClick = { LibraryScanner.stopScan() }) { Text("Stop") }
+                            }
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "Found: ${scanStatus.filesFoundInPass} • Done: ${scanStatus.metadataProcessed} • Left: ${scanStatus.metadataLeft}",
+                                style = MaterialTheme.typography.labelSmall
                             )
-                        } else {
-                            BookPlaceholderTile()
+                        }
+                    }
+                } else if (pendingMetadataCount > 0) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("$pendingMetadataCount EPUBs waiting for covers", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        TextButton(onClick = { LibraryScanner.resumeMetadataOnly(context) }) { Text("Resume Covers") }
+                    }
+                }
+
+                statusMessage?.let { msg ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { statusMessage = null }) { Text("✕") }
+                    }
+                }
+
+                if (pagedBooks.itemCount == 0 && !scanStatus.isScanning) {
+                    Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = when {
+                                debouncedQuery.isNotBlank() -> "No matches for \"$debouncedQuery\""
+                                activeTab == LibraryTab.RECENT -> "No books opened yet."
+                                activeTab == LibraryTab.TO_CONVERT -> "No MOBI/AZW3 files found yet."
+                                else -> "Tap ☰ at the top-left to add a folder!"
+                            },
+                            style = MaterialTheme.typography.bodyLarge,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(count = pagedBooks.itemCount, key = pagedBooks.itemKey { it.id }) { index ->
+                            val book = pagedBooks[index]
+                            if (book != null) {
+                                BookGridTile(
+                                    book = book,
+                                    inSelectionMode = inSelectionMode,
+                                    isSelected = selectedIds.contains(book.id),
+                                    onClick = { if (inSelectionMode) toggleSelection(book.id) else selectedBook = book },
+                                    onLongClick = { selectionModeActive = true; toggleSelection(book.id) }
+                                )
+                            } else {
+                                BookPlaceholderTile()
+                            }
                         }
                     }
                 }
@@ -609,28 +682,6 @@ private fun openInReader(context: Context, uriString: String) {
         }
     }
     context.startActivity(intent)
-}
-
-fun formatReadablePath(uriString: String): String {
-    val uri = Uri.parse(uriString)
-    if (uri.scheme == "file") {
-        val path = uri.path ?: return uriString
-        val idx = path.indexOf("/converted_epubs/")
-        return if (idx >= 0) "App Storage" + path.substring(idx) else path
-    }
-    val docId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
-    if (!docId.isNullOrBlank()) {
-        return when {
-            docId.startsWith("primary:") -> "Internal Storage/" + docId.removePrefix("primary:")
-            docId.contains(":") -> {
-                val vol = docId.substringBefore(":")
-                val rest = docId.substringAfter(":")
-                "Storage ($vol)/$rest"
-            }
-            else -> docId
-        }
-    }
-    return Uri.decode(uriString)
 }
 
 @Composable
@@ -764,6 +815,7 @@ fun BookDetailsBottomSheet(
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val pct = (book.progressPercent * 100).roundToInt()
+    var pathNotice by remember(book.id) { mutableStateOf<String?>(null) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
@@ -814,7 +866,29 @@ fun BookDetailsBottomSheet(
             MetadataRow("Language", book.language)
             MetadataRow("Format", book.format)
             MetadataRow("File", book.fileName)
-            MetadataRow("Path", formatReadablePath(book.uriString))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable {
+                        pathNotice = FileOpener.openContainingFolder(context, book.uriString)
+                    }
+                    .padding(vertical = 6.dp)
+            ) {
+                Text("Path (tap to open folder)", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    text = FileOpener.formatReadablePath(book.uriString),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary,
+                    textDecoration = TextDecoration.Underline
+                )
+                pathNotice?.let { notice ->
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(notice, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                }
+            }
 
             Spacer(modifier = Modifier.height(12.dp))
             TextButton(onClick = onRemoveFromLibrary) {
