@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
+import androidx.core.content.FileProvider
+import java.io.File
 
 object FileOpener {
 
@@ -80,5 +82,86 @@ object FileOpener {
         } else {
             "No file manager accepted this folder link — path copied to clipboard."
         }
+    }
+
+    fun prepareShareIntent(context: Context, books: List<BookEntity>): Intent {
+        require(books.isNotEmpty()) { "No books selected to share." }
+
+        val authority = "${context.packageName}.fileprovider"
+        val sharedDir = File(context.cacheDir, "shared_books").apply {
+            mkdirs()
+            listFiles()?.forEach { it.delete() }
+        }
+
+        val uris = ArrayList<Uri>(books.size)
+        val usedNames = mutableSetOf<String>()
+
+        for (book in books) {
+            val srcUri = Uri.parse(book.uriString)
+            val directUri = if (srcUri.scheme == "file" && srcUri.path != null) {
+                val f = File(srcUri.path!!)
+                if (f.exists()) runCatching { FileProvider.getUriForFile(context, authority, f) }.getOrNull()
+                else null
+            } else null
+
+            val shareUri = directUri ?: run {
+                val cleanName = book.fileName
+                    .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+                    .ifBlank { "book.${book.format.lowercase()}" }
+
+                var finalName = cleanName
+                var idx = 2
+                while (!usedNames.add(finalName.lowercase())) {
+                    val base = cleanName.substringBeforeLast('.')
+                    val ext = cleanName.substringAfterLast('.', "")
+                    finalName = if (ext.isNotEmpty()) "${base}_$idx.$ext" else "${base}_$idx"
+                    idx++
+                }
+
+                val dest = File(sharedDir, finalName)
+                val input = if (srcUri.scheme == "file" && srcUri.path != null) {
+                    File(srcUri.path!!).inputStream()
+                } else {
+                    context.contentResolver.openInputStream(srcUri)
+                } ?: error("Could not read ${book.fileName}")
+
+                input.use { ins ->
+                    dest.outputStream().buffered().use { out -> ins.copyTo(out) }
+                }
+                FileProvider.getUriForFile(context, authority, dest)
+            }
+
+            uris.add(shareUri)
+        }
+
+        val allEpub = books.all { it.format == "EPUB" }
+        val mimeType = if (allEpub) "application/epub+zip" else "*/*"
+
+        val intent = if (uris.size == 1) {
+            Intent(Intent.ACTION_SEND).apply {
+                type = mimeType
+                putExtra(Intent.EXTRA_STREAM, uris.first())
+                putExtra(Intent.EXTRA_SUBJECT, books.first().title)
+            }
+        } else {
+            Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                type = mimeType
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            }
+        }
+
+        val clipData = ClipData.newUri(context.contentResolver, "Ebook", uris.first())
+        for (i in 1 until uris.size) {
+            clipData.addItem(ClipData.Item(uris[i]))
+        }
+        intent.clipData = clipData
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+
+        val chooserTitle = if (uris.size == 1) {
+            "Share ${books.first().title}"
+        } else {
+            "Share ${uris.size} ebooks"
+        }
+        return Intent.createChooser(intent, chooserTitle)
     }
 }
