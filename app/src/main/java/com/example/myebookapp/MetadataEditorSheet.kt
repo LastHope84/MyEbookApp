@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,6 +19,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -54,7 +57,15 @@ fun MetadataEditorBottomSheet(
     var publisher by remember(book.id) { mutableStateOf(editableValue(book.publisher)) }
     var language by remember(book.id) { mutableStateOf(editableValue(book.language)) }
     var writeToFile by remember(book.id) { mutableStateOf(book.format == "EPUB") }
+
     var newCoverBitmap by remember(book.id) { mutableStateOf<Bitmap?>(null) }
+    var removeCover by remember(book.id) { mutableStateOf(false) }
+
+    var isFetchingOnline by remember(book.id) { mutableStateOf(false) }
+    var onlineCandidates by remember(book.id) { mutableStateOf<List<OnlineBookCandidate>?>(null) }
+    var fetchNotice by remember(book.id) { mutableStateOf<String?>(null) }
+
+    val hasVisibleCover = !removeCover && (newCoverBitmap != null || !book.coverPath.isNullOrBlank())
 
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -63,7 +74,10 @@ fun MetadataEditorBottomSheet(
         scope.launch(Dispatchers.IO) {
             val decoded = EpubMetadataEditor.decodeSampledImageUri(context, uri)
             withContext(Dispatchers.Main) {
-                if (decoded != null) newCoverBitmap = decoded
+                if (decoded != null) {
+                    newCoverBitmap = decoded
+                    removeCover = false
+                }
             }
         }
     }
@@ -81,47 +95,126 @@ fun MetadataEditorBottomSheet(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text("Edit Metadata & Cover", style = MaterialTheme.typography.titleLarge)
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            if (newCoverBitmap != null) {
-                Image(
-                    bitmap = newCoverBitmap!!.asImageBitmap(),
-                    contentDescription = "New Cover",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .height(170.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                )
-            } else if (!book.coverPath.isNullOrBlank()) {
-                AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(File(book.coverPath))
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = "Current Cover",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .height(170.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(width = 120.dp, height = 165.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center
+            when {
+                removeCover -> {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 120.dp, height = 165.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Cover\nRemoved",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                newCoverBitmap != null -> {
+                    Image(
+                        bitmap = newCoverBitmap!!.asImageBitmap(),
+                        contentDescription = "New Cover",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .height(170.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+                }
+                !book.coverPath.isNullOrBlank() -> {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(File(book.coverPath))
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = "Current Cover",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .height(170.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+                }
+                else -> {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 120.dp, height = 165.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("No Cover")
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { imagePicker.launch("image/*") },
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Text("No Cover")
+                    Text(if (hasVisibleCover) "Change Cover" else "Add Cover")
+                }
+                if (hasVisibleCover) {
+                    OutlinedButton(
+                        onClick = {
+                            newCoverBitmap = null
+                            removeCover = true
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Remove Cover", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            OutlinedButton(onClick = { imagePicker.launch("image/*") }) {
-                Text(if (newCoverBitmap != null) "Pick Different Cover" else "Change Cover Image")
+
+            FilledTonalButton(
+                enabled = !isFetchingOnline,
+                onClick = {
+                    isFetchingOnline = true
+                    fetchNotice = null
+                    scope.launch(Dispatchers.IO) {
+                        val found = runCatching {
+                            OnlineMetadataFetcher.search(title, author)
+                        }.getOrElse { emptyList() }
+                        withContext(Dispatchers.Main) {
+                            isFetchingOnline = false
+                            if (found.isEmpty()) {
+                                fetchNotice = "No online matches found — try shortening Title or Author."
+                            } else {
+                                onlineCandidates = found
+                            }
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (isFetchingOnline) "Searching online..." else "Auto-Fetch Metadata & Cover")
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            if (isFetchingOnline) {
+                Spacer(modifier = Modifier.height(6.dp))
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+
+            fetchNotice?.let { msg ->
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = msg,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             OutlinedTextField(
                 value = title,
@@ -215,7 +308,8 @@ fun MetadataEditorBottomSheet(
                                 publishingDate = publishingDate.trim().ifBlank { "Unknown" },
                                 publisher = publisher.trim().ifBlank { "Unknown" },
                                 language = language.trim().ifBlank { "Unknown" },
-                                newCoverBitmap = newCoverBitmap
+                                newCoverBitmap = if (removeCover) null else newCoverBitmap,
+                                removeCover = removeCover
                             ),
                             writeToFile && book.format == "EPUB"
                         )
@@ -226,6 +320,131 @@ fun MetadataEditorBottomSheet(
                 }
             }
         }
+    }
+
+    onlineCandidates?.let { list ->
+        AlertDialog(
+            onDismissRequest = { onlineCandidates = null },
+            title = { Text("Pick Online Match") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    list.forEach { candidate ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onlineCandidates = null
+                                    if (candidate.title.isNotBlank()) title = candidate.title
+                                    if (candidate.author.isNotBlank()) author = candidate.author
+                                    if (candidate.publishingDate.isNotBlank()) publishingDate = candidate.publishingDate
+                                    if (candidate.publisher.isNotBlank()) publisher = candidate.publisher
+                                    if (candidate.language.isNotBlank()) language = candidate.language
+
+                                    val coverUrl = candidate.coverUrl
+                                    if (!coverUrl.isNullOrBlank()) {
+                                        isFetchingOnline = true
+                                        fetchNotice = "Downloading cover..."
+                                        scope.launch(Dispatchers.IO) {
+                                            val bmp = OnlineMetadataFetcher.downloadCoverBitmap(coverUrl)
+                                            withContext(Dispatchers.Main) {
+                                                isFetchingOnline = false
+                                                if (bmp != null) {
+                                                    newCoverBitmap = bmp
+                                                    removeCover = false
+                                                    fetchNotice = "Filled metadata & cover from ${candidate.source}! Tap Save to apply."
+                                                } else {
+                                                    fetchNotice = "Filled metadata from ${candidate.source} (cover unavailable)."
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        fetchNotice = "Filled metadata from ${candidate.source}! Tap Save to apply."
+                                    }
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (!candidate.coverUrl.isNullOrBlank()) {
+                                    AsyncImage(
+                                        model = ImageRequest.Builder(context)
+                                            .data(candidate.coverUrl)
+                                            .crossfade(true)
+                                            .build(),
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .size(width = 46.dp, height = 68.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(width = 46.dp, height = 68.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("?", style = MaterialTheme.typography.labelMedium)
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = candidate.title,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (candidate.author.isNotBlank()) {
+                                        Text(
+                                            text = candidate.author,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    val extra = listOf(
+                                        candidate.publisher,
+                                        candidate.publishingDate,
+                                        candidate.language
+                                    ).filter { it.isNotBlank() }.joinToString(" • ")
+                                    if (extra.isNotBlank()) {
+                                        Text(
+                                            text = extra,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Text(
+                                        text = candidate.source,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { onlineCandidates = null }) {
+                    Text("Close")
+                }
+            }
+        )
     }
 }
 
