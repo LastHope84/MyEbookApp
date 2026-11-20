@@ -32,7 +32,7 @@ data class BookEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val uriString: String,
     val fileName: String,
-    val format: String, // "EPUB", "MOBI", "AZW3"
+    val format: String,
     val fileSize: Long,
     val lastModified: Long,
     val title: String,
