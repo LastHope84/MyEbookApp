@@ -99,6 +99,6 @@ fun LibraryScreen(tm: AppThemeMode, acc: AppAccent, am: Boolean, incU: Uri?, onC
         }
     }
     if (showSet) AppSettingsBottomSheet(tm, acc, am, ThemePrefs.isAutoOpenLastBook(ctx), ThemePrefs.getKindleEmail(ctx), ThemePrefs.getConvertedOutputUri(ctx), onT, onA, onAm, {ThemePrefs.saveAutoOpenLastBook(ctx,it)}, {ThemePrefs.saveKindleEmail(ctx,it)}, {}, {}, {}, {showSet=false})
-    selB?.let { b -> BookDetailsBottomSheet(b, ThemePrefs.getKindleEmail(ctx).isNotBlank(), {selB=null}, {selB=null; openInReader(ctx, b.uriString)}, {selB=null; edtB=b}, {val i=FileOpener.prepareShareIntent(ctx,listOf(b)); ctx.startActivity(i)}, {}, {runBatchConversion(listOf(PendingConvertTarget(Uri.parse(b.uriString),b.fileName,b.id)),true)}, {scp.launch(Dispatchers.IO){dao.deleteById(b.id)}; selB=null}) }
+    selB?.let { b -> BookDetailsBottomSheet(b, ThemePrefs.getKindleEmail(ctx).isNotBlank(), {selB=null}, {selB=null; openInReader(ctx, b.uriString)}, {selB=null; edtB=b}, {val i=FileOpener.prepareShareIntent(ctx,listOf(b)); ctx.startActivity(i)}, {}, {}, {scp.launch(Dispatchers.IO){dao.deleteById(b.id)}; selB=null}) }
     edtB?.let { b -> MetadataEditorBottomSheet(b, {edtB=null}, {r,w -> runSave(b,r,w)}) }
 }
