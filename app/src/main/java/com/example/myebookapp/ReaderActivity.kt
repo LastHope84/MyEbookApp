@@ -1,29 +1,28 @@
 package com.example.myebookapp
 
+import android.content.Intent
+import android.graphics.Color as AndroidColor
 import android.net.Uri
 import android.os.Bundle
+import android.view.ActionMode
 import android.view.Gravity
+import android.view.KeyEvent
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
+import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
 import androidx.lifecycle.lifecycleScope
@@ -36,15 +35,15 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
-import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.TapEvent
-import org.readium.r2.navigator.preferences.Theme
 import org.readium.r2.navigator.util.DirectionalNavigationAdapter
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.publication.services.positions
+import org.readium.r2.shared.publication.services.search.search
 import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.asset.AssetRetriever
 import org.readium.r2.shared.util.getOrElse
@@ -52,6 +51,7 @@ import org.readium.r2.shared.util.http.DefaultHttpClient
 import org.readium.r2.streamer.PublicationOpener
 import org.readium.r2.streamer.parser.DefaultPublicationParser
 import java.io.File
+import java.net.URLEncoder
 import kotlin.math.roundToInt
 
 data class TocEntry(
@@ -60,30 +60,52 @@ data class TocEntry(
     val depth: Int
 )
 
-@OptIn(ExperimentalReadiumApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalReadiumApi::class)
 class ReaderActivity : FragmentActivity() {
 
     companion object {
         private const val NAV_TAG = "epub_navigator"
         private const val AUTO_HIDE_MS = 4000L
+        private const val MENU_DEFINE_ID = 9001
     }
 
     private var publication: Publication? = null
+    private var allPositions: List<Locator> = emptyList()
     private var containerId: Int = View.NO_ID
     private var currentBookUriString: String? = null
+    private var bookLanguage: String = "it"
     private var lastPreferenceChangeAt: Long = 0L
 
+    private lateinit var rootLayout: FrameLayout
+    private lateinit var warmTintView: View
+
     private var bookTitle by mutableStateOf("Opening book...")
+    private var chapterTitle by mutableStateOf("")
     private var isLoading by mutableStateOf(true)
     private var errorMessage by mutableStateOf<String?>(null)
     private var showControls by mutableStateOf(true)
     private var showToc by mutableStateOf(false)
+    private var showAppearance by mutableStateOf(false)
+    private var showSearch by mutableStateOf(false)
     private var tocEntries by mutableStateOf<List<TocEntry>>(emptyList())
+
+    private var currentPosition by mutableIntStateOf(0)
+    private var totalPositions by mutableIntStateOf(0)
     private var progressPercent by mutableIntStateOf(0)
     private var interactionTick by mutableIntStateOf(0)
-    private var currentTheme by mutableStateOf(Theme.LIGHT)
-    private var fontSize by mutableStateOf(1.0)
+
+    private var settings by mutableStateOf(ReaderSettings())
     private var appThemeMode by mutableStateOf(AppThemeMode.AUTO)
+
+    // In-book search state
+    private var searchQuery by mutableStateOf("")
+    private var isSearchingBook by mutableStateOf(false)
+    private var searchResults by mutableStateOf<List<Locator>>(emptyList())
+
+    // Dictionary state
+    private var dictWord by mutableStateOf<String?>(null)
+    private var dictLoading by mutableStateOf(false)
+    private var dictEntry by mutableStateOf<DictionaryEntry?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(null)
@@ -97,20 +119,15 @@ class ReaderActivity : FragmentActivity() {
         currentBookUriString = bookUri.toString()
 
         appThemeMode = ThemePrefs.getMode(this)
-        currentTheme = when (BookHistoryStore.getReaderTheme(this)) {
-            "SEPIA" -> Theme.SEPIA
-            "DARK" -> Theme.DARK
-            else -> Theme.LIGHT
-        }
-        fontSize = BookHistoryStore.getReaderFontSize(this)
-
+        settings = ReaderSettingsStore.load(this)
         containerId = View.generateViewId()
 
-        val rootLayout = FrameLayout(this).apply {
+        rootLayout = FrameLayout(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
+            setBackgroundColor(settings.pageTheme.windowBgInt)
         }
 
         ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { view, insets ->
@@ -127,21 +144,35 @@ class ReaderActivity : FragmentActivity() {
             )
         }
 
-        val topBar = ComposeView(this).apply {
+        warmTintView = View(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            isClickable = false
+            isFocusable = false
+        }
+
+        val topOverlay = ComposeView(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.TOP
             )
             setContent {
+                val forceDark = settings.pageTheme.isDarkChrome
                 MyEbookTheme(
-                    mode = appThemeMode,
-                    forceDark = (currentTheme == Theme.DARK)
+                    mode = if (forceDark) AppThemeMode.DARK else AppThemeMode.LIGHT,
+                    forceDark = forceDark
                 ) {
-                    LaunchedEffect(showControls, showToc, isLoading, errorMessage, interactionTick) {
-                        if (showControls && !showToc && !isLoading && errorMessage == null) {
+                    val anySheetOpen = showToc || showAppearance || showSearch || dictWord != null
+
+                    LaunchedEffect(showControls, anySheetOpen, isLoading, errorMessage, interactionTick) {
+                        applyImmersiveSystemBars()
+                        if (showControls && !anySheetOpen && !isLoading && errorMessage == null) {
                             delay(AUTO_HIDE_MS)
                             showControls = false
+                            applyImmersiveSystemBars()
                         }
                     }
 
@@ -150,35 +181,38 @@ class ReaderActivity : FragmentActivity() {
                         enter = slideInVertically { -it } + fadeIn(),
                         exit = slideOutVertically { -it } + fadeOut()
                     ) {
-                        ReaderTopBar(
+                        ReaderMinimalTopBar(
                             title = bookTitle,
-                            progressPercent = progressPercent,
-                            theme = currentTheme,
+                            chapterTitle = chapterTitle,
                             isLoading = isLoading,
                             errorMessage = errorMessage,
                             onBack = { finish() },
+                            onOpenSearch = {
+                                interactionTick++
+                                showSearch = true
+                            },
                             onOpenToc = {
                                 interactionTick++
                                 showToc = true
                             },
-                            onCycleTheme = {
+                            onOpenAppearance = {
                                 interactionTick++
-                                currentTheme = when (currentTheme) {
-                                    Theme.LIGHT -> Theme.SEPIA
-                                    Theme.SEPIA -> Theme.DARK
-                                    Theme.DARK -> Theme.LIGHT
-                                }
-                                applyPreferences()
+                                showAppearance = true
+                            }
+                        )
+                    }
+
+                    if (showAppearance) {
+                        AppearanceBottomSheet(
+                            settings = settings,
+                            onUpdate = { updated ->
+                                settings = updated
+                                ReaderSettingsStore.save(this@ReaderActivity, updated)
+                                applyAllSettings()
                             },
-                            onDecreaseFont = {
+                            onDismiss = {
+                                showAppearance = false
                                 interactionTick++
-                                fontSize = (fontSize - 0.15).coerceAtLeast(0.7)
-                                applyPreferences()
-                            },
-                            onIncreaseFont = {
-                                interactionTick++
-                                fontSize = (fontSize + 0.15).coerceAtMost(2.2)
-                                applyPreferences()
                             }
                         )
                     }
@@ -193,9 +227,46 @@ class ReaderActivity : FragmentActivity() {
                             onSelect = { entry ->
                                 showToc = false
                                 showControls = false
-                                val navigator = supportFragmentManager
-                                    .findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment
-                                navigator?.go(entry.link, animated = true)
+                                val nav = supportFragmentManager.findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment
+                                nav?.go(entry.link, animated = settings.pageTheme != ReaderPageTheme.EINK)
+                            }
+                        )
+                    }
+
+                    if (showSearch) {
+                        InBookSearchSheet(
+                            query = searchQuery,
+                            isSearching = isSearchingBook,
+                            results = searchResults,
+                            onQueryChange = { searchQuery = it },
+                            onRunSearch = { runInBookSearch(searchQuery) },
+                            onSelectResult = { loc ->
+                                showSearch = false
+                                showControls = false
+                                val nav = supportFragmentManager.findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment
+                                nav?.go(loc, animated = settings.pageTheme != ReaderPageTheme.EINK)
+                            },
+                            onDismiss = {
+                                showSearch = false
+                                interactionTick++
+                            }
+                        )
+                    }
+
+                    dictWord?.let { word ->
+                        DictionaryBottomSheet(
+                            word = word,
+                            isLoading = dictLoading,
+                            entry = dictEntry,
+                            onOpenInBrowser = {
+                                val encoded = URLEncoder.encode(word, "UTF-8")
+                                val langPrefix = if (bookLanguage.lowercase().startsWith("it")) "it" else "en"
+                                val url = "https://$langPrefix.wiktionary.org/wiki/$encoded"
+                                runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                            },
+                            onDismiss = {
+                                dictWord = null
+                                interactionTick++
                             }
                         )
                     }
@@ -203,10 +274,58 @@ class ReaderActivity : FragmentActivity() {
             }
         }
 
+        val bottomOverlay = ComposeView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM
+            )
+            setContent {
+                val forceDark = settings.pageTheme.isDarkChrome
+                MyEbookTheme(
+                    mode = if (forceDark) AppThemeMode.DARK else AppThemeMode.LIGHT,
+                    forceDark = forceDark
+                ) {
+                    if (showControls && !isLoading && errorMessage == null) {
+                        ReaderBottomScrubberBar(
+                            currentPosition = currentPosition,
+                            totalPositions = totalPositions,
+                            progressPercent = progressPercent,
+                            onSeekFraction = { frac ->
+                                interactionTick++
+                                seekToFraction(frac)
+                            },
+                            onPrevPage = {
+                                interactionTick++
+                                val nav = supportFragmentManager.findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment
+                                nav?.goBackward(animated = settings.pageTheme != ReaderPageTheme.EINK)
+                            },
+                            onNextPage = {
+                                interactionTick++
+                                val nav = supportFragmentManager.findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment
+                                nav?.goForward(animated = settings.pageTheme != ReaderPageTheme.EINK)
+                            }
+                        )
+                    } else if (!isLoading && errorMessage == null && settings.showMiniFooter) {
+                        ReaderQuietFooter(
+                            chapterTitle = chapterTitle,
+                            currentPosition = currentPosition,
+                            totalPositions = totalPositions,
+                            progressPercent = progressPercent,
+                            pageTheme = settings.pageTheme
+                        )
+                    }
+                }
+            }
+        }
+
         rootLayout.addView(fragmentContainer)
-        rootLayout.addView(topBar)
+        rootLayout.addView(warmTintView)
+        rootLayout.addView(topOverlay)
+        rootLayout.addView(bottomOverlay)
         setContentView(rootLayout)
 
+        applyWindowSettings()
         openBook(bookUri)
     }
 
@@ -222,16 +341,17 @@ class ReaderActivity : FragmentActivity() {
                     } ?: error("Permission expired or file moved — please pick this book again.")
 
                     inputStream.use { input ->
-                        tempFile.outputStream().use { output ->
-                            input.copyTo(output)
-                        }
+                        tempFile.outputStream().use { output -> input.copyTo(output) }
                     }
 
                     val dao = AppDatabase.getInstance(this@ReaderActivity).bookDao()
                     val dbBook = dao.getByUri(bookUri.toString())
+                    if (dbBook != null && !dbBook.language.equals("Unknown", ignoreCase = true)) {
+                        bookLanguage = dbBook.language
+                    }
+
                     val savedLocatorJson = dbBook?.lastLocatorJson
                         ?: BookHistoryStore.getLocatorJson(this@ReaderActivity, bookUri.toString())
-
                     val savedLocator = savedLocatorJson?.let { json ->
                         runCatching { Locator.fromJSON(JSONObject(json)) }.getOrNull()
                     }
@@ -261,18 +381,23 @@ class ReaderActivity : FragmentActivity() {
                         error("Could not open EPUB: ${err.message}")
                     }
 
-                    pub to savedLocator
+                    val positions = runCatching { pub.positions() }.getOrElse { emptyList() }
+                    Triple(pub, savedLocator, positions)
                 }
             }
 
-            openResult.onSuccess { (pub, savedLocator) ->
+            openResult.onSuccess { (pub, savedLocator, positions) ->
                 if (isFinishing || isDestroyed) {
                     pub.close()
                     return@onSuccess
                 }
                 publication = pub
+                allPositions = positions
+                totalPositions = positions.size
                 bookTitle = pub.metadata.title ?: "Reading"
-                progressPercent = ((savedLocator?.locations?.totalProgression ?: 0.0) * 100).roundToInt()
+                pub.metadata.languages.firstOrNull()?.takeIf { it.isNotBlank() }?.let {
+                    bookLanguage = it
+                }
 
                 tocEntries = if (pub.tableOfContents.isNotEmpty()) {
                     flattenToc(pub.tableOfContents)
@@ -286,10 +411,35 @@ class ReaderActivity : FragmentActivity() {
                     }
                 }
 
+                savedLocator?.let { updateProgressState(it, pub) }
+
+                val selectionCallback = object : ActionMode.Callback {
+                    override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+                        menu.add(0, MENU_DEFINE_ID, 0, "Define")
+                        return true
+                    }
+
+                    override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean = false
+
+                    override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+                        if (item.itemId == MENU_DEFINE_ID) {
+                            lookupSelectedWord()
+                            mode.finish()
+                            return true
+                        }
+                        return false
+                    }
+
+                    override fun onDestroyActionMode(mode: ActionMode) {}
+                }
+
                 val navigatorFactory = EpubNavigatorFactory(pub)
                 supportFragmentManager.fragmentFactory = navigatorFactory.createFragmentFactory(
                     initialLocator = savedLocator,
-                    initialPreferences = currentPreferences()
+                    initialPreferences = settings.toEpubPreferences(),
+                    configuration = EpubNavigatorFragment.Configuration(
+                        selectionActionModeCallback = selectionCallback
+                    )
                 )
                 supportFragmentManager.beginTransaction()
                     .replace(containerId, EpubNavigatorFragment::class.java, Bundle(), NAV_TAG)
@@ -302,6 +452,7 @@ class ReaderActivity : FragmentActivity() {
                         override fun onTap(event: TapEvent): Boolean {
                             showControls = !showControls
                             if (showControls) interactionTick++
+                            applyImmersiveSystemBars()
                             return true
                         }
                     })
@@ -312,21 +463,185 @@ class ReaderActivity : FragmentActivity() {
                                 System.currentTimeMillis() - lastPreferenceChangeAt < 1000L
                             if (showControls && !recentlyChangedPrefs) {
                                 showControls = false
+                                applyImmersiveSystemBars()
                             }
-                            progressPercent = ((locator.locations.totalProgression ?: 0.0) * 100).roundToInt()
-                            saveLocatorNow(locator)
+                            val (_, progressRatio) = updateProgressState(locator, pub)
+                            saveLocatorNow(locator, progressRatio)
                         }
                     }
                 }
 
                 isLoading = false
                 showControls = false
+                applyImmersiveSystemBars()
             }.onFailure { err ->
                 isLoading = false
                 showControls = true
                 errorMessage = err.localizedMessage ?: "Failed to open EPUB."
             }
         }
+    }
+
+    private fun updateProgressState(locator: Locator, pub: Publication): Pair<Int, Double> {
+        val pos = locator.locations.position ?: 0
+        val rawTotal = locator.locations.totalProgression ?: 0.0
+        val lastIndex = pub.readingOrder.lastIndex
+        val curResIdx = pub.readingOrder.indexOfFirst { it.href.toString() == locator.href.toString() }
+        val chapterProg = locator.locations.progression ?: 0.0
+
+        val atEnd = (totalPositions > 0 && pos >= totalPositions) ||
+            rawTotal >= 0.992 ||
+            (lastIndex >= 0 && curResIdx == lastIndex && chapterProg >= 0.85)
+
+        val pct = if (atEnd) 100 else (rawTotal * 100).roundToInt().coerceIn(0, 99)
+        val ratio = if (atEnd) 1.0 else rawTotal.coerceIn(0.0, 0.99)
+
+        currentPosition = if (atEnd && totalPositions > 0) totalPositions else pos
+        progressPercent = pct
+        chapterTitle = locator.title?.takeIf { it.isNotBlank() }
+            ?: tocEntries.firstOrNull { it.link.href.toString().substringBefore('#') == locator.href.toString().substringBefore('#') }?.title
+            ?: ""
+
+        return pct to ratio
+    }
+
+    private fun seekToFraction(fraction: Float) {
+        val nav = supportFragmentManager.findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment ?: return
+        if (allPositions.isNotEmpty()) {
+            val idx = (fraction * (allPositions.size - 1)).roundToInt().coerceIn(0, allPositions.lastIndex)
+            nav.go(allPositions[idx], animated = false)
+        }
+    }
+
+    private fun runInBookSearch(query: String) {
+        val pub = publication ?: return
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) return
+
+        isSearchingBook = true
+        searchResults = emptyList()
+
+        lifecycleScope.launch {
+            val found = withContext(Dispatchers.IO) {
+                val collected = mutableListOf<Locator>()
+                runCatching {
+                    val iter = pub.search(trimmed).getOrNull() ?: return@runCatching
+                    try {
+                        while (collected.size < 60) {
+                            val page = iter.next().getOrNull() ?: break
+                            collected.addAll(page.locators)
+                        }
+                    } finally {
+                        iter.close()
+                    }
+                }
+                collected
+            }
+            isSearchingBook = false
+            searchResults = found
+        }
+    }
+
+    private fun lookupSelectedWord() {
+        lifecycleScope.launch {
+            val nav = supportFragmentManager.findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment ?: return@launch
+            val selected = nav.currentSelection()?.locator?.text?.highlight?.trim()
+            nav.clearSelection()
+            if (selected.isNullOrBlank()) return@launch
+
+            dictWord = selected
+            dictLoading = true
+            dictEntry = null
+
+            val result = withContext(Dispatchers.IO) {
+                WordDictionary.lookup(selected, bookLanguage)
+            }
+            dictLoading = false
+            dictEntry = result
+        }
+    }
+
+    private fun applyAllSettings() {
+        lastPreferenceChangeAt = System.currentTimeMillis()
+        applyWindowSettings()
+        val nav = supportFragmentManager.findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment
+        nav?.submitPreferences(settings.toEpubPreferences())
+    }
+
+    private fun applyWindowSettings() {
+        rootLayout.setBackgroundColor(settings.pageTheme.windowBgInt)
+
+        @Suppress("DEPRECATION")
+        window.statusBarColor = settings.pageTheme.windowBgInt
+        @Suppress("DEPRECATION")
+        window.navigationBarColor = settings.pageTheme.windowBgInt
+        window.decorView.setBackgroundColor(settings.pageTheme.windowBgInt)
+
+        val alpha = (settings.warmTint * 165).roundToInt().coerceIn(0, 120)
+        warmTintView.setBackgroundColor(AndroidColor.argb(alpha, 255, 145, 35))
+
+        val lp = window.attributes
+        lp.screenBrightness = if (settings.brightness >= 0f) {
+            settings.brightness.coerceIn(0.05f, 1.0f)
+        } else {
+            WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        }
+        window.attributes = lp
+
+        if (settings.keepScreenAwake) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+
+        requestedOrientation = settings.orientation.androidMode
+        applyImmersiveSystemBars()
+    }
+
+    private fun applyImmersiveSystemBars() {
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller.isAppearanceLightStatusBars = !settings.pageTheme.isDarkChrome
+        controller.isAppearanceLightNavigationBars = !settings.pageTheme.isDarkChrome
+
+        val anySheet = showToc || showAppearance || showSearch || dictWord != null
+        if (settings.immersiveMode && !showControls && !anySheet && !isLoading) {
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        val anySheet = showToc || showAppearance || showSearch || dictWord != null
+        if (settings.volumeKeysTurnPages && !anySheet && !isLoading) {
+            val nav = supportFragmentManager.findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment
+            val animate = settings.pageTheme != ReaderPageTheme.EINK
+            when (keyCode) {
+                KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                    nav?.goForward(animated = animate)
+                    if (showControls) showControls = false
+                    return true
+                }
+                KeyEvent.KEYCODE_VOLUME_UP -> {
+                    nav?.goBackward(animated = animate)
+                    if (showControls) showControls = false
+                    return true
+                }
+            }
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+        val anySheet = showToc || showAppearance || showSearch || dictWord != null
+        if (settings.volumeKeysTurnPages && !anySheet && !isLoading &&
+            (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP)
+        ) {
+            return true
+        }
+        return super.onKeyUp(keyCode, event)
     }
 
     private fun flattenToc(links: List<Link>, depth: Int = 0): List<TocEntry> {
@@ -341,207 +656,32 @@ class ReaderActivity : FragmentActivity() {
         return result
     }
 
-    private fun saveLocatorNow(locator: Locator) {
+    private fun saveLocatorNow(locator: Locator, progressRatio: Double) {
         val uriStr = currentBookUriString ?: return
         val json = locator.toJSON().toString()
-        val progress = (locator.locations.totalProgression ?: 0.0).coerceIn(0.0, 1.0)
         val now = System.currentTimeMillis()
         val appCtx = applicationContext
 
         CoroutineScope(Dispatchers.IO).launch {
             AppDatabase.getInstance(appCtx).bookDao()
-                .updateReadingPosition(uriStr, json, progress, now)
-            BookHistoryStore.saveLocator(appCtx, uriStr, json, progress)
+                .updateReadingPosition(uriStr, json, progressRatio, now)
+            BookHistoryStore.saveLocator(appCtx, uriStr, json, progressRatio)
         }
-    }
-
-    private fun currentPreferences(): EpubPreferences {
-        return EpubPreferences(
-            theme = currentTheme,
-            fontSize = fontSize
-        )
-    }
-
-    private fun applyPreferences() {
-        lastPreferenceChangeAt = System.currentTimeMillis()
-        BookHistoryStore.saveReaderPrefs(this, currentTheme.name, fontSize)
-        val navigator = supportFragmentManager.findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment
-        navigator?.submitPreferences(currentPreferences())
     }
 
     override fun onPause() {
         super.onPause()
-        val navigator = supportFragmentManager.findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment
-        navigator?.currentLocator?.value?.let { saveLocatorNow(it) }
+        val nav = supportFragmentManager.findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment
+        val pub = publication
+        val loc = nav?.currentLocator?.value
+        if (loc != null && pub != null) {
+            val (_, ratio) = updateProgressState(loc, pub)
+            saveLocatorNow(loc, ratio)
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         publication?.close()
-    }
-}
-
-@Composable
-private fun ReaderTopBar(
-    title: String,
-    progressPercent: Int,
-    theme: Theme,
-    isLoading: Boolean,
-    errorMessage: String?,
-    onBack: () -> Unit,
-    onOpenToc: () -> Unit,
-    onCycleTheme: () -> Unit,
-    onDecreaseFont: () -> Unit,
-    onIncreaseFont: () -> Unit
-) {
-    val themeLabel = when (theme) {
-        Theme.LIGHT -> "Light"
-        Theme.SEPIA -> "Sepia"
-        Theme.DARK -> "Dark"
-    }
-
-    Surface(tonalElevation = 4.dp, shadowElevation = 4.dp) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(onClick = onBack) {
-                    Text("Back")
-                }
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 4.dp)
-                )
-                Text(
-                    text = "$progressPercent%",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(end = 8.dp)
-                )
-            }
-
-            HorizontalDivider()
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                TextButton(onClick = onOpenToc) {
-                    Text("Chapters")
-                }
-                Row {
-                    TextButton(onClick = onDecreaseFont) {
-                        Text("A-")
-                    }
-                    TextButton(onClick = onIncreaseFont) {
-                        Text("A+")
-                    }
-                    TextButton(onClick = onCycleTheme) {
-                        Text("Theme: $themeLabel")
-                    }
-                }
-            }
-
-            if (isLoading) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            }
-
-            errorMessage?.let { msg ->
-                Text(
-                    text = msg,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                )
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun TocBottomSheet(
-    entries: List<TocEntry>,
-    onDismiss: () -> Unit,
-    onSelect: (TocEntry) -> Unit
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 520.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Table of Contents",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                TextButton(onClick = onDismiss) {
-                    Text("Close")
-                }
-            }
-
-            HorizontalDivider()
-
-            if (entries.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("No chapters found in this book.")
-                }
-            } else {
-                LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                    items(entries) { entry ->
-                        val startPadding = (16 + (entry.depth.coerceAtMost(4) * 16)).dp
-                        Text(
-                            text = entry.title,
-                            style = if (entry.depth == 0) {
-                                MaterialTheme.typography.bodyLarge
-                            } else {
-                                MaterialTheme.typography.bodyMedium
-                            },
-                            fontWeight = if (entry.depth == 0) FontWeight.Medium else FontWeight.Normal,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelect(entry) }
-                                .padding(
-                                    start = startPadding,
-                                    end = 16.dp,
-                                    top = 12.dp,
-                                    bottom = 12.dp
-                                )
-                        )
-                        HorizontalDivider(thickness = 0.5.dp)
-                    }
-                }
-            }
-        }
     }
 }
