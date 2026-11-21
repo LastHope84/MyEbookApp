@@ -19,14 +19,11 @@ object FileOpener {
             return if (idx >= 0) "App Storage" + path.substring(idx) else path
         }
         val docId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+            ?: runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
         if (!docId.isNullOrBlank()) {
             return when {
                 docId.startsWith("primary:") -> "Internal Storage/" + docId.removePrefix("primary:")
-                docId.contains(":") -> {
-                    val vol = docId.substringBefore(":")
-                    val rest = docId.substringAfter(":")
-                    "Storage ($vol)/$rest"
-                }
+                docId.contains(":") -> "Storage (${docId.substringBefore(":")})/${docId.substringAfter(":")}"
                 else -> docId
             }
         }
@@ -46,7 +43,6 @@ object FileOpener {
                     else -> null
                 }
             }
-
             val authority = uri.authority ?: "com.android.externalstorage.documents"
             val targetUris = buildList {
                 if (!parentDocId.isNullOrBlank()) {
@@ -55,22 +51,14 @@ object FileOpener {
                 }
                 add(uri)
             }
-
-            val mimeTypes = listOf(
-                DocumentsContract.Document.MIME_TYPE_DIR,
-                "resource/folder"
-            )
-
             for (target in targetUris) {
-                for (mime in mimeTypes) {
+                for (mime in listOf(DocumentsContract.Document.MIME_TYPE_DIR, "resource/folder")) {
                     val intent = Intent(Intent.ACTION_VIEW).apply {
                         setDataAndType(target, mime)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
-                    if (runCatching { context.startActivity(intent) }.isSuccess) {
-                        return null
-                    }
+                    if (runCatching { context.startActivity(intent) }.isSuccess) return null
                 }
             }
         }
@@ -85,7 +73,20 @@ object FileOpener {
     }
 
     fun prepareShareIntent(context: Context, books: List<BookEntity>): Intent {
-        require(books.isNotEmpty()) { "No books selected to share." }
+        return buildAttachmentChooser(context, books, kindleEmail = null)
+    }
+
+    fun prepareKindleEmailIntent(context: Context, books: List<BookEntity>, kindleEmail: String): Intent {
+        require(kindleEmail.isNotBlank()) { "Set your @kindle.com address in Settings first." }
+        return buildAttachmentChooser(context, books, kindleEmail = kindleEmail.trim())
+    }
+
+    private fun buildAttachmentChooser(
+        context: Context,
+        books: List<BookEntity>,
+        kindleEmail: String?
+    ): Intent {
+        require(books.isNotEmpty()) { "No books selected." }
 
         val authority = "${context.packageName}.fileprovider"
         val sharedDir = File(context.cacheDir, "shared_books").apply {
@@ -130,37 +131,37 @@ object FileOpener {
                 }
                 FileProvider.getUriForFile(context, authority, dest)
             }
-
             uris.add(shareUri)
         }
 
         val allEpub = books.all { it.format == "EPUB" }
-        val mimeType = if (allEpub) "application/epub+zip" else "*/*"
+        val mimeType = if (kindleEmail != null) "message/rfc822" else if (allEpub) "application/epub+zip" else "*/*"
 
         val intent = if (uris.size == 1) {
             Intent(Intent.ACTION_SEND).apply {
                 type = mimeType
                 putExtra(Intent.EXTRA_STREAM, uris.first())
                 putExtra(Intent.EXTRA_SUBJECT, books.first().title)
+                if (kindleEmail != null) putExtra(Intent.EXTRA_EMAIL, arrayOf(kindleEmail))
             }
         } else {
             Intent(Intent.ACTION_SEND_MULTIPLE).apply {
                 type = mimeType
                 putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                putExtra(Intent.EXTRA_SUBJECT, "${uris.size} ebooks")
+                if (kindleEmail != null) putExtra(Intent.EXTRA_EMAIL, arrayOf(kindleEmail))
             }
         }
 
         val clipData = ClipData.newUri(context.contentResolver, "Ebook", uris.first())
-        for (i in 1 until uris.size) {
-            clipData.addItem(ClipData.Item(uris[i]))
-        }
+        for (i in 1 until uris.size) clipData.addItem(ClipData.Item(uris[i]))
         intent.clipData = clipData
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
-        val chooserTitle = if (uris.size == 1) {
-            "Share ${books.first().title}"
-        } else {
-            "Share ${uris.size} ebooks"
+        val chooserTitle = when {
+            kindleEmail != null -> "Send to Kindle ($kindleEmail)"
+            uris.size == 1 -> "Share ${books.first().title}"
+            else -> "Share ${uris.size} ebooks"
         }
         return Intent.createChooser(intent, chooserTitle)
     }
