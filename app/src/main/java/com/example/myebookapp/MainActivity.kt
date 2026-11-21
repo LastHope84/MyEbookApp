@@ -26,7 +26,7 @@ import androidx.paging.compose.*
 import kotlinx.coroutines.*
 import java.io.File
 
-enum class LibraryTab(val title: String) { ALL("All Books"), FAV("Favorites"), READING("Reading"), TBR("To Read"), DONE("Finished"), CONV("To Convert") }
+enum class LibraryTab(val title: String) { ALL("All Books"), RECENT("Recent"), FAV("Favorites"), READING("Reading"), TBR("To Read"), DONE("Finished"), CONV("To Convert") }
 data class PendingConvertTarget(val uri: Uri, val fileName: String, val existingBookId: Long? = null)
 data class ConversionFailure(val book: BookEntity, val reason: String)
 
@@ -52,6 +52,10 @@ fun LibraryScreen(tm: AppThemeMode, acc: AppAccent, am: Boolean, incU: Uri?, onC
 val ctx = LocalContext.current; val scp = rememberCoroutineScope(); val dao = remember { AppDatabase.getInstance(ctx).bookDao() }
 val drw = rememberDrawerState(DrawerValue.Closed); val total by dao.observeTotalCount().collectAsState(0)
 val toConv by dao.observeToConvertCount().collectAsState(0); val scanS by LibraryScanner.status.collectAsState()
+val favoriteCount by dao.observeFavoriteCount().collectAsState(0)
+val readingCount by dao.observeStatusCount("READING").collectAsState(0)
+val toReadCount by dao.observeStatusCount("TBR").collectAsState(0)
+val finishedCount by dao.observeStatusCount("FINISHED").collectAsState(0)
 var tab by remember { mutableStateOf(LibraryTab.ALL) }; var qry by remember { mutableStateOf("") }; var dbQry by remember { mutableStateOf("") }
 var selB by remember { mutableStateOf<BookEntity?>(null) }; var edtB by remember { mutableStateOf<BookEntity?>(null) }
 var showSet by remember { mutableStateOf(false) }; var showGuide by rememberSaveable { mutableStateOf(false) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
@@ -176,6 +180,7 @@ suspend fun idsOnShelf(tab: LibraryTab, custom: Long?, f: String?): List<Long> {
     return when {
         custom != null -> if (f == null) dao.getCustomShelfBookIds(custom) else dao.searchCustomShelfIds(custom, f)
         tab == LibraryTab.ALL -> if (f == null) dao.getAllIds() else dao.searchAllIds(f)
+        tab == LibraryTab.RECENT -> if (f == null) dao.getRecentlyAddedIds() else dao.searchRecentlyAddedIds(f)
         tab == LibraryTab.FAV -> if (f == null) dao.getFavoriteIds() else dao.searchFavoriteIds(f)
         tab in listOf(LibraryTab.READING, LibraryTab.TBR, LibraryTab.DONE) -> {
             val status = when (tab) { LibraryTab.READING -> "READING"; LibraryTab.TBR -> "TBR"; else -> "FINISHED" }
@@ -249,6 +254,7 @@ if (customId != null) {
 if (f == null) dao.customShelfPaged(customId) else dao.searchCustomShelfPaged(customId, f)
 } else when (tab) {
 LibraryTab.ALL -> if (f == null) dao.allPaged() else dao.searchAllPaged(f)
+LibraryTab.RECENT -> if (f == null) dao.recentlyAddedPaged() else dao.searchRecentlyAddedPaged(f)
 LibraryTab.FAV -> if (f == null) dao.favoritePaged() else dao.searchFavoritePaged(f)
 LibraryTab.READING -> if (f == null) dao.statusPaged("READING") else dao.searchStatusPaged("READING", f)
 LibraryTab.TBR -> if (f == null) dao.statusPaged("TBR") else dao.searchStatusPaged("TBR", f)
@@ -262,12 +268,15 @@ ModalDrawerSheet(Modifier.width(300.dp)) {
 Column(Modifier.fillMaxHeight().verticalScroll(rememberScrollState()).padding(16.dp)) {
 Text("My Ebook Library", style=MaterialTheme.typography.titleLarge, fontWeight=FontWeight.Bold); Text("$total books", style=MaterialTheme.typography.labelMedium)
 Spacer(Modifier.height(12.dp)); OutlinedTextField(value=qry, onValueChange={cancelSelectAll(); qry=it}, placeholder={Text("Search...")}, singleLine=true, modifier=Modifier.fillMaxWidth())
-Spacer(Modifier.height(12.dp)); LibraryTab.entries.forEach { t -> NavigationDrawerItem(label={Text(t.title + (if(t==LibraryTab.CONV) " ($toConv)" else ""))}, selected=selectedCustomId == null && tab==t, onClick={cancelSelectAll(); selectedCustomId=null; tab=t; selIds=emptySet(); selMode=false; scp.launch{drw.close()}}) }
+Spacer(Modifier.height(12.dp)); LibraryTab.entries.forEach { t ->
+    val count = when (t) { LibraryTab.ALL -> total; LibraryTab.RECENT -> minOf(total, 50); LibraryTab.FAV -> favoriteCount; LibraryTab.READING -> readingCount; LibraryTab.TBR -> toReadCount; LibraryTab.DONE -> finishedCount; LibraryTab.CONV -> toConv }
+    NavigationDrawerItem(label={Text(t.title)}, badge={Text("$count")}, selected=selectedCustomId == null && tab==t, onClick={cancelSelectAll(); selectedCustomId=null; tab=t; selIds=emptySet(); selMode=false; scp.launch{drw.close()}})
+}
 Spacer(Modifier.height(8.dp)); HorizontalDivider()
 Text("Custom shelves", style=MaterialTheme.typography.titleSmall, modifier=Modifier.padding(top=12.dp, bottom=4.dp))
 customShelvesWithCounts.forEach { shelf ->
     Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
-        NavigationDrawerItem(label={Text("${shelf.name} (${shelf.bookCount})")}, selected=selectedCustomId==shelf.id,
+        NavigationDrawerItem(label={Text(shelf.name, maxLines=1)}, badge={Text("${shelf.bookCount}")}, selected=selectedCustomId==shelf.id,
             onClick={cancelSelectAll(); selectedCustomId=shelf.id; selIds=emptySet(); selMode=false; scp.launch{drw.close()}}, modifier=Modifier.weight(1f))
         TextButton(onClick={shelfToDelete=CustomShelf(shelf.id, shelf.name)}) { Text("Delete") }
     }
@@ -366,7 +375,7 @@ showBulkActions.let { if (it) {
     AlertDialog(onDismissRequest={showBulkActions=false}, title={Text("${selIds.size} selected")}, text={ Column {
         TextButton(onClick={showBulkActions=false; showBulkMove=true}, modifier=Modifier.fillMaxWidth()) { Text("Move to reading shelf") }
         TextButton(onClick={showBulkActions=false; showBulkShelves=true}, modifier=Modifier.fillMaxWidth()) { Text("Manage custom shelves") }
-        TextButton(onClick={showBulkActions=false; showBulkFavorites=true}, modifier=Modifier.fillMaxWidth()) { Text("Add or remove favorite") }
+        TextButton(onClick={showBulkActions=false; showBulkFavorites=true}, modifier=Modifier.fillMaxWidth()) { Text("Switch favorite status") }
         TextButton(onClick={showBulkActions=false; showBulkShareConfirm=true}, modifier=Modifier.fillMaxWidth()) { Text("Share selected files") }
         TextButton(enabled=!converting,onClick={
             val ids=selIds.toList(); showBulkActions=false; bulkSaving=true
@@ -407,11 +416,9 @@ showBulkShelves.let { if (it) {
     }, confirmButton={ TextButton(enabled=!bulkSaving,onClick={showBulkShelves=false}){Text("Done")} })
 } }
 showBulkFavorites.let { if (it) {
-    AlertDialog(onDismissRequest={ if (!bulkSaving) showBulkFavorites=false }, title={Text("Favorites")}, text={Text("Update favorites for the ${selIds.size} selected books?")}, confirmButton={
-        TextButton(enabled=!bulkSaving,onClick={ val ids=selIds.toList(); bulkSaving=true; scp.launch { try { withContext(Dispatchers.IO){dao.setFavoriteForIds(ids, true)}; showBulkFavorites=false; selIds=emptySet(); selMode=false } catch (e: CancellationException) { throw e } catch (e: Exception) { Toast.makeText(ctx,"Could not update favorites.",Toast.LENGTH_LONG).show() } finally { bulkSaving=false } } }) {Text("Add")}
-    }, dismissButton={
-        TextButton(enabled=!bulkSaving,onClick={ val ids=selIds.toList(); bulkSaving=true; scp.launch { try { withContext(Dispatchers.IO){dao.setFavoriteForIds(ids, false)}; showBulkFavorites=false; selIds=emptySet(); selMode=false } catch (e: CancellationException) { throw e } catch (e: Exception) { Toast.makeText(ctx,"Could not update favorites.",Toast.LENGTH_LONG).show() } finally { bulkSaving=false } } }) {Text("Remove")}
-    })
+    AlertDialog(onDismissRequest={ if (!bulkSaving) showBulkFavorites=false }, title={Text("Switch favorite status")}, text={Text("For each of the ${selIds.size} selected books: add it to Favorites if it isn't there, or remove it if it is.")}, confirmButton={
+        TextButton(enabled=!bulkSaving,onClick={ val ids=selIds.toList(); bulkSaving=true; scp.launch { try { withContext(Dispatchers.IO){dao.toggleFavorites(ids)}; showBulkFavorites=false; selIds=emptySet(); selMode=false } catch (e: CancellationException) { throw e } catch (e: Exception) { Toast.makeText(ctx,"Could not update favorites.",Toast.LENGTH_LONG).show() } finally { bulkSaving=false } } }) {Text("Switch")}
+    }, dismissButton={ TextButton(enabled=!bulkSaving,onClick={showBulkFavorites=false}) {Text("Cancel")} })
 } }
 if (bulkConversionFailures.isNotEmpty()) {
     AlertDialog(onDismissRequest={ if (!converting) bulkConversionFailures=emptyList() },

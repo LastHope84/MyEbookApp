@@ -75,6 +75,14 @@ interface BookDao {
         check(count == unique.size) { "Some selected books are no longer in the library." }
         return count
     }
+    @Query("UPDATE books SET isFavorite = CASE WHEN isFavorite = 1 THEN 0 ELSE 1 END WHERE id IN (:ids)") suspend fun toggleFavoritesChunk(ids: List<Long>): Int
+    @Transaction suspend fun toggleFavorites(ids: List<Long>): Int {
+        val unique = ids.distinct()
+        var count = 0
+        for (chunk in unique.chunked(BULK_ID_CHUNK_SIZE)) count += toggleFavoritesChunk(chunk)
+        check(count == unique.size) { "Some selected books are no longer in the library." }
+        return count
+    }
     @Query("UPDATE books SET readingStatus = :status WHERE id = :id AND :status IN ('NEW', 'TBR', 'READING', 'FINISHED')") suspend fun setReadingStatus(id: Long, status: String): Int
 
     // Automatic transitions change only the shelf, never the ebook or other metadata.
@@ -103,6 +111,12 @@ interface BookDao {
     @Query("SELECT COUNT(*) FROM books") fun observeTotalCount(): Flow<Int>
     @Query("SELECT COUNT(*) FROM books WHERE format = 'EPUB' AND metadataExtracted = 0") fun observePendingMetadataCount(): Flow<Int>
     @Query("SELECT COUNT(*) FROM books WHERE format != 'EPUB'") fun observeToConvertCount(): Flow<Int>
+    @Query("SELECT COUNT(*) FROM books WHERE isFavorite = 1") fun observeFavoriteCount(): Flow<Int>
+    @Query("SELECT COUNT(*) FROM books WHERE readingStatus = :status") fun observeStatusCount(status: String): Flow<Int>
+    @Query("SELECT * FROM books WHERE id IN (SELECT id FROM books ORDER BY id DESC LIMIT 50) ORDER BY id DESC") fun recentlyAddedPaged(): PagingSource<Int, BookEntity>
+    @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.id IN (SELECT id FROM books ORDER BY id DESC LIMIT 50) AND books_fts MATCH :q ORDER BY books.id DESC") fun searchRecentlyAddedPaged(q: String): PagingSource<Int, BookEntity>
+    @Query("SELECT id FROM books ORDER BY id DESC LIMIT 50") suspend fun getRecentlyAddedIds(): List<Long>
+    @Query("SELECT books.id FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.id IN (SELECT id FROM books ORDER BY id DESC LIMIT 50) AND books_fts MATCH :q ORDER BY books.id DESC") suspend fun searchRecentlyAddedIds(q: String): List<Long>
     @Query("SELECT * FROM books WHERE lastOpenedAt > 0 ORDER BY lastOpenedAt DESC LIMIT 1") fun observeLastOpened(): Flow<BookEntity?>
     @Query("SELECT * FROM books ORDER BY title COLLATE NOCASE ASC") fun allPaged(): PagingSource<Int, BookEntity>
     @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books_fts MATCH :q ORDER BY title COLLATE NOCASE ASC") fun searchAllPaged(q: String): PagingSource<Int, BookEntity>
