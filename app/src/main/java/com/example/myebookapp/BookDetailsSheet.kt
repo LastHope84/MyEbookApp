@@ -20,7 +20,7 @@ import kotlin.math.roundToInt
 fun BookDetailsBottomSheet(
     b: BookEntity, hasK: Boolean, onD: ()->Unit, onR: ()->Unit, onE: ()->Unit,
     onS: ()->Unit, onK: ()->Unit, onC: ()->Unit, onDel: ()->Unit,
-    onFavoriteChange: (Boolean) -> Unit, onStatusChange: (String) -> Unit,
+    onFavoriteChange: (Boolean) -> Unit, onStatusChange: (String) -> Unit, onCustomShelves: () -> Unit,
     statusChangeEnabled: Boolean
 ) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -64,6 +64,7 @@ fun BookDetailsBottomSheet(
                 enabled = statusChangeEnabled,
                 modifier = Modifier.fillMaxWidth()
             ) { Text(if (b.isFavorite) "Remove from Favorites" else "Add to Favorites") }
+            OutlinedButton(onClick = onCustomShelves, modifier = Modifier.fillMaxWidth()) { Text("Custom shelves…") }
             Text("Reading shelf", modifier = Modifier.fillMaxWidth().padding(top = 8.dp), style = MaterialTheme.typography.labelLarge)
             Text("Choose a shelf if you like. Your reading progress stays unchanged.", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodySmall)
             listOf(

@@ -28,6 +28,7 @@ import java.io.File
 
 enum class LibraryTab(val title: String) { ALL("All Books"), FAV("Favorites"), READING("Reading"), TBR("To Read"), DONE("Finished"), CONV("To Convert") }
 data class PendingConvertTarget(val uri: Uri, val fileName: String, val existingBookId: Long? = null)
+data class ConversionFailure(val book: BookEntity, val reason: String)
 
 class MainActivity : ComponentActivity() {
 companion object { var didAutoOpen = false }
@@ -54,6 +55,29 @@ val toConv by dao.observeToConvertCount().collectAsState(0); val scanS by Librar
 var tab by remember { mutableStateOf(LibraryTab.ALL) }; var qry by remember { mutableStateOf("") }; var dbQry by remember { mutableStateOf("") }
 var selB by remember { mutableStateOf<BookEntity?>(null) }; var edtB by remember { mutableStateOf<BookEntity?>(null) }
 var showSet by remember { mutableStateOf(false) }; var showGuide by rememberSaveable { mutableStateOf(false) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+var showBulkActions by remember { mutableStateOf(false) }
+var showBulkMove by remember { mutableStateOf(false) }
+var showBulkShelves by remember { mutableStateOf(false) }
+var showBulkFavorites by remember { mutableStateOf(false) }
+var showBulkShareConfirm by remember { mutableStateOf(false) }
+var preparingBulkShare by remember { mutableStateOf(false) }
+var bulkSaving by remember { mutableStateOf(false) }
+var selectingAll by remember { mutableStateOf(false) }
+var selectAllJob by remember { mutableStateOf<Job?>(null) }
+var selectAllGeneration by remember { mutableIntStateOf(0) }
+fun cancelSelectAll() {
+    selectAllGeneration++
+    selectAllJob?.cancel()
+    selectAllJob = null
+    selectingAll = false
+}
+val customShelves by dao.observeCustomShelves().collectAsState(initial = emptyList())
+val customShelvesWithCounts by dao.observeCustomShelvesWithCounts().collectAsState(initial = emptyList())
+var selectedCustomId by remember { mutableStateOf<Long?>(null) }
+var showCreateShelf by remember { mutableStateOf(false) }
+var shelfToDelete by remember { mutableStateOf<CustomShelf?>(null) }
+var membershipBook by remember { mutableStateOf<BookEntity?>(null) }
+var customSaving by remember { mutableStateOf(false) }
 var shelfSaving by remember { mutableStateOf(false) }
 fun updateShelf(bookId: Long, favorite: Boolean? = null, status: String? = null) {
 if (shelfSaving) return
@@ -75,6 +99,7 @@ Toast.makeText(ctx, "Could not update shelf: ${e.localizedMessage ?: "unknown er
 }
 }
 var converting by remember { mutableStateOf(false) }
+var bulkConversionFailures by remember { mutableStateOf<List<ConversionFailure>>(emptyList()) }
 var preparingKindle by remember { mutableStateOf(false) }
 val folders = LibraryScanner.getSavedFolders(ctx)
 
@@ -102,44 +127,82 @@ preparingKindle = false
 }
 }
 
-fun convertBook(book: BookEntity) {
-if (converting) return
+fun convertBooks(books: List<BookEntity>, showConverted: Boolean) {
+if (converting || books.isEmpty()) return
 converting = true
-selB = null
-Toast.makeText(ctx, "Converting ${book.fileName}...", Toast.LENGTH_SHORT).show()
+if (showConverted) selB = null
+Toast.makeText(ctx, if (showConverted) "Converting ${books.first().fileName}..." else "Converting ${books.size} book${if (books.size == 1) "" else "s"}...", Toast.LENGTH_SHORT).show()
 scp.launch {
+var convertedCount = 0
+val failures = mutableListOf<ConversionFailure>()
 try {
-val (converted, savedToCustom) = withContext(Dispatchers.IO) {
-val folder = ThemePrefs.getConvertedOutputUri(ctx)?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
-val out = MobiConverter.convertToEpubOutput(ctx, Uri.parse(book.uriString), book.fileName, folder)
-val meta = EpubParser.parseEpub(ctx, out.uri, out.fileName)
-val cover = LibraryScanner.saveWebpThumbnail(ctx, out.uri.toString(), meta.coverBitmap)
-val entry = BookEntity(
-    uriString = out.uri.toString(), fileName = out.fileName, format = "EPUB",
-    fileSize = out.size, lastModified = out.lastModified,
-    title = meta.title, author = meta.author, publishingDate = meta.publishingDate,
-    publisher = meta.publisher, language = meta.language, coverPath = cover,
-    lastLocatorJson = null, progressPercent = 0.0, lastOpenedAt = 0L,
-    metadataExtracted = true, series = meta.series, seriesIndex = meta.seriesIndex, tags = meta.tags
-)
-dao.insertIgnore(entry)
-(dao.getByUri(out.uri.toString()) ?: error("Could not add the converted book to the library.")) to out.savedToCustomFolder
+for (book in books) {
+    try {
+        val (converted, savedToCustom) = withContext(Dispatchers.IO) {
+            val folder = ThemePrefs.getConvertedOutputUri(ctx)?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
+            val out = MobiConverter.convertToEpubOutput(ctx, Uri.parse(book.uriString), book.fileName, folder)
+            val meta = EpubParser.parseEpub(ctx, out.uri, out.fileName)
+            val cover = LibraryScanner.saveWebpThumbnail(ctx, out.uri.toString(), meta.coverBitmap)
+            val entry = BookEntity(uriString = out.uri.toString(), fileName = out.fileName, format = "EPUB", fileSize = out.size, lastModified = out.lastModified, title = meta.title, author = meta.author, publishingDate = meta.publishingDate, publisher = meta.publisher, language = meta.language, coverPath = cover, lastLocatorJson = null, progressPercent = 0.0, lastOpenedAt = 0L, metadataExtracted = true, series = meta.series, seriesIndex = meta.seriesIndex, tags = meta.tags)
+            dao.insertIgnore(entry)
+            (dao.getByUri(out.uri.toString()) ?: error("Could not add the converted book to the library.")) to out.savedToCustomFolder
+        }
+        convertedCount++
+        if (showConverted) {
+            selB = converted
+            val location = if (savedToCustom) "chosen folder" else "app storage"
+            Toast.makeText(ctx, "Converted to EPUB and saved in $location. Original kept.", Toast.LENGTH_LONG).show()
+        }
+    } catch (e: CancellationException) { throw e
+    } catch (e: Exception) {
+        val reason = e.localizedMessage ?: "unknown error"
+        if (showConverted) { selB = book; Toast.makeText(ctx, "Conversion failed: $reason", Toast.LENGTH_LONG).show() }
+        else failures.add(ConversionFailure(book, reason))
+    } catch (e: LinkageError) {
+        if (showConverted) { selB = book; Toast.makeText(ctx, "Conversion engine could not be loaded.", Toast.LENGTH_LONG).show() }
+        else failures.add(ConversionFailure(book, "Conversion engine could not be loaded."))
+    }
 }
-selB = converted
-val location = if (savedToCustom) "chosen folder" else "app storage"
-Toast.makeText(ctx, "Converted to EPUB and saved in $location. Original kept.", Toast.LENGTH_LONG).show()
-} catch (e: CancellationException) {
-throw e
-} catch (e: Exception) {
-Toast.makeText(ctx, "Conversion failed: ${e.localizedMessage ?: "unknown error"}", Toast.LENGTH_LONG).show()
-selB = book
-} catch (e: LinkageError) {
-Toast.makeText(ctx, "Conversion engine could not be loaded.", Toast.LENGTH_LONG).show()
-selB = book
-} finally {
-converting = false
+if (!showConverted) {
+    bulkConversionFailures = failures.toList()
+    Toast.makeText(ctx, "Converted $convertedCount book${if (convertedCount == 1) "" else "s"}. Original files kept.", Toast.LENGTH_LONG).show()
+}
+} finally { converting = false }
 }
 }
+fun convertBook(book: BookEntity) = convertBooks(listOf(book), true)
+
+suspend fun idsOnShelf(tab: LibraryTab, custom: Long?, f: String?): List<Long> {
+    return when {
+        custom != null -> if (f == null) dao.getCustomShelfBookIds(custom) else dao.searchCustomShelfIds(custom, f)
+        tab == LibraryTab.ALL -> if (f == null) dao.getAllIds() else dao.searchAllIds(f)
+        tab == LibraryTab.FAV -> if (f == null) dao.getFavoriteIds() else dao.searchFavoriteIds(f)
+        tab in listOf(LibraryTab.READING, LibraryTab.TBR, LibraryTab.DONE) -> {
+            val status = when (tab) { LibraryTab.READING -> "READING"; LibraryTab.TBR -> "TBR"; else -> "FINISHED" }
+            if (f == null) dao.getStatusIds(status) else dao.searchStatusIds(status, f)
+        }
+        else -> if (f == null) dao.getToConvertIds() else dao.searchToConvertIds(f)
+    }
+}
+
+fun selectAllOnShelf() {
+    cancelSelectAll()
+    val generation = selectAllGeneration
+    val selectedTab = tab
+    val custom = selectedCustomId
+    val search = toFtsQuery(dbQry)
+    selectingAll = true
+    selectAllJob = scp.launch {
+        try {
+            val ids = withContext(Dispatchers.IO) { idsOnShelf(selectedTab, custom, search) }
+            if (generation == selectAllGeneration && selMode) selIds = ids.toSet()
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
+            if (generation == selectAllGeneration) Toast.makeText(ctx, "Could not select books on this shelf.", Toast.LENGTH_LONG).show()
+        } finally {
+            if (generation == selectAllGeneration) { selectingAll = false; selectAllJob = null }
+        }
+    }
 }
 
 var savingMetadata by remember { mutableStateOf(false) }
@@ -176,12 +239,15 @@ if (showGuide) {
     UserGuideScreen(onClose = { showGuide = false })
     return
 }
-BackHandler(drw.isOpen || selMode) { if (drw.isOpen) scp.launch { drw.close() } else { selIds = emptySet(); selMode = false } }
-LaunchedEffect(qry) { delay(250); dbQry = qry }
+BackHandler(drw.isOpen || selMode) { if (!bulkSaving) { if (drw.isOpen) scp.launch { drw.close() } else { cancelSelectAll(); selIds = emptySet(); selMode = false } } }
+LaunchedEffect(qry) { delay(250); if (dbQry != qry) { cancelSelectAll(); dbQry = qry } }
 
-val paged = remember(dbQry, tab, scp) { Pager(PagingConfig(60, 180, true)) { 
+val customId = selectedCustomId
+val paged = remember(dbQry, tab, customId, scp) { Pager(PagingConfig(60, 180, true)) {
 val f = toFtsQuery(dbQry)
-when (tab) {
+if (customId != null) {
+if (f == null) dao.customShelfPaged(customId) else dao.searchCustomShelfPaged(customId, f)
+} else when (tab) {
 LibraryTab.ALL -> if (f == null) dao.allPaged() else dao.searchAllPaged(f)
 LibraryTab.FAV -> if (f == null) dao.favoritePaged() else dao.searchFavoritePaged(f)
 LibraryTab.READING -> if (f == null) dao.statusPaged("READING") else dao.searchStatusPaged("READING", f)
@@ -195,8 +261,18 @@ ModalNavigationDrawer(drawerState=drw, gesturesEnabled=!selMode, drawerContent={
 ModalDrawerSheet(Modifier.width(300.dp)) {
 Column(Modifier.fillMaxHeight().verticalScroll(rememberScrollState()).padding(16.dp)) {
 Text("My Ebook Library", style=MaterialTheme.typography.titleLarge, fontWeight=FontWeight.Bold); Text("$total books", style=MaterialTheme.typography.labelMedium)
-Spacer(Modifier.height(12.dp)); OutlinedTextField(value=qry, onValueChange={qry=it}, placeholder={Text("Search...")}, singleLine=true, modifier=Modifier.fillMaxWidth())
-Spacer(Modifier.height(12.dp)); LibraryTab.entries.forEach { t -> NavigationDrawerItem(label={Text(t.title + (if(t==LibraryTab.CONV) " ($toConv)" else ""))}, selected=tab==t, onClick={tab=t; scp.launch{drw.close()}}) }
+Spacer(Modifier.height(12.dp)); OutlinedTextField(value=qry, onValueChange={cancelSelectAll(); qry=it}, placeholder={Text("Search...")}, singleLine=true, modifier=Modifier.fillMaxWidth())
+Spacer(Modifier.height(12.dp)); LibraryTab.entries.forEach { t -> NavigationDrawerItem(label={Text(t.title + (if(t==LibraryTab.CONV) " ($toConv)" else ""))}, selected=selectedCustomId == null && tab==t, onClick={cancelSelectAll(); selectedCustomId=null; tab=t; selIds=emptySet(); selMode=false; scp.launch{drw.close()}}) }
+Spacer(Modifier.height(8.dp)); HorizontalDivider()
+Text("Custom shelves", style=MaterialTheme.typography.titleSmall, modifier=Modifier.padding(top=12.dp, bottom=4.dp))
+customShelvesWithCounts.forEach { shelf ->
+    Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
+        NavigationDrawerItem(label={Text("${shelf.name} (${shelf.bookCount})")}, selected=selectedCustomId==shelf.id,
+            onClick={cancelSelectAll(); selectedCustomId=shelf.id; selIds=emptySet(); selMode=false; scp.launch{drw.close()}}, modifier=Modifier.weight(1f))
+        TextButton(onClick={shelfToDelete=CustomShelf(shelf.id, shelf.name)}) { Text("Delete") }
+    }
+}
+TextButton(onClick={showCreateShelf=true}) { Text("+ Create shelf") }
 Spacer(Modifier.height(8.dp)); HorizontalDivider(); Spacer(Modifier.height(8.dp))
 NavigationDrawerItem(label={Text("Add Folder")}, selected=false, onClick={scp.launch{drw.close()}; folderP.launch(null)})
 if (folders.isNotEmpty()) NavigationDrawerItem(label={Text("Rescan Folders")}, selected=false, onClick={scp.launch{drw.close()}; LibraryScanner.scanFolders(ctx, folders.map{Uri.parse(it)})})
@@ -205,7 +281,10 @@ NavigationDrawerItem(label={Text("User Guide")}, selected=false, onClick={scp.la
 }
 }
 }) {
-Scaffold(topBar={ TopAppBar(navigationIcon={ IconButton(onClick={scp.launch{drw.open()}}){HamburgerIcon()} }, title={ Text(if (selMode) "${selIds.size} selected" else tab.title) }) }) { p ->
+Scaffold(topBar={ TopAppBar(navigationIcon={ IconButton(enabled=!bulkSaving, onClick={ if (selMode) { cancelSelectAll(); selIds=emptySet(); selMode=false } else scp.launch{drw.open()} }) { if (selMode) Text("×", style=MaterialTheme.typography.headlineSmall) else HamburgerIcon() } }, title={ Text(if (selMode) "${selIds.size} selected" else customShelves.firstOrNull { it.id == selectedCustomId }?.name ?: tab.title) }, actions={ if (selMode) {
+    TextButton(enabled=!bulkSaving && !selectingAll, onClick={ selectAllOnShelf() }) { Text(if (selectingAll) "Selecting…" else "All") }
+    TextButton(enabled=!bulkSaving && !selectingAll && selIds.isNotEmpty(), onClick={ showBulkActions=true }) { Text("Actions") }
+} }) }) { p ->
 Column(Modifier.fillMaxSize().padding(p)) {
 if (scanS.isScanning) { Card(colors=CardDefaults.cardColors(MaterialTheme.colorScheme.secondaryContainer), modifier=Modifier.fillMaxWidth().padding(8.dp)) { Column(Modifier.padding(8.dp)) { Text(scanS.phaseLabel, style=MaterialTheme.typography.labelLarge); LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical=4.dp)) } } }
 if (paged.loadState.refresh is LoadState.Loading && paged.itemCount == 0) {
@@ -217,13 +296,14 @@ Column(Modifier.fillMaxWidth().padding(20.dp)) {
 }
 } else if (paged.itemCount == 0) {
 val message = if (dbQry.isNotBlank()) "No books match this search on this shelf."
+    else if (selectedCustomId != null) "No books on this shelf yet. Open a book in All Books and choose Custom shelves."
     else if (tab == LibraryTab.FAV) "No favorites yet. Open a book to add it to Favorites."
     else if (tab in listOf(LibraryTab.READING, LibraryTab.TBR, LibraryTab.DONE)) "No books on this shelf yet. Open a book in All Books to choose its shelf."
     else "No books here yet."
 Text(message, modifier = Modifier.padding(20.dp), style = MaterialTheme.typography.bodyMedium)
 } else LazyVerticalGrid(columns = GridCells.Fixed(3), contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp), modifier = Modifier.fillMaxSize()) {
 items(paged.itemCount, key=paged.itemKey{it.id}) { i ->
-    val b = paged[i]; if (b != null) BookGridTile(b, selMode, selIds.contains(b.id), { if (selMode) { selIds = if (selIds.contains(b.id)) selIds - b.id else selIds + b.id; if (selIds.isEmpty()) selMode=false } else selB = b }, { selMode=true; selIds = selIds + b.id }) else BookPlaceholderTile()
+    val b = paged[i]; if (b != null) BookGridTile(b, selMode, selIds.contains(b.id), { if (!bulkSaving) { cancelSelectAll(); if (selMode) { selIds = if (selIds.contains(b.id)) selIds - b.id else selIds + b.id; if (selIds.isEmpty()) selMode=false } else selB = b } }, { if (!bulkSaving) { cancelSelectAll(); selMode=true; selIds = selIds + b.id } }) else BookPlaceholderTile()
 }
 }
 }
@@ -244,10 +324,149 @@ onK = { sendToKindle(b) }, onC = { convertBook(b) },
 onDel = { scp.launch(Dispatchers.IO) { dao.deleteById(b.id) }; selB = null },
 onFavoriteChange = { updateShelf(b.id, favorite = it) },
 onStatusChange = { updateShelf(b.id, status = it) },
+onCustomShelves = { membershipBook = b },
 statusChangeEnabled = !shelfSaving
 )
 }
 }
+}
+if (showCreateShelf) CreateShelfDialog(onDismiss = { showCreateShelf = false }, onCreate = { name ->
+    if (!customSaving) {
+        customSaving = true
+        scp.launch {
+            try {
+                val id = withContext(Dispatchers.IO) { dao.createCustomShelf(CustomShelf(name = name)) }
+                if (id == -1L) Toast.makeText(ctx, "A shelf with that name already exists.", Toast.LENGTH_LONG).show()
+                else { showCreateShelf = false; selectedCustomId = id; drw.close() }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { Toast.makeText(ctx, "Could not create shelf: ${e.localizedMessage ?: "unknown error"}", Toast.LENGTH_LONG).show() }
+            finally { customSaving = false }
+        }
+    }
+}, saving = customSaving)
+shelfToDelete?.let { shelf ->
+    AlertDialog(onDismissRequest = { if (!customSaving) shelfToDelete = null },
+        title = { Text("Delete ${shelf.name}?") },
+        text = { Text("This removes the shelf, not its books or their reading progress.") },
+        confirmButton = { TextButton(enabled = !customSaving, onClick = {
+            customSaving = true
+            scp.launch {
+                try {
+                    withContext(Dispatchers.IO) { dao.deleteCustomShelf(shelf.id) }
+                    if (selectedCustomId == shelf.id) { selectedCustomId = null; tab = LibraryTab.ALL }
+                    shelfToDelete = null
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) { Toast.makeText(ctx, "Could not delete shelf: ${e.localizedMessage ?: "unknown error"}", Toast.LENGTH_LONG).show() }
+                finally { customSaving = false }
+            }
+        }) { Text("Delete") } },
+        dismissButton = { TextButton(enabled = !customSaving, onClick = { shelfToDelete = null }) { Text("Cancel") } })
+}
+showBulkActions.let { if (it) {
+    AlertDialog(onDismissRequest={showBulkActions=false}, title={Text("${selIds.size} selected")}, text={ Column {
+        TextButton(onClick={showBulkActions=false; showBulkMove=true}, modifier=Modifier.fillMaxWidth()) { Text("Move to reading shelf") }
+        TextButton(onClick={showBulkActions=false; showBulkShelves=true}, modifier=Modifier.fillMaxWidth()) { Text("Manage custom shelves") }
+        TextButton(onClick={showBulkActions=false; showBulkFavorites=true}, modifier=Modifier.fillMaxWidth()) { Text("Add or remove favorite") }
+        TextButton(onClick={showBulkActions=false; showBulkShareConfirm=true}, modifier=Modifier.fillMaxWidth()) { Text("Share selected files") }
+        TextButton(enabled=!converting,onClick={
+            val ids=selIds.toList(); showBulkActions=false; bulkSaving=true
+            scp.launch {
+                try {
+                    val books=withContext(Dispatchers.IO) {
+                        val selected=dao.getByIds(ids)
+                        check(selected.isNotEmpty() && selected.size == ids.size) { "Some selected books are no longer in the library. No books were converted." }
+                        selected.filter { it.format != "EPUB" }
+                    }
+                    if (books.isEmpty()) Toast.makeText(ctx,"The selected books are already EPUBs.",Toast.LENGTH_SHORT).show()
+                    else { selIds=emptySet(); selMode=false; convertBooks(books, false) }
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) { Toast.makeText(ctx,"Could not load selected books: ${e.localizedMessage ?: "unknown error"}",Toast.LENGTH_LONG).show() }
+                finally { bulkSaving=false }
+            }
+        }, modifier=Modifier.fillMaxWidth()) { Text("Convert non-EPUB books") }
+    } }, confirmButton={TextButton(onClick={showBulkActions=false}){Text("Done")}})
+} }
+showBulkMove.let { if (it) {
+    AlertDialog(onDismissRequest={ if (!bulkSaving) showBulkMove=false }, title={Text("Move ${selIds.size} books")}, text={ Column {
+        Text("Choose a reading shelf. This keeps files, progress and custom-shelf memberships unchanged.", style=MaterialTheme.typography.bodySmall)
+        listOf("NEW" to "Unclassified", "TBR" to "To Read", "READING" to "Reading", "FINISHED" to "Finished").forEach { (status,label) ->
+            TextButton(enabled=!bulkSaving, onClick={ val ids=selIds.toList(); bulkSaving=true; scp.launch { try { withContext(Dispatchers.IO){dao.setReadingStatusForIds(ids,status)}; showBulkMove=false; selIds=emptySet(); selMode=false } catch (e: CancellationException) { throw e } catch (e: Exception) { Toast.makeText(ctx,"Could not update reading shelf.",Toast.LENGTH_LONG).show() } finally { bulkSaving=false } } }, modifier=Modifier.fillMaxWidth()) { Text(label) }
+        }
+    } }, confirmButton={ TextButton(enabled=!bulkSaving,onClick={showBulkMove=false}){Text("Cancel")} })
+} }
+showBulkShelves.let { if (it) {
+    AlertDialog(onDismissRequest={ if (!bulkSaving) showBulkShelves=false }, title={Text("Custom shelves")}, text={
+        if (customShelves.isEmpty()) Text("Create a custom shelf first.") else Column(Modifier.heightIn(max=400.dp).verticalScroll(rememberScrollState())) {
+            Text("Add the ${selIds.size} selected books to a shelf. Books can belong to more than one custom shelf.", style=MaterialTheme.typography.bodySmall)
+            customShelves.forEach { shelf -> Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
+                Text(shelf.name, modifier=Modifier.weight(1f))
+                TextButton(enabled=!bulkSaving,onClick={ val ids=selIds.toList(); bulkSaving=true; scp.launch { try { withContext(Dispatchers.IO) { dao.addBooksToCustomShelf(shelf.id, ids) }; Toast.makeText(ctx,"Added to ${shelf.name}.",Toast.LENGTH_SHORT).show() } catch (e: CancellationException) { throw e } catch (e: Exception) { Toast.makeText(ctx,"Could not update ${shelf.name}.",Toast.LENGTH_LONG).show() } finally { bulkSaving=false } } }) { Text("Add") }
+                if (selectedCustomId == shelf.id) TextButton(enabled=!bulkSaving,onClick={ val ids=selIds.toList(); bulkSaving=true; scp.launch { try { withContext(Dispatchers.IO) { dao.removeBooksFromCustomShelf(shelf.id, ids) }; showBulkShelves=false; selIds=emptySet(); selMode=false } catch (e: CancellationException) { throw e } catch (e: Exception) { Toast.makeText(ctx,"Could not remove books from ${shelf.name}.",Toast.LENGTH_LONG).show() } finally { bulkSaving=false } } }) { Text("Remove") }
+            } }
+        }
+    }, confirmButton={ TextButton(enabled=!bulkSaving,onClick={showBulkShelves=false}){Text("Done")} })
+} }
+showBulkFavorites.let { if (it) {
+    AlertDialog(onDismissRequest={ if (!bulkSaving) showBulkFavorites=false }, title={Text("Favorites")}, text={Text("Update favorites for the ${selIds.size} selected books?")}, confirmButton={
+        TextButton(enabled=!bulkSaving,onClick={ val ids=selIds.toList(); bulkSaving=true; scp.launch { try { withContext(Dispatchers.IO){dao.setFavoriteForIds(ids, true)}; showBulkFavorites=false; selIds=emptySet(); selMode=false } catch (e: CancellationException) { throw e } catch (e: Exception) { Toast.makeText(ctx,"Could not update favorites.",Toast.LENGTH_LONG).show() } finally { bulkSaving=false } } }) {Text("Add")}
+    }, dismissButton={
+        TextButton(enabled=!bulkSaving,onClick={ val ids=selIds.toList(); bulkSaving=true; scp.launch { try { withContext(Dispatchers.IO){dao.setFavoriteForIds(ids, false)}; showBulkFavorites=false; selIds=emptySet(); selMode=false } catch (e: CancellationException) { throw e } catch (e: Exception) { Toast.makeText(ctx,"Could not update favorites.",Toast.LENGTH_LONG).show() } finally { bulkSaving=false } } }) {Text("Remove")}
+    })
+} }
+if (bulkConversionFailures.isNotEmpty()) {
+    AlertDialog(onDismissRequest={ if (!converting) bulkConversionFailures=emptyList() },
+        title={Text("${bulkConversionFailures.size} conversion${if (bulkConversionFailures.size == 1) "" else "s"} failed")},
+        text={ Column(Modifier.heightIn(max=400.dp).verticalScroll(rememberScrollState())) {
+            Text("Original files were kept. Retry the failed books or close this report.")
+            bulkConversionFailures.forEach { failure ->
+                Text(failure.book.fileName, fontWeight=FontWeight.Bold, modifier=Modifier.padding(top=8.dp))
+                Text(failure.reason, style=MaterialTheme.typography.bodySmall)
+            }
+        } },
+        confirmButton={ TextButton(enabled=!converting, onClick={ convertBooks(bulkConversionFailures.map { it.book }, false) }) { Text(if (converting) "Converting…" else "Retry failed") } },
+        dismissButton={ TextButton(enabled=!converting, onClick={bulkConversionFailures=emptyList()}) { Text("Close") } })
+}
+showBulkShareConfirm.let { if (it) {
+    AlertDialog(onDismissRequest={if (!preparingBulkShare) showBulkShareConfirm=false}, title={Text("Share ${selIds.size} books?")}, text={Text("The selected book files will be attached to a share request.")}, confirmButton={
+        TextButton(enabled=!preparingBulkShare, onClick={
+            if (!preparingBulkShare) {
+                preparingBulkShare=true
+                val ids = selIds.toList()
+                scp.launch {
+                    try {
+                        val intent = withContext(Dispatchers.IO) {
+                            val books = dao.getByIds(ids)
+                            check(books.isNotEmpty() && books.size == ids.size) { "Some selected books are no longer in the library." }
+                            FileOpener.prepareShareIntent(ctx, books)
+                        }
+                        ctx.startActivity(intent)
+                        showBulkShareConfirm=false
+                    } catch (e: CancellationException) { throw e }
+                    catch (e: Exception) { Toast.makeText(ctx,"Could not prepare sharing: ${e.localizedMessage ?: "unknown error"}",Toast.LENGTH_LONG).show() }
+                    finally { preparingBulkShare=false }
+                }
+            }
+        }) {Text(if (preparingBulkShare) "Preparing…" else "Share")}
+    }, dismissButton={TextButton(enabled=!preparingBulkShare,onClick={showBulkShareConfirm=false}){Text("Cancel")}})
+} }
+membershipBook?.let { book ->
+    val shelfIds by remember(book.id) { dao.observeShelfIdsForBook(book.id) }.collectAsState(initial = null)
+    CustomShelfMembershipDialog(shelves = customShelves, shelfIds = shelfIds?.toSet() ?: emptySet(), saving = customSaving || shelfIds == null,
+        onDismiss = { if (!customSaving) membershipBook = null }, onChange = { shelf, checked ->
+            if (!customSaving) {
+                customSaving = true
+                scp.launch {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            if (checked) dao.addBookToCustomShelf(CustomShelfBook(shelf.id, book.id))
+                            else dao.removeBookFromCustomShelf(shelf.id, book.id)
+                        }
+                    } catch (e: CancellationException) { throw e }
+                    catch (e: Exception) { Toast.makeText(ctx, "Could not update shelf: ${e.localizedMessage ?: "unknown error"}", Toast.LENGTH_LONG).show() }
+                    finally { customSaving = false }
+                }
+            }
+        })
 }
 edtB?.let { b -> MetadataEditorBottomSheet(b, {edtB=null}, {r -> runSave(b,r)}) }
 }

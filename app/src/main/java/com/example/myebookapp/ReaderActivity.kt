@@ -26,8 +26,10 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -37,11 +39,14 @@ import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.TapEvent
+import org.readium.r2.navigator.preferences.ReadingProgression
 import org.readium.r2.navigator.util.DirectionalNavigationAdapter
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.publication.epub.EpubLayout
+import org.readium.r2.shared.publication.presentation.presentation
 import org.readium.r2.shared.publication.services.positions
 import org.readium.r2.shared.publication.services.search.search
 import org.readium.r2.shared.util.AbsoluteUrl
@@ -67,6 +72,28 @@ class ReaderActivity : FragmentActivity() {
         private const val NAV_TAG = "epub_navigator"
         private const val AUTO_HIDE_MS = 4000L
         private const val MENU_DEFINE_ID = 9001
+
+        // Readium calls pagination after the resource is ready, but images/fonts can
+        // still change its layout. An uncertain rendering must not finish the book.
+        private const val READY_SCRIPT = """
+            (() => {
+                if (document.readyState !== 'complete' || !document.documentElement ||
+                    !document.documentElement.clientWidth || !document.documentElement.clientHeight ||
+                    (document.fonts && document.fonts.status !== 'loaded')) return false;
+                return Array.from(document.images).every(i => i.complete && i.naturalWidth > 0);
+            })()
+        """
+        private const val END_SCROLL_SCRIPT = """
+            (() => {
+                const e = document.scrollingElement;
+                if (document.readyState !== 'complete' || !e || !e.clientWidth || !e.clientHeight ||
+                    (document.fonts && document.fonts.status !== 'loaded') ||
+                    !Array.from(document.images).every(i => i.complete && i.naturalWidth > 0)) return false;
+                // Only conventional vertical scroll, never guess for horizontal overflow.
+                return e.scrollWidth <= e.clientWidth + 1 &&
+                    Math.ceil(e.scrollTop + e.clientHeight) >= e.scrollHeight;
+            })()
+        """
     }
 
     private var publication: Publication? = null
@@ -431,10 +458,88 @@ class ReaderActivity : FragmentActivity() {
                     override fun onDestroyActionMode(mode: ActionMode) {}
                 }
 
+                // Do this only after the publication has opened successfully. Finished books
+                // stay finished when reopened; the user can still change a shelf manually.
+                withContext(Dispatchers.IO) {
+                    AppDatabase.getInstance(this@ReaderActivity).bookDao().markStarted(bookUri.toString())
+                }
+
+                // The final reading-order resource, not the last TOC entry or an approximate
+                // positions/progress value, includes any back matter in the EPUB spine.
+                val lastHref = ShelfEndDetector.uniqueLastHref(pub.readingOrder.map { it.href.toString() })
+                val fixedLayout = pub.metadata.presentation.layout == EpubLayout.FIXED
+                var finishedHere = false
+                var endCheck: Job? = null
+
+                fun isLastResource(locator: Locator): Boolean =
+                    ShelfEndDetector.isLastResource(lastHref, locator.href.toString())
+
+                fun finishOnce() {
+                    if (finishedHere) return
+                    finishedHere = true
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        AppDatabase.getInstance(this@ReaderActivity).bookDao().markFinished(bookUri.toString())
+                    }
+                }
+
+                val paginationListener = object : EpubNavigatorFragment.PaginationListener {
+                    override fun onPageChanged(pageIndex: Int, totalPages: Int, locator: Locator) {
+                        if (fixedLayout) return
+                        endCheck?.cancel()
+                        if (!isLastResource(locator)) {
+                            finishedHere = false
+                            return
+                        }
+                        val nav = supportFragmentManager.findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment ?: return
+                        val config = nav.settings.value
+                        // Readium's page index is physical, so RTL ends at index zero.
+                        // Vertical writing uses a different axis; fail closed for that case.
+                        if (config.verticalText) return
+                        if (!config.scroll) {
+                            val lastPage = ShelfEndDetector.isLastPage(
+                                pageIndex, totalPages, config.readingProgression == ReadingProgression.RTL
+                            )
+                            if (!lastPage) {
+                                finishedHere = false
+                                return
+                            }
+                        }
+                        endCheck = lifecycleScope.launch {
+                            // Give Readium's location and layout time to settle, then ensure the
+                            // currently rendered resource is still the one from this callback.
+                            delay(200)
+                            if (nav.currentLocator.value != locator || nav.settings.value != config) return@launch
+                            val script = if (config.scroll) END_SCROLL_SCRIPT else READY_SCRIPT
+                            val rendered = try {
+                                nav.evaluateJavascript(script)
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                null
+                            }
+                            if (rendered != "true") {
+                                if (config.scroll) finishedHere = false
+                                return@launch
+                            }
+                            val visible = try {
+                                nav.firstVisibleElementLocator()
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                null
+                            } ?: return@launch
+                            if (isLastResource(visible) && nav.currentLocator.value == locator && nav.settings.value == config) {
+                                finishOnce()
+                            }
+                        }
+                    }
+                }
+
                 val navigatorFactory = EpubNavigatorFactory(pub)
                 supportFragmentManager.fragmentFactory = navigatorFactory.createFragmentFactory(
                     initialLocator = savedLocator,
                     initialPreferences = settings.toEpubPreferences(),
+                    paginationListener = paginationListener,
                     configuration = EpubNavigatorFragment.Configuration(
                         selectionActionModeCallback = selectionCallback
                     )
@@ -457,6 +562,11 @@ class ReaderActivity : FragmentActivity() {
 
                     lifecycleScope.launch {
                         currentLocator.drop(1).collect { locator ->
+                            if (fixedLayout) {
+                                // Fixed-layout resources are pages. Readium reports the left
+                                // resource of a spread, so a final right-hand page may be missed.
+                                if (isLastResource(locator)) finishOnce() else finishedHere = false
+                            }
                             val recentlyChangedPrefs =
                                 System.currentTimeMillis() - lastPreferenceChangeAt < 1000L
                             if (showControls && !recentlyChangedPrefs) {
