@@ -23,7 +23,7 @@ import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MetadataEditorBottomSheet(b: BookEntity, onD: () -> Unit, onSave: (EpubEditRequest, Boolean) -> Unit) {
+fun MetadataEditorBottomSheet(b: BookEntity, onD: () -> Unit, onSave: (EpubEditRequest) -> Unit) {
     val ctx = LocalContext.current; val scp = rememberCoroutineScope(); val sheetS = rememberModalBottomSheetState(true)
     fun ed(r: String?): String = if (r == null || r.equals("Unknown", true)) "" else r
 
@@ -35,7 +35,6 @@ fun MetadataEditorBottomSheet(b: BookEntity, onD: () -> Unit, onSave: (EpubEditR
     var date by remember { mutableStateOf(ed(b.publishingDate)) }
     var pub by remember { mutableStateOf(ed(b.publisher)) }
     var lang by remember { mutableStateOf(ed(b.language)) }
-    var writeF by remember { mutableStateOf(b.format == "EPUB") }
     var newCov by remember { mutableStateOf<Bitmap?>(null) }
     var remCov by remember { mutableStateOf(false) }
 
@@ -70,16 +69,12 @@ fun MetadataEditorBottomSheet(b: BookEntity, onD: () -> Unit, onSave: (EpubEditR
             OutlinedTextField(value = pub, onValueChange = { pub = it }, label = { Text("Publisher") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(value = lang, onValueChange = { lang = it }, label = { Text("Language") }, modifier = Modifier.fillMaxWidth())
 
-            if (b.format == "EPUB") {
-                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Write changes to .epub file"); Switch(checked = writeF, onCheckedChange = { writeF = it })
-                }
-            }
+            Text("Changes are saved in this app only. The original book file is not changed.", modifier = Modifier.padding(vertical = 10.dp), style = MaterialTheme.typography.bodySmall)
 
             Row(Modifier.fillMaxWidth().padding(top = 10.dp), Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(onClick = onD, Modifier.weight(1f)) { Text("Cancel") }
                 Button(onClick = { 
-                    onSave(EpubEditRequest(title.trim(), author.trim(), date.trim(), pub.trim(), lang.trim(), newCov, remCov, series.trim(), sIdx.toDoubleOrNull(), tags.trim()), writeF)
+                    onSave(EpubEditRequest(title.trim(), author.trim(), date.trim(), pub.trim(), lang.trim(), newCov, remCov, series.trim(), sIdx.toDoubleOrNull(), tags.trim()))
                 }, Modifier.weight(1f)) { Text("Save") }
             }
             Spacer(Modifier.height(24.dp))
