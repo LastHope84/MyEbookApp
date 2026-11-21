@@ -3,6 +3,7 @@ package com.example.myebookapp
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -18,6 +19,9 @@ data class OnlineBookCandidate(
 )
 
 object OnlineMetadataFetcher {
+    private const val MAX_TEXT_BYTES = 2 * 1024 * 1024
+    private const val MAX_COVER_BYTES = 8 * 1024 * 1024
+    private const val MAX_REDIRECTS = 4
 
     fun search(rawTitle: String, rawAuthor: String): List<OnlineBookCandidate> {
         val cleanTitle = cleanTitleForSearch(rawTitle)
@@ -56,37 +60,13 @@ object OnlineMetadataFetcher {
             runCatching { otherResults.addAll(searchOpenLibrary(shortTerm.ifBlank { fullTerm })) }
         }
 
-        val mergedApple = appleResults.map { item ->
-            if (item.publisher.isNotBlank()) item
-            else {
-                val borrowed = findMatchingPublisher(item.title, otherResults)
-                if (!borrowed.isNullOrBlank()) item.copy(publisher = borrowed) else item
-            }
-        }
-
-        return (mergedApple + otherResults).take(12)
+        return (appleResults + otherResults).take(12)
     }
-
-    private fun findMatchingPublisher(appleTitle: String, others: List<OnlineBookCandidate>): String? {
-        val withPub = others.filter { it.publisher.isNotBlank() }
-        if (withPub.isEmpty()) return null
-        val targetWords = significantWords(appleTitle)
-        val best = withPub.maxByOrNull { cand ->
-            val words = significantWords(cand.title)
-            targetWords.count { it in words }
-        }
-        if (best != null && targetWords.count { it in significantWords(best.title) } > 0) {
-            return best.publisher
-        }
-        return withPub.first().publisher
-    }
-
-    private fun significantWords(text: String): Set<String> =
-        text.lowercase().split(Regex("[^\\p{L}\\p{Nd}]+")).filter { it.length >= 3 }.toSet()
 
     fun downloadCoverBitmap(urlString: String, maxDimension: Int = 1400): Bitmap? {
+        if (maxDimension <= 0) return null
         return runCatching {
-            val bytes = fetchBytes(urlString, timeoutMs = 12_000) ?: return null
+            val bytes = fetchBytes(urlString, timeoutMs = 12_000, maxBytes = MAX_COVER_BYTES) ?: return null
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
             if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
@@ -120,7 +100,7 @@ object OnlineMetadataFetcher {
                     author = obj.optString("artistName", "").trim(),
                     publishingDate = date,
                     publisher = "",
-                    language = if (country == "IT") "it" else "",
+                    language = "",
                     coverUrl = cover
                 )
             )
@@ -187,7 +167,7 @@ object OnlineMetadataFetcher {
                     author = rec.optString("autorePrincipale", "").trim(),
                     publishingDate = year,
                     publisher = publisher,
-                    language = "it",
+                    language = "",
                     coverUrl = null
                 )
             )
@@ -230,27 +210,50 @@ object OnlineMetadataFetcher {
     }
 
     private fun fetchText(urlString: String, timeoutMs: Int = 8_000): String? =
-        fetchBytes(urlString, timeoutMs = timeoutMs)?.let { String(it, Charsets.UTF_8) }
+        fetchBytes(urlString, timeoutMs = timeoutMs, maxBytes = MAX_TEXT_BYTES)?.let { String(it, Charsets.UTF_8) }
 
-    private fun fetchBytes(urlString: String, timeoutMs: Int = 8_000, redirectsLeft: Int = 4): ByteArray? {
-        val conn = (URL(urlString).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = timeoutMs
-            readTimeout = timeoutMs
-            instanceFollowRedirects = true
-            setRequestProperty("User-Agent", "MyEbookApp/1.0 (Android)")
-        }
-        try {
-            val code = conn.responseCode
-            if (code in 300..399 && redirectsLeft > 0) {
-                val loc = conn.getHeaderField("Location") ?: return null
-                val nextUrl = if (loc.startsWith("http://")) loc.replaceFirst("http://", "https://") else loc
-                return fetchBytes(nextUrl, timeoutMs, redirectsLeft - 1)
+    private fun fetchBytes(urlString: String, timeoutMs: Int, maxBytes: Int): ByteArray? {
+        var current = URL(urlString)
+        var redirects = 0
+        while (true) {
+            // Validate every hop, including relative and scheme-relative redirects.
+            if (!current.protocol.equals("https", ignoreCase = true) ||
+                current.host.isNullOrBlank() || current.userInfo != null) return null
+            val conn = (current.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = timeoutMs
+                readTimeout = timeoutMs
+                instanceFollowRedirects = false
+                setRequestProperty("User-Agent", "MyEbookApp/1.0 (Android)")
             }
-            if (code !in 200..299) return null
-            return conn.inputStream.use { it.readBytes() }
-        } finally {
-            conn.disconnect()
+            try {
+                val code = conn.responseCode
+                if (code in 300..399) {
+                    if (redirects >= MAX_REDIRECTS) return null
+                    val location = conn.getHeaderField("Location") ?: return null
+                    current = URL(current, location)
+                    redirects++
+                    continue
+                }
+                if (code !in 200..299) return null
+                val declaredLength = conn.getHeaderField("Content-Length")?.toLongOrNull()
+                if (declaredLength != null && declaredLength > maxBytes) return null
+                return conn.inputStream.use { input ->
+                    val output = ByteArrayOutputStream()
+                    val buffer = ByteArray(8192)
+                    var total = 0
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count == -1) break
+                        if (count > maxBytes - total) return null
+                        output.write(buffer, 0, count)
+                        total += count
+                    }
+                    output.toByteArray()
+                }
+            } finally {
+                conn.disconnect()
+            }
         }
     }
 
