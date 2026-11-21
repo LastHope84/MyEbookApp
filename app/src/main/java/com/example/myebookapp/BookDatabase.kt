@@ -6,7 +6,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
-@Entity(tableName = "books", indices = [Index("uriString", unique = true), Index("title"), Index("series"), Index("lastOpenedAt")])
+@Entity(tableName = "books", indices = [Index("uriString", unique = true), Index("title"), Index("series"), Index("lastOpenedAt"), Index("format"), Index("metadataExtracted")])
 data class BookEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val uriString: String, val fileName: String, val format: String,
@@ -15,11 +15,14 @@ data class BookEntity(
     val language: String, val coverPath: String?, val lastLocatorJson: String?,
     val progressPercent: Double, val lastOpenedAt: Long, val metadataExtracted: Boolean,
     val series: String? = null, val seriesIndex: Double? = null, val tags: String? = null,
-    val isFavorite: Boolean = false, val readingStatus: String = "NEW"
+    @ColumnInfo(defaultValue = "0") val isFavorite: Boolean = false,
+    @ColumnInfo(defaultValue = "NEW") val readingStatus: String = "NEW"
 )
+
 @Fts4(contentEntity = BookEntity::class)
 @Entity(tableName = "books_fts")
 data class BookFtsEntity(val title: String, val author: String, val publisher: String, val series: String?, val tags: String?)
+
 data class ExtractedBookMeta(val id: Long, val title: String, val author: String, val publishingDate: String, val publisher: String, val language: String, val coverPath: String?, val series: String?, val seriesIndex: Double?, val tags: String?)
 data class BookDuplicateRow(val id: Long, val fileName: String, val fileSize: Long, val lastOpenedAt: Long, val progressPercent: Double, val hasCover: Boolean)
 
@@ -59,6 +62,7 @@ interface BookDao {
     @Query("DELETE FROM books WHERE id IN (:ids)") suspend fun deleteByIds(ids: List<Long>)
     @Query("DELETE FROM books WHERE id = :id") suspend fun deleteById(id: Long)
 }
+
 @Database(entities = [BookEntity::class, BookFtsEntity::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao
