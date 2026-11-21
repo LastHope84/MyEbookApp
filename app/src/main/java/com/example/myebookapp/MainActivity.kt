@@ -23,7 +23,6 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
@@ -34,7 +33,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 enum class LibraryTab(val title: String) { ALL("All Books"), FAV("Favorites"), READING("Reading"), TBR("To Read"), DONE("Finished"), CONV("To Convert") }
 data class PendingConvertTarget(val uri: Uri, val fileName: String, val existingBookId: Long? = null)
@@ -60,11 +58,11 @@ class MainActivity : ComponentActivity() {
 fun LibraryScreen(tm: AppThemeMode, acc: AppAccent, am: Boolean, incU: Uri?, onCons: () -> Unit, onT: (AppThemeMode)->Unit, onA: (AppAccent)->Unit, onAm: (Boolean)->Unit) {
     val ctx = LocalContext.current; val scp = rememberCoroutineScope(); val dao = remember { AppDatabase.getInstance(ctx).bookDao() }
     val drw = rememberDrawerState(DrawerValue.Closed); val total by dao.observeTotalCount().collectAsState(0)
-    val scanS by LibraryScanner.status.collectAsState()
+    val toConv by dao.observeToConvertCount().collectAsState(0); val scanS by LibraryScanner.status.collectAsState()
     var tab by remember { mutableStateOf(LibraryTab.ALL) }; var qry by remember { mutableStateOf("") }; var dbQry by remember { mutableStateOf("") }
     var selB by remember { mutableStateOf<BookEntity?>(null) }; var edtB by remember { mutableStateOf<BookEntity?>(null) }
     var showSet by remember { mutableStateOf(false) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
-    val savedFolders = LibraryScanner.getSavedFolders(ctx)
+    val folders = LibraryScanner.getSavedFolders(ctx)
 
     val folderP = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { u -> if (u != null) { runCatching { ctx.contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }; LibraryScanner.addFolder(ctx, u); LibraryScanner.scanFolders(ctx, listOf(u)) } }
     
@@ -77,7 +75,7 @@ fun LibraryScreen(tm: AppThemeMode, acc: AppAccent, am: Boolean, incU: Uri?, onC
         val f = toFtsQuery(dbQry); when (tab) {
             LibraryTab.ALL -> if (f == null) dao.allPaged() else dao.searchAllPaged(f)
             LibraryTab.CONV -> dao.toConvertPaged()
-            else -> dao.allPaged() // We'll add status filtering in Phase 2B
+            else -> dao.allPaged()
         } 
     }.flow.cachedIn(scp) }.collectAsLazyPagingItems()
 
@@ -88,18 +86,27 @@ fun LibraryScreen(tm: AppThemeMode, acc: AppAccent, am: Boolean, incU: Uri?, onC
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(value=qry, onValueChange={qry=it}, placeholder={Text("Search...")}, singleLine=true, modifier=Modifier.fillMaxWidth())
                 Spacer(Modifier.height(12.dp))
-                LibraryTab.entries.forEach { t -> NavigationDrawerItem(label={Text(t.title)}, selected=tab==t, onClick={tab=t; scp.launch{drw.close()}}) }
+                LibraryTab.entries.forEach { t -> 
+                    val count = if(t == LibraryTab.CONV) " ($toConv)" else ""
+                    NavigationDrawerItem(label={Text(t.title + count)}, selected=tab==t, onClick={tab=t; scp.launch{drw.close()}}) 
+                }
                 Spacer(Modifier.height(8.dp)); HorizontalDivider(); Spacer(Modifier.height(8.dp))
                 NavigationDrawerItem(label={Text("Add Folder")}, selected=false, onClick={scp.launch{drw.close()}; folderP.launch(null)})
-                if (savedFolders.isNotEmpty()) NavigationDrawerItem(label={Text("Rescan Folders")}, selected=false, onClick={scp.launch{drw.close()}; LibraryScanner.scanFolders(ctx, savedFolders.map{Uri.parse(it)})})
+                if (folders.isNotEmpty()) NavigationDrawerItem(label={Text("Rescan Folders")}, selected=false, onClick={scp.launch{drw.close()}; LibraryScanner.scanFolders(ctx, folders.map{Uri.parse(it)})})
                 NavigationDrawerItem(label={Text("Settings")}, selected=false, onClick={scp.launch{drw.close()}; showSet=true})
             }
         }
     }) {
-        Scaffold(topBar={ TopAppBar(navigationIcon={ IconButton(onClick={scp.launch{drw.open()}}){HamburgerIcon()} }, title={ Text(if (selMode) "${selIds.size}" else tab.title) }) }) { p ->
-            Column(Modifier.fillMaxSize().padding(p).padding(horizontal=12.dp)) {
-                if (scanS.isScanning) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(scanS.phaseLabel, style=MaterialTheme.typography.labelSmall) }
-                LazyVerticalGrid(GridCells.Fixed(3), Modifier.fillMaxSize()) {
+        Scaffold(topBar={ TopAppBar(navigationIcon={ IconButton(onClick={scp.launch{drw.open()}}){HamburgerIcon()} }, title={ Text(if (selMode) "${selIds.size} selected" else tab.title) }) }) { p ->
+            Column(Modifier.fillMaxSize().padding(p)) {
+                if (scanS.isScanning) { Card(colors=CardDefaults.cardColors(MaterialTheme.colorScheme.secondaryContainer), modifier=Modifier.fillMaxWidth().padding(8.dp)) { Column(Modifier.padding(8.dp)) { Text(scanS.phaseLabel, style=MaterialTheme.typography.labelLarge); LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical=4.dp)) } } }
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    contentPadding = PaddingValues(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(24.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
                     items(paged.itemCount, key=paged.itemKey{it.id}) { i ->
                         val b = paged[i]; if (b != null) BookGridTile(b, selMode, selIds.contains(b.id), { if (selMode) { selIds = if (selIds.contains(b.id)) selIds - b.id else selIds + b.id; if (selIds.isEmpty()) selMode=false } else selB = b }, { selMode=true; selIds = selIds + b.id }) else BookPlaceholderTile()
                     }
