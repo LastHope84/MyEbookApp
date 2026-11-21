@@ -55,12 +55,20 @@ fun BookDetailsBottomSheet(b: BookEntity, hasK: Boolean, onD: ()->Unit, onR: ()-
             
             Column(Modifier.fillMaxWidth().clickable { pathMsg = FileOpener.openContainingFolder(ctx, b.uriString) }.padding(vertical = 4.dp)) {
                 Text("Path (tap to open)", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                Text(FileOpener.formatReadablePath(b.uriString), style = MaterialTheme.typography.bodyMedium, textDecoration = TextDecoration.Underline)
+                Text(FileOpener.formatReadablePath(b.uriString), style = MaterialTheme.typography.bodyMedium, textDecoration = TextDecoration.Underline, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 pathMsg?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
             }
             Spacer(Modifier.height(12.dp))
             TextButton(onClick = onDel) { Text("Remove from Library", color = MaterialTheme.colorScheme.error) }
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+@Composable
+fun MetadataRow(label: String, value: String) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Text(value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
     }
 }
