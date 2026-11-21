@@ -1,5 +1,4 @@
 package com.example.myebookapp
-
 import android.content.Context
 import androidx.paging.PagingSource
 import androidx.room.*
@@ -18,11 +17,9 @@ data class BookEntity(
     val series: String? = null, val seriesIndex: Double? = null, val tags: String? = null,
     val isFavorite: Boolean = false, val readingStatus: String = "NEW"
 )
-
 @Fts4(contentEntity = BookEntity::class)
 @Entity(tableName = "books_fts")
 data class BookFtsEntity(val title: String, val author: String, val publisher: String, val series: String?, val tags: String?)
-
 data class ExtractedBookMeta(val id: Long, val title: String, val author: String, val publishingDate: String, val publisher: String, val language: String, val coverPath: String?, val series: String?, val seriesIndex: Double?, val tags: String?)
 data class BookDuplicateRow(val id: Long, val fileName: String, val fileSize: Long, val lastOpenedAt: Long, val progressPercent: Double, val hasCover: Boolean)
 
@@ -62,7 +59,6 @@ interface BookDao {
     @Query("DELETE FROM books WHERE id IN (:ids)") suspend fun deleteByIds(ids: List<Long>)
     @Query("DELETE FROM books WHERE id = :id") suspend fun deleteById(id: Long)
 }
-
 @Database(entities = [BookEntity::class, BookFtsEntity::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao
@@ -79,12 +75,10 @@ abstract class AppDatabase : RoomDatabase() {
         fun getInstance(context: Context): AppDatabase = INSTANCE ?: synchronized(this) { INSTANCE ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "my_ebook_library.db").addMigrations(M12, M23).build().also { INSTANCE = it } }
     }
 }
-
 fun toFtsQuery(raw: String): String? {
     val tokens = raw.trim().split(Regex("[^\\p{L}\\p{Nd}]+")).filter { it.isNotBlank() }
     return if (tokens.isEmpty()) null else tokens.joinToString(" ") { "$it*" }
 }
-
 suspend fun removeDuplicateBooks(dao: BookDao): Int {
     val rows = dao.getDuplicateCandidates(); val grouped = rows.groupBy { it.fileName.lowercase() to it.fileSize }
     val toDelete = mutableListOf<Long>()
