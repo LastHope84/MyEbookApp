@@ -87,8 +87,8 @@ fun LibraryScreen(tm: AppThemeMode, acc: AppAccent, am: Boolean, incU: Uri?, onC
                 OutlinedTextField(value=qry, onValueChange={qry=it}, placeholder={Text("Search...")}, singleLine=true, modifier=Modifier.fillMaxWidth())
                 Spacer(Modifier.height(12.dp))
                 LibraryTab.entries.forEach { t -> 
-                    val count = if(t == LibraryTab.CONV) " ($toConv)" else ""
-                    NavigationDrawerItem(label={Text(t.title + count)}, selected=tab==t, onClick={tab=t; scp.launch{drw.close()}}) 
+                    val countText = if(t == LibraryTab.CONV) " ($toConv)" else ""
+                    NavigationDrawerItem(label={Text(t.title + countText)}, selected=tab==t, onClick={tab=t; scp.launch{drw.close()}}) 
                 }
                 Spacer(Modifier.height(8.dp)); HorizontalDivider(); Spacer(Modifier.height(8.dp))
                 NavigationDrawerItem(label={Text("Add Folder")}, selected=false, onClick={scp.launch{drw.close()}; folderP.launch(null)})
@@ -99,7 +99,7 @@ fun LibraryScreen(tm: AppThemeMode, acc: AppAccent, am: Boolean, incU: Uri?, onC
     }) {
         Scaffold(topBar={ TopAppBar(navigationIcon={ IconButton(onClick={scp.launch{drw.open()}}){HamburgerIcon()} }, title={ Text(if (selMode) "${selIds.size} selected" else tab.title) }) }) { p ->
             Column(Modifier.fillMaxSize().padding(p)) {
-                if (scanS.isScanning) { Card(colors=CardDefaults.cardColors(MaterialTheme.colorScheme.secondaryContainer), modifier=Modifier.fillMaxWidth().padding(8.dp)) { Column(Modifier.padding(8.dp)) { Text(scanS.phaseLabel, style=MaterialTheme.typography.labelLarge); LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical=4.dp)) } } }
+                if (scanS.isScanning) { Card(colors=CardDefaults.cardColors(MaterialTheme.colorScheme.secondaryContainer), modifier=Modifier.fillMaxWidth().padding(8.dp)) { Column(modifier = Modifier.padding(8.dp)) { Text(scanS.phaseLabel, style=MaterialTheme.typography.labelLarge); LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical=4.dp)) } } }
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(3),
                     contentPadding = PaddingValues(12.dp),
