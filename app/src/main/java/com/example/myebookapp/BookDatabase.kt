@@ -15,13 +15,19 @@ data class BookEntity(
     val language: String, val coverPath: String?, val lastLocatorJson: String?,
     val progressPercent: Double, val lastOpenedAt: Long, val metadataExtracted: Boolean,
     val series: String? = null, val seriesIndex: Double? = null, val tags: String? = null,
-    @ColumnInfo(defaultValue = "0") val isFavorite: Boolean = false,
-    @ColumnInfo(defaultValue = "NEW") val readingStatus: String = "NEW"
+    val isFavorite: Boolean = false,
+    val readingStatus: String = "NEW"
 )
 
 @Fts4(contentEntity = BookEntity::class)
 @Entity(tableName = "books_fts")
-data class BookFtsEntity(val title: String, val author: String, val publisher: String, val series: String?, val tags: String?)
+data class BookFtsEntity(
+    val author: String,
+    val publisher: String,
+    val series: String?,
+    val tags: String?,
+    val title: String
+)
 
 data class ExtractedBookMeta(val id: Long, val title: String, val author: String, val publishingDate: String, val publisher: String, val language: String, val coverPath: String?, val series: String?, val seriesIndex: Double?, val tags: String?)
 data class BookDuplicateRow(val id: Long, val fileName: String, val fileSize: Long, val lastOpenedAt: Long, val progressPercent: Double, val hasCover: Boolean)
@@ -70,11 +76,14 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile private var INSTANCE: AppDatabase? = null
         private val M12 = object : Migration(1, 2) { override fun migrate(db: SupportSQLiteDatabase) { db.execSQL("CREATE INDEX IF NOT EXISTS `index_books_title` ON `books` (`title`)") } }
         private val M23 = object : Migration(2, 3) { override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("ALTER TABLE books ADD COLUMN series TEXT"); db.execSQL("ALTER TABLE books ADD COLUMN seriesIndex REAL")
-            db.execSQL("ALTER TABLE books ADD COLUMN tags TEXT"); db.execSQL("ALTER TABLE books ADD COLUMN isFavorite INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE books ADD COLUMN series TEXT")
+            db.execSQL("ALTER TABLE books ADD COLUMN seriesIndex REAL")
+            db.execSQL("ALTER TABLE books ADD COLUMN tags TEXT")
+            db.execSQL("ALTER TABLE books ADD COLUMN isFavorite INTEGER NOT NULL DEFAULT 0")
             db.execSQL("ALTER TABLE books ADD COLUMN readingStatus TEXT NOT NULL DEFAULT 'NEW'")
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_books_series` ON `books` (`series`)")
-            db.execSQL("DROP TABLE IF EXISTS books_fts"); db.execSQL("CREATE VIRTUAL TABLE books_fts USING fts4(content='books', title, author, publisher, series, tags)")
+            db.execSQL("DROP TABLE IF EXISTS books_fts")
+            db.execSQL("CREATE VIRTUAL TABLE books_fts USING fts4(content=`books`, author, publisher, series, tags, title)")
         } }
         fun getInstance(context: Context): AppDatabase = INSTANCE ?: synchronized(this) { INSTANCE ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "my_ebook_library.db").addMigrations(M12, M23).build().also { INSTANCE = it } }
     }
