@@ -1,4 +1,4 @@
-plugins {
+2plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -36,7 +36,7 @@ dependencies {
     implementation("androidx.fragment:fragment-ktx:1.8.5"); implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     val r = "3.1.2"
     implementation("org.readium.kotlin-toolkit:readium-shared:$r"); implementation("org.readium.kotlin-toolkit:readium-streamer:$r"); implementation("org.readium.kotlin-toolkit:readium-navigator:$r")
-    val rm = "2.7.0-alpha01"
+    val rm = "2.7.2"
     implementation("androidx.room:room-runtime:$rm"); implementation("androidx.room:room-ktx:$rm"); implementation("androidx.room:room-paging:$rm"); ksp("androidx.room:room-compiler:$rm")
     implementation("androidx.paging:paging-compose:3.3.5"); implementation("io.coil-kt:coil-compose:2.7.0")
 }
