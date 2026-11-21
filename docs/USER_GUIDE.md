@@ -27,8 +27,8 @@ You can change the reading shelf yourself without changing saved progress. When 
 ### Custom shelves
 In the library menu, tap + Create shelf and give it a name. Open a book and tap Custom shelves to add or remove it. A book can belong to multiple custom shelves as well as a reading shelf. Delete beside a custom shelf removes the shelf, not its books or reading progress.
 
-### All Books and To Convert
-All Books includes every library entry. To Convert lists non-EPUB entries. A book can appear there as well as on a reading shelf or in Favorites.
+### All Books, Recent and To Convert
+All Books includes every library entry. Recent shows up to 50 most recently added entries, including newly converted EPUBs, in library insertion order; older imports follow their original scan order. To Convert lists non-EPUB entries. Counts in the menu show the full shelf, independent of search.
 
 ### Details and path
 Book details show available metadata and a Path. Tap the path to try opening its folder in a file manager. If that is not possible, the app copies a readable path instead.
@@ -37,7 +37,7 @@ Book details show available metadata and a Path. Tap the path to try opening its
 In book details, tap Remove from Library. This removes the library entry, not the source file, and does not ask for confirmation. Its app-only edits, favorite, status and library progress entry are removed too. A rescan can add the file again; keep a separate backup of anything important.
 
 ### Selection
-Long-press a cover to enter selection mode; tap covers to select or deselect them. All selects every book on the current shelf matching the active search, including books not yet loaded on screen. Actions lets you move books to a reading shelf, manage custom shelves, add or remove Favorites, share files, or convert non-EPUB books. In Manage custom shelves, Remove is available for the currently open custom shelf. Press Android Back or tap × to leave selection mode.
+Long-press a cover to enter selection mode; tap covers to select or deselect them. All selects every book on the current shelf matching the active search, including books not yet loaded on screen. Actions lets you move books to a reading shelf, manage custom shelves, switch Favorites, share files, or convert non-EPUB books. Switch Favorites adds each selected non-favorite and removes each selected favorite, after confirmation. In Manage custom shelves, Remove is available for the currently open custom shelf. Press Android Back or tap × to leave selection mode.
 
 ## Reading an EPUB
 
