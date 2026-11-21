@@ -24,7 +24,10 @@ fun BookDetailsBottomSheet(b: BookEntity, hasK: Boolean, onD: ()->Unit, onR: ()-
     var pathMsg by remember(b.id) { mutableStateOf<String?>(null) }
 
     ModalBottomSheet(onDismissRequest = onD, sheetState = sheetS) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 10.dp), Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             if (!b.coverPath.isNullOrBlank()) {
                 AsyncImage(ImageRequest.Builder(ctx).data(File(b.coverPath)).crossfade(true).build(), null, Modifier.height(200.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Fit)
             } else {
