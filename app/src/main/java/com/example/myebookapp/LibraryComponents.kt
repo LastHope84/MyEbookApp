@@ -29,8 +29,13 @@ import kotlin.math.roundToInt
 @Composable
 fun HamburgerIcon() {
     val barColor = LocalContentColor.current
-    Column(modifier = Modifier.size(22.dp), verticalArrangement = Arrangement.SpaceEvenly) {
-        repeat(3) { Box(Modifier.fillMaxWidth().height(2.5.dp).clip(RoundedCornerShape(2.dp)).background(barColor)) }
+    Column(
+        modifier = Modifier.size(22.dp), 
+        verticalArrangement = Arrangement.SpaceEvenly
+    ) {
+        repeat(3) { 
+            Box(Modifier.fillMaxWidth().height(2.5.dp).clip(RoundedCornerShape(2.dp)).background(barColor)) 
+        }
     }
 }
 
@@ -38,7 +43,10 @@ fun openInReader(context: Context, uriString: String) {
     val uri = Uri.parse(uriString)
     val intent = Intent(context, ReaderActivity::class.java).apply {
         putExtra("book_uri", uriString)
-        if (uri.scheme == "content") { data = uri; addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        if (uri.scheme == "content") { 
+            data = uri
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) 
+        }
     }
     context.startActivity(intent)
 }
@@ -58,21 +66,54 @@ fun BookGridTile(book: BookEntity, inSelectionMode: Boolean, isSelected: Boolean
     val context = LocalContext.current
     val pct = (book.progressPercent * 100).roundToInt()
     Column(Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(0.68f).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant).then(if (isSelected) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp)) else Modifier)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.68f)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .then(if (isSelected) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp)) else Modifier)
+        ) {
             if (!book.coverPath.isNullOrBlank()) {
-                AsyncImage(ImageRequest.Builder(context).data(File(book.coverPath)).crossfade(true).build(), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                AsyncImage(
+                    model = ImageRequest.Builder(context).data(File(book.coverPath)).crossfade(true).build(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
             } else {
-                Column(Modifier.fillMaxSize().padding(8.dp), Arrangement.Center, Alignment.CenterHorizontally) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(8.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Text(book.title, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center, maxLines = 4, overflow = TextOverflow.Ellipsis)
                     Text(book.author, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
             if (isSelected) Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary.copy(0.22f)))
-            if (inSelectionMode) Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(24.dp).clip(CircleShape).background(if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface.copy(0.8f)).border(2.dp, MaterialTheme.colorScheme.primary, CircleShape), Alignment.Center) { if (isSelected) Text("✓", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
+            if (inSelectionMode) {
+                Box(
+                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(24.dp).clip(CircleShape)
+                        .background(if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface.copy(0.8f))
+                        .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) Text("✓", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                }
+            }
             val badge = when { book.format != "EPUB" -> book.format; pct > 0 -> "$pct%"; else -> null }
-            if (badge != null) Surface(color = MaterialTheme.colorScheme.primaryContainer.copy(0.92f), shape = RoundedCornerShape(4.dp), modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)) { Text(badge, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)) }
+            if (badge != null) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(0.92f),
+                    shape = RoundedCornerShape(4.dp),
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)
+                ) {
+                    Text(badge, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp))
+                }
+            }
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(6.dp))
         Text(book.title, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text(book.author, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
