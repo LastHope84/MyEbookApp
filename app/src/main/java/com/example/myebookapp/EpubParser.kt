@@ -18,234 +18,129 @@ data class EpubMetadata(
     val publishingDate: String,
     val publisher: String,
     val language: String,
-    val coverBitmap: Bitmap?
+    val coverBitmap: Bitmap?,
+    val series: String? = null,
+    val seriesIndex: Double? = null,
+    val tags: String? = null
 )
 
 object EpubParser {
-
     fun getFileName(context: Context, uri: Uri): String {
-        if (uri.scheme == "file") {
-            return uri.lastPathSegment?.substringAfterLast('/') ?: "Unknown"
-        }
-        context.contentResolver.query(
-            uri,
-            arrayOf(OpenableColumns.DISPLAY_NAME),
-            null,
-            null,
-            null
-        )?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                if (idx >= 0) {
-                    val name = cursor.getString(idx)
-                    if (!name.isNullOrBlank()) return name
-                }
+        if (uri.scheme == "file") return uri.lastPathSegment?.substringAfterLast('/') ?: "Unknown"
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) {
+                val i = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (i >= 0) return c.getString(i) ?: ""
             }
         }
-        return uri.lastPathSegment?.substringAfterLast('/') ?: "Unknown"
+        return "Unknown"
     }
 
     fun parseEpub(context: Context, uri: Uri, fileName: String): EpubMetadata {
-        val opfPath = findOpfPath(context, uri)
-            ?: throw IllegalStateException("Could not find OPF metadata inside this EPUB.")
-
-        val opfData = readZipEntryBytes(context, uri, opfPath)
-            ?: throw IllegalStateException("Could not read $opfPath inside this EPUB.")
-
+        val opfPath = findOpfPath(context, uri) ?: throw IllegalStateException("No OPF found")
+        val opfData = readZipEntryBytes(context, uri, opfPath) ?: throw IllegalStateException("OPF unreadable")
         val parsed = opfData.inputStream().use { parseOpf(it) }
 
-        val coverBitmap = parsed.coverHref?.let { href ->
-            val resolvedPath = resolveZipPath(opfPath, href)
-            val imageBytes = readZipEntryBytes(context, uri, resolvedPath)
-            imageBytes?.let { decodeSampledBitmap(it, maxDimension = 1024) }
+        val coverBmp = parsed.coverHref?.let { href ->
+            val path = resolveZipPath(opfPath, href)
+            readZipEntryBytes(context, uri, path)?.let { decodeSampledBitmap(it, 1024) }
         }
 
         return EpubMetadata(
             fileName = fileName,
             title = parsed.title.ifBlank { fileName.substringBeforeLast('.') },
-            author = parsed.authors.joinToString(", ").ifBlank { "Unknown" },
+            author = parsed.authors.joinToString("; ").ifBlank { "Unknown" },
             publishingDate = parsed.publishingDate.ifBlank { "Unknown" },
             publisher = parsed.publisher.ifBlank { "Unknown" },
             language = parsed.language.ifBlank { "Unknown" },
-            coverBitmap = coverBitmap
+            coverBitmap = coverBmp,
+            series = parsed.series?.ifBlank { null },
+            seriesIndex = parsed.seriesIndex,
+            tags = if (parsed.tags.isEmpty()) null else parsed.tags.joinToString("; ")
         )
-    }
-
-    private fun openUriStream(context: Context, uri: Uri): InputStream? {
-        return if (uri.scheme == "file") {
-            uri.path?.let { File(it).inputStream() }
-        } else {
-            context.contentResolver.openInputStream(uri)
-        }
     }
 
     private fun findOpfPath(context: Context, uri: Uri): String? {
-        val containerBytes = readZipEntryBytes(context, uri, "META-INF/container.xml")
-            ?: return null
-
-        containerBytes.inputStream().use { stream ->
-            val parser = Xml.newPullParser()
-            parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
-            parser.setInput(stream, "UTF-8")
-
-            var eventType = parser.eventType
-            while (eventType != XmlPullParser.END_DOCUMENT) {
-                if (eventType == XmlPullParser.START_TAG &&
-                    parser.name.equals("rootfile", ignoreCase = true)
-                ) {
-                    val fullPath = parser.getAttributeValue(null, "full-path")
-                    if (!fullPath.isNullOrBlank()) return fullPath
-                }
-                eventType = parser.next()
-            }
+        val bytes = readZipEntryBytes(context, uri, "META-INF/container.xml") ?: return null
+        val parser = Xml.newPullParser().apply { setInput(bytes.inputStream(), "UTF-8") }
+        var event = parser.eventType
+        while (event != XmlPullParser.END_DOCUMENT) {
+            if (event == XmlPullParser.START_TAG && parser.name == "rootfile") return parser.getAttributeValue(null, "full-path")
+            event = parser.next()
         }
         return null
     }
 
-    private data class OpfParseResult(
-        val title: String,
-        val authors: List<String>,
-        val publishingDate: String,
-        val publisher: String,
-        val language: String,
-        val coverHref: String?
-    )
+    private data class OpfResult(val title: String, val authors: List<String>, val publishingDate: String, val publisher: String, val language: String, val coverHref: String?, val series: String?, val seriesIndex: Double?, val tags: List<String>)
 
-    private fun parseOpf(stream: InputStream): OpfParseResult {
-        val parser = Xml.newPullParser()
-        parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
-        parser.setInput(stream, "UTF-8")
+    private fun parseOpf(stream: InputStream): OpfResult {
+        val p = Xml.newPullParser().apply { setInput(stream, "UTF-8") }
+        var title = ""; val authors = mutableListOf<String>(); var date = ""; var pub = ""; var lang = ""
+        var sName: String? = null; var sIdx: Double? = null; val tags = mutableListOf<String>()
+        var cId: String? = null; var c3Href: String? = null; val manifest = mutableMapOf<String, String>()
 
-        var title = ""
-        val authors = mutableListOf<String>()
-        var publishingDate = ""
-        var publisher = ""
-        var language = ""
-
-        var epub2CoverId: String? = null
-        var epub3CoverHref: String? = null
-        val manifestHrefById = mutableMapOf<String, String>()
-        var fallbackImageCoverHref: String? = null
-
-        var eventType = parser.eventType
-        while (eventType != XmlPullParser.END_DOCUMENT) {
-            if (eventType == XmlPullParser.START_TAG) {
-                val tag = parser.name?.substringAfterLast(':')?.lowercase() ?: ""
+        var event = p.eventType
+        while (event != XmlPullParser.END_DOCUMENT) {
+            if (event == XmlPullParser.START_TAG) {
+                val tag = p.name?.lowercase() ?: ""
                 when (tag) {
-                    "title" -> if (title.isBlank()) {
-                        title = safeNextText(parser)
-                    }
-                    "creator" -> {
-                        val creator = safeNextText(parser)
-                        if (creator.isNotBlank()) authors.add(creator)
-                    }
-                    "date" -> if (publishingDate.isBlank()) {
-                        publishingDate = safeNextText(parser)
-                    }
-                    "publisher" -> if (publisher.isBlank()) {
-                        publisher = safeNextText(parser)
-                    }
-                    "language" -> if (language.isBlank()) {
-                        language = safeNextText(parser)
-                    }
+                    "title" -> title = p.nextText().trim()
+                    "creator" -> p.nextText().trim().let { if (it.isNotBlank()) authors.add(it) }
+                    "date" -> date = p.nextText().trim()
+                    "publisher" -> pub = p.nextText().trim()
+                    "language" -> lang = p.nextText().trim()
+                    "subject" -> p.nextText().trim().let { if (it.isNotBlank()) tags.add(it) }
                     "meta" -> {
-                        val name = parser.getAttributeValue(null, "name")
-                        val content = parser.getAttributeValue(null, "content")
-                        if (name.equals("cover", ignoreCase = true) && !content.isNullOrBlank()) {
-                            epub2CoverId = content
+                        val name = p.getAttributeValue(null, "name")
+                        val content = p.getAttributeValue(null, "content")
+                        val prop = p.getAttributeValue(null, "property")
+                        when {
+                            name == "cover" -> cId = content
+                            name == "calibre:series" -> sName = content
+                            name == "calibre:series_index" -> sIdx = content?.toDoubleOrNull()
+                            prop == "belongs-to-collection" -> sName = p.nextText().trim()
+                            prop == "group-position" -> sIdx = p.nextText().trim().toDoubleOrNull()
                         }
                     }
                     "item" -> {
-                        val id = parser.getAttributeValue(null, "id")
-                        val href = parser.getAttributeValue(null, "href")
-                        val mediaType = parser.getAttributeValue(null, "media-type")
-                        val properties = parser.getAttributeValue(null, "properties")
-
-                        if (!id.isNullOrBlank() && !href.isNullOrBlank()) {
-                            manifestHrefById[id] = href
-                        }
-                        if (!href.isNullOrBlank() &&
-                            properties?.split(' ')?.any { it == "cover-image" } == true
-                        ) {
-                            epub3CoverHref = href
-                        }
-                        if (fallbackImageCoverHref == null &&
-                            !href.isNullOrBlank() &&
-                            mediaType?.startsWith("image/", ignoreCase = true) == true &&
-                            (id?.contains("cover", ignoreCase = true) == true ||
-                                href.contains("cover", ignoreCase = true))
-                        ) {
-                            fallbackImageCoverHref = href
+                        val id = p.getAttributeValue(null, "id"); val href = p.getAttributeValue(null, "href")
+                        if (id != null && href != null) {
+                            manifest[id] = href
+                            if (p.getAttributeValue(null, "properties")?.contains("cover-image") == true) c3Href = href
                         }
                     }
                 }
             }
-            eventType = parser.next()
+            event = p.next()
         }
-
-        val resolvedCoverHref = epub3CoverHref
-            ?: epub2CoverId?.let { manifestHrefById[it] }
-            ?: fallbackImageCoverHref
-
-        return OpfParseResult(
-            title = title,
-            authors = authors,
-            publishingDate = publishingDate,
-            publisher = publisher,
-            language = language,
-            coverHref = resolvedCoverHref
-        )
+        return OpfResult(title, authors, date, pub, lang, c3Href ?: manifest[cId], sName, sIdx, tags)
     }
 
-    private fun safeNextText(parser: XmlPullParser): String {
-        return runCatching { parser.nextText().trim() }.getOrDefault("")
-    }
-
-    private fun readZipEntryBytes(context: Context, uri: Uri, targetPath: String): ByteArray? {
-        val normalizedTarget = targetPath.trimStart('/')
-        openUriStream(context, uri)?.use { inputStream ->
-            ZipInputStream(inputStream).use { zip ->
-                var entry = zip.nextEntry
-                while (entry != null) {
-                    val entryName = entry.name.trimStart('/')
-                    if (!entry.isDirectory && entryName.equals(normalizedTarget, ignoreCase = true)) {
-                        return zip.readBytes()
-                    }
-                    zip.closeEntry()
-                    entry = zip.nextEntry
+    private fun readZipEntryBytes(context: Context, uri: Uri, target: String): ByteArray? {
+        val stream = if (uri.scheme == "file") uri.path?.let { File(it).inputStream() } else context.contentResolver.openInputStream(uri)
+        stream?.use { ins ->
+            ZipInputStream(ins).use { zip ->
+                var e = zip.nextEntry
+                while (e != null) {
+                    if (!e.isDirectory && e.name.trimStart('/').equals(target.trimStart('/'), true)) return zip.readBytes()
+                    e = zip.nextEntry
                 }
             }
         }
         return null
     }
 
-    private fun resolveZipPath(opfPath: String, href: String): String {
-        val decoded = Uri.decode(href).trimStart('/')
-        val baseDir = opfPath.substringBeforeLast('/', "")
-        val combined = if (baseDir.isEmpty()) decoded else "$baseDir/$decoded"
-        val parts = mutableListOf<String>()
-        for (part in combined.split('/')) {
-            when {
-                part.isEmpty() || part == "." -> {}
-                part == ".." -> if (parts.isNotEmpty()) parts.removeAt(parts.lastIndex)
-                else -> parts.add(part)
-            }
-        }
-        return parts.joinToString("/")
+    private fun resolveZipPath(opf: String, href: String): String {
+        val parts = (opf.substringBeforeLast('/', "") + "/" + Uri.decode(href)).split('/').toMutableList()
+        val result = mutableListOf<String>()
+        for (p in parts) when (p) { "", "." -> {} ; ".." -> if (result.isNotEmpty()) result.removeAt(result.lastIndex) ; else -> result.add(p) }
+        return result.joinToString("/")
     }
 
-    private fun decodeSampledBitmap(bytes: ByteArray, maxDimension: Int): Bitmap? {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-
-        var sampleSize = 1
-        while (bounds.outWidth / sampleSize > maxDimension ||
-            bounds.outHeight / sampleSize > maxDimension
-        ) {
-            sampleSize *= 2
-        }
-
-        val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+    private fun decodeSampledBitmap(bytes: ByteArray, max: Int): Bitmap? {
+        val opt = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opt)
+        var s = 1; while (opt.outWidth / s > max || opt.outHeight / s > max) s *= 2
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = s })
     }
 }
