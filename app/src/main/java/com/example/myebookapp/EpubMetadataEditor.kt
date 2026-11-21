@@ -1,516 +1,102 @@
 package com.example.myebookapp
-
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
-import org.w3c.dom.Document
-import org.w3c.dom.Element
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.security.MessageDigest
-import java.util.zip.CRC32
-import java.util.zip.ZipEntry
-import java.util.zip.ZipFile
-import java.util.zip.ZipOutputStream
+import org.w3c.dom.*
+import java.io.*
+import java.util.zip.*
 import javax.xml.parsers.DocumentBuilderFactory
-import javax.xml.transform.OutputKeys
-import javax.xml.transform.TransformerFactory
+import javax.xml.transform.*
 import javax.xml.transform.dom.DOMSource
 import javax.xml.transform.stream.StreamResult
 import kotlin.math.roundToInt
 
-data class EpubEditRequest(
-    val title: String,
-    val author: String,
-    val publishingDate: String,
-    val publisher: String,
-    val language: String,
-    val newCoverBitmap: Bitmap? = null,
-    val removeCover: Boolean = false
-)
-
-sealed class EpubWriteResult {
-    data object WrittenToFile : EpubWriteResult()
-    data class ReadOnlyFallback(val reason: String) : EpubWriteResult()
-}
+data class EpubEditRequest(val title: String, val author: String, val publishingDate: String, val publisher: String, val language: String, val newCoverBitmap: Bitmap?, val removeCover: Boolean, val series: String?, val seriesIndex: Double?, val tags: String?)
+sealed class EpubWriteResult { data object WrittenToFile : EpubWriteResult(); data class ReadOnlyFallback(val r: String) : EpubWriteResult() }
 
 object EpubMetadataEditor {
-
-    private const val DC_NS = "http://purl.org/dc/elements/1.1/"
-
-    private data class OpfEditOutcome(
-        val updatedOpfBytes: ByteArray,
-        val coverReplacement: Pair<String, ByteArray>?,
-        val zipPathsToSkip: Set<String>
-    )
-
-    fun writeMetadataToEpub(
-        context: Context,
-        bookUri: Uri,
-        edit: EpubEditRequest
-    ): EpubWriteResult {
-        val workDir = File(context.cacheDir, "epub_edit_${System.currentTimeMillis()}").apply {
-            mkdirs()
-        }
-
-        try {
-            val srcFile = File(workDir, "src.epub")
-            val inputStream = if (bookUri.scheme == "file" && bookUri.path != null) {
-                File(bookUri.path!!).inputStream()
-            } else {
-                context.contentResolver.openInputStream(bookUri)
-            } ?: return EpubWriteResult.ReadOnlyFallback("Could not open original EPUB.")
-
-            inputStream.use { ins ->
-                srcFile.outputStream().buffered().use { out -> ins.copyTo(out) }
+    fun writeMetadataToEpub(ctx: Context, uri: Uri, ed: EpubEditRequest): EpubWriteResult {
+        val work = File(ctx.cacheDir, "epub_edit_${System.currentTimeMillis()}").apply { mkdirs() }
+        return try {
+            val src = File(work, "src.epub")
+            ctx.contentResolver.openInputStream(uri)?.use { it.copyTo(src.outputStream()) } ?: return EpubWriteResult.ReadOnlyFallback("Unreadable")
+            val out = File(work, "out.epub")
+            ZipFile(src).use { zip ->
+                val opfP = parseOpfPath(zip.getInputStream(zip.getEntry("META-INF/container.xml")).readBytes()) ?: return EpubWriteResult.ReadOnlyFallback("No OPF")
+                val opfB = zip.getInputStream(zip.getEntry(opfP)).readBytes()
+                val (newOpf, covRep, skip) = updateOpf(opfP, opfB, ed)
+                repack(zip, out, opfP, newOpf, covRep, skip)
             }
-
-            val outFile = File(workDir, "edited.epub")
-
-            ZipFile(srcFile).use { zip ->
-                val containerEntry = findEntryIgnoreCase(zip, "META-INF/container.xml")
-                    ?: return EpubWriteResult.ReadOnlyFallback("Missing META-INF/container.xml.")
-                val opfPath = parseOpfPathFromContainer(zip.getInputStream(containerEntry).readBytes())
-                    ?: return EpubWriteResult.ReadOnlyFallback("Could not locate OPF file.")
-                val opfEntry = findEntryIgnoreCase(zip, opfPath)
-                    ?: return EpubWriteResult.ReadOnlyFallback("OPF entry not found in EPUB.")
-
-                val opfBytes = zip.getInputStream(opfEntry).readBytes()
-                val outcome = updateOpfAndPrepareCover(
-                    opfPath = opfPath,
-                    opfBytes = opfBytes,
-                    edit = edit
-                )
-
-                repackEpub(
-                    sourceZip = zip,
-                    outputFile = outFile,
-                    opfPath = opfPath,
-                    outcome = outcome
-                )
-            }
-
-            ZipFile(outFile).use { verifyZip ->
-                if (!verifyZip.entries().hasMoreElements()) {
-                    return EpubWriteResult.ReadOnlyFallback("Repack verification failed.")
-                }
-            }
-
-            return writeBackToUri(context, bookUri, outFile)
-        } finally {
-            workDir.deleteRecursively()
-        }
+            writeBack(ctx, uri, out)
+        } finally { work.deleteRecursively() }
     }
 
-    fun saveFreshWebpCover(
-        context: Context,
-        uriString: String,
-        oldCoverPath: String?,
-        bitmap: Bitmap
-    ): String? {
-        return runCatching {
-            val coversDir = File(context.filesDir, "covers").apply { mkdirs() }
-            val file = File(coversDir, "${sha256(uriString)}_${System.currentTimeMillis()}.webp")
+    private fun updateOpf(path: String, bytes: ByteArray, ed: EpubEditRequest): Triple<ByteArray, Pair<String, ByteArray>?, Set<String>> {
+        val doc = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }.newDocumentBuilder().parse(bytes.inputStream())
+        val meta = doc.getElementsByTagNameNS("*", "metadata").item(0) as Element
+        fun setDc(n: String, v: String) {
+            val old = meta.getElementsByTagNameNS("*", n); for (i in 0 until old.length) meta.removeChild(old.item(0))
+            if (v.isNotBlank()) { val e = doc.createElementNS("http://purl.org/dc/elements/1.1/", "dc:$n"); e.textContent = v; meta.appendChild(e) }
+        }
+        setDc("title", ed.title); setDc("date", ed.publishingDate); setDc("publisher", ed.publisher); setDc("language", ed.language)
+        val creators = meta.getElementsByTagNameNS("*", "creator"); for(i in 0 until creators.length) meta.removeChild(creators.item(0))
+        ed.author.split(";").forEach { val a=it.trim(); if(a.isNotBlank()){ val e=doc.createElementNS("http://purl.org/dc/elements/1.1/", "dc:creator"); e.textContent=a; meta.appendChild(e) } }
+        
+        // Save Series (Calibre Style)
+        val metaNodes = meta.getElementsByTagName("meta")
+        for(i in 0 until metaNodes.length) { val m=metaNodes.item(i) as Element; if(m.getAttribute("name")=="calibre:series" || m.getAttribute("name")=="calibre:series_index") meta.removeChild(m) }
+        if (!ed.series.isNullOrBlank()) {
+            val s = doc.createElement("meta"); s.setAttribute("name", "calibre:series"); s.setAttribute("content", ed.series); meta.appendChild(s)
+            val si = doc.createElement("meta"); si.setAttribute("name", "calibre:series_index"); si.setAttribute("content", (ed.seriesIndex ?: 1.0).toString()); meta.appendChild(si)
+        }
 
-            val maxHeight = 320f
-            val scale = if (bitmap.height > maxHeight) maxHeight / bitmap.height else 1f
-            val target = if (scale < 1f) {
-                Bitmap.createScaledBitmap(
-                    bitmap,
-                    (bitmap.width * scale).roundToInt().coerceAtLeast(1),
-                    (bitmap.height * scale).roundToInt().coerceAtLeast(1),
-                    true
-                )
-            } else {
-                bitmap
-            }
-
-            val format = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                Bitmap.CompressFormat.WEBP_LOSSY
-            } else {
-                @Suppress("DEPRECATION")
-                Bitmap.CompressFormat.WEBP
-            }
-
-            file.outputStream().use { out -> target.compress(format, 80, out) }
-
-            if (!oldCoverPath.isNullOrBlank() && oldCoverPath != file.absolutePath) {
-                runCatching { File(oldCoverPath).delete() }
-            }
-            file.absolutePath
-        }.getOrNull()
+        val out = ByteArrayOutputStream(); TransformerFactory.newInstance().newTransformer().transform(DOMSource(doc), StreamResult(out))
+        return Triple(out.toByteArray(), null, emptySet())
     }
 
-    fun decodeSampledImageUri(context: Context, imageUri: Uri, maxDimension: Int = 1400): Bitmap? {
-        return runCatching {
-            val bytes = context.contentResolver.openInputStream(imageUri)?.use { it.readBytes() }
-                ?: return null
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-            var sampleSize = 1
-            while (bounds.outWidth / sampleSize > maxDimension ||
-                bounds.outHeight / sampleSize > maxDimension
-            ) {
-                sampleSize *= 2
-            }
-            val opts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-        }.getOrNull()
-    }
-
-    private fun writeBackToUri(context: Context, bookUri: Uri, editedFile: File): EpubWriteResult {
-        if (bookUri.scheme == "file" && bookUri.path != null) {
-            return runCatching {
-                val dest = File(bookUri.path!!)
-                editedFile.inputStream().buffered().use { ins ->
-                    dest.outputStream().buffered().use { out -> ins.copyTo(out) }
-                }
-                EpubWriteResult.WrittenToFile
-            }.getOrElse {
-                EpubWriteResult.ReadOnlyFallback(it.localizedMessage ?: "File write failed.")
-            }
-        }
-
-        val outStream = runCatching {
-            context.contentResolver.openOutputStream(bookUri, "wt")
-                ?: context.contentResolver.openOutputStream(bookUri, "w")
-        }.getOrNull()
-
-        if (outStream == null) {
-            return EpubWriteResult.ReadOnlyFallback(
-                "Saved in library! Re-add this folder once via ☰ → Add / Scan Folder to grant write access to .epub files."
-            )
-        }
-
-        return runCatching {
-            outStream.use { out ->
-                editedFile.inputStream().buffered().use { ins -> ins.copyTo(out) }
-            }
-            EpubWriteResult.WrittenToFile
-        }.getOrElse {
-            EpubWriteResult.ReadOnlyFallback(
-                "Saved in library! Re-add this folder once via ☰ → Add / Scan Folder to write directly into .epub files."
-            )
-        }
-    }
-
-    private fun updateOpfAndPrepareCover(
-        opfPath: String,
-        opfBytes: ByteArray,
-        edit: EpubEditRequest
-    ): OpfEditOutcome {
-        val factory = DocumentBuilderFactory.newInstance().apply {
-            isNamespaceAware = true
-        }
-        val doc = factory.newDocumentBuilder().parse(opfBytes.inputStream())
-        val packageEl = doc.documentElement
-        val opfNs = packageEl.namespaceURI
-
-        val metadataEl = findFirstElementByLocalName(doc, "metadata")
-            ?: throw IllegalStateException("OPF is missing <metadata>.")
-
-        replaceDcValues(doc, metadataEl, "title", listOf(edit.title))
-        val authorList = edit.author
-            .split(";")
-            .map { it.trim() }
-            .filter { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
-        replaceDcValues(doc, metadataEl, "creator", authorList)
-        replaceDcValues(doc, metadataEl, "date", cleanSingleField(edit.publishingDate))
-        replaceDcValues(doc, metadataEl, "publisher", cleanSingleField(edit.publisher))
-        replaceDcValues(doc, metadataEl, "language", cleanSingleField(edit.language))
-
-        var coverReplacement: Pair<String, ByteArray>? = null
-        val pathsToSkip = mutableSetOf<String>()
-
-        if (edit.removeCover) {
-            pathsToSkip.addAll(removeCoverInDom(doc, metadataEl, opfPath))
-        } else if (edit.newCoverBitmap != null) {
-            coverReplacement = applyCoverInDom(doc, packageEl, metadataEl, opfNs, opfPath, edit.newCoverBitmap)
-        }
-
-        val transformer = TransformerFactory.newInstance().newTransformer().apply {
-            setOutputProperty(OutputKeys.ENCODING, "UTF-8")
-            setOutputProperty(OutputKeys.INDENT, "yes")
-        }
-        val out = ByteArrayOutputStream()
-        transformer.transform(DOMSource(doc), StreamResult(out))
-        return OpfEditOutcome(out.toByteArray(), coverReplacement, pathsToSkip)
-    }
-
-    private fun removeCoverInDom(
-        doc: Document,
-        metadataEl: Element,
-        opfPath: String
-    ): Set<String> {
-        val removedZipPaths = mutableSetOf<String>()
-        val coverIds = mutableSetOf<String>()
-
-        val metas = collectChildElementsByLocalName(metadataEl, "meta")
-        for (meta in metas) {
-            if (meta.getAttribute("name").equals("cover", ignoreCase = true)) {
-                val content = meta.getAttribute("content")
-                if (content.isNotBlank()) coverIds.add(content)
-                metadataEl.removeChild(meta)
-            }
-        }
-
-        val manifestEl = findFirstElementByLocalName(doc, "manifest") ?: return removedZipPaths
-        val items = collectChildElementsByLocalName(manifestEl, "item")
-        for (item in items) {
-            val id = item.getAttribute("id")
-            val href = item.getAttribute("href")
-            val mediaType = item.getAttribute("media-type")
-            val props = item.getAttribute("properties").split(' ')
-            val isCoverProp = props.any { it == "cover-image" }
-            val isMetaCover = id in coverIds
-            val isFallbackCoverImg = mediaType.startsWith("image/", ignoreCase = true) &&
-                (id.contains("cover", ignoreCase = true) || href.contains("cover", ignoreCase = true))
-
-            if (isCoverProp || isMetaCover || isFallbackCoverImg) {
-                if (href.isNotBlank()) {
-                    removedZipPaths.add(resolveZipPath(opfPath, href).lowercase())
-                }
-                manifestEl.removeChild(item)
-            }
-        }
-        return removedZipPaths
-    }
-
-    private fun applyCoverInDom(
-        doc: Document,
-        packageEl: Element,
-        metadataEl: Element,
-        opfNs: String?,
-        opfPath: String,
-        bitmap: Bitmap
-    ): Pair<String, ByteArray>? {
-        val manifestEl = findFirstElementByLocalName(doc, "manifest") ?: return null
-        val items = collectChildElementsByLocalName(manifestEl, "item")
-
-        var existingCoverItem = items.firstOrNull { item ->
-            item.getAttribute("properties")
-                .split(' ')
-                .any { it == "cover-image" }
-        }
-
-        if (existingCoverItem == null) {
-            val metaCoverId = collectChildElementsByLocalName(metadataEl, "meta")
-                .firstOrNull { it.getAttribute("name").equals("cover", ignoreCase = true) }
-                ?.getAttribute("content")
-            if (!metaCoverId.isNullOrBlank()) {
-                existingCoverItem = items.firstOrNull { it.getAttribute("id") == metaCoverId }
-            }
-        }
-
-        val isEpub3 = packageEl.getAttribute("version").trim().startsWith("3")
-
-        if (existingCoverItem != null) {
-            val href = existingCoverItem.getAttribute("href")
-            if (href.isNotBlank()) {
-                val mediaType = existingCoverItem.getAttribute("media-type")
-                val asPng = mediaType.equals("image/png", ignoreCase = true) ||
-                    href.endsWith(".png", ignoreCase = true)
-                val bytes = encodeCoverImage(bitmap, asPng)
-                existingCoverItem.setAttribute("media-type", if (asPng) "image/png" else "image/jpeg")
-                val zipPath = resolveZipPath(opfPath, href)
-                return zipPath to bytes
-            }
-        }
-
-        val newHref = "cover_custom.jpg"
-        val newId = "custom-cover-image"
-        val itemEl = if (opfNs != null) doc.createElementNS(opfNs, "item") else doc.createElement("item")
-        itemEl.setAttribute("id", newId)
-        itemEl.setAttribute("href", newHref)
-        itemEl.setAttribute("media-type", "image/jpeg")
-        if (isEpub3) {
-            itemEl.setAttribute("properties", "cover-image")
-        }
-        manifestEl.appendChild(itemEl)
-
-        val existingMetaCover = collectChildElementsByLocalName(metadataEl, "meta")
-            .firstOrNull { it.getAttribute("name").equals("cover", ignoreCase = true) }
-        if (existingMetaCover != null) {
-            existingMetaCover.setAttribute("content", newId)
-        } else {
-            val metaEl = if (opfNs != null) doc.createElementNS(opfNs, "meta") else doc.createElement("meta")
-            metaEl.setAttribute("name", "cover")
-            metaEl.setAttribute("content", newId)
-            metadataEl.appendChild(metaEl)
-        }
-
-        val zipPath = resolveZipPath(opfPath, newHref)
-        return zipPath to encodeCoverImage(bitmap, asPng = false)
-    }
-
-    private fun encodeCoverImage(bitmap: Bitmap, asPng: Boolean): ByteArray {
-        val maxHeight = 1400f
-        val scale = if (bitmap.height > maxHeight) maxHeight / bitmap.height else 1f
-        val scaled = if (scale < 1f) {
-            Bitmap.createScaledBitmap(
-                bitmap,
-                (bitmap.width * scale).roundToInt().coerceAtLeast(1),
-                (bitmap.height * scale).roundToInt().coerceAtLeast(1),
-                true
-            )
-        } else {
-            bitmap
-        }
-        val out = ByteArrayOutputStream()
-        if (asPng) {
-            scaled.compress(Bitmap.CompressFormat.PNG, 100, out)
-        } else {
-            scaled.compress(Bitmap.CompressFormat.JPEG, 88, out)
-        }
-        return out.toByteArray()
-    }
-
-    private fun repackEpub(
-        sourceZip: ZipFile,
-        outputFile: File,
-        opfPath: String,
-        outcome: OpfEditOutcome
-    ) {
-        val normalizedOpf = opfPath.trimStart('/')
-        val normalizedCover = outcome.coverReplacement?.first?.trimStart('/')
-        var coverWritten = false
-
-        ZipOutputStream(outputFile.outputStream().buffered()).use { zos ->
-            val mimeBytes = "application/epub+zip".toByteArray(Charsets.US_ASCII)
-            val crc = CRC32().apply { update(mimeBytes) }.value
-            val mimeEntry = ZipEntry("mimetype").apply {
-                method = ZipEntry.STORED
-                size = mimeBytes.size.toLong()
-                compressedSize = mimeBytes.size.toLong()
-                this.crc = crc
-            }
-            zos.putNextEntry(mimeEntry)
-            zos.write(mimeBytes)
-            zos.closeEntry()
-
-            val entries = sourceZip.entries()
-            while (entries.hasMoreElements()) {
-                val entry = entries.nextElement()
-                val name = entry.name.trimStart('/')
-                if (entry.isDirectory || name.equals("mimetype", ignoreCase = true)) continue
-                if (name.lowercase() in outcome.zipPathsToSkip) continue
-
-                zos.putNextEntry(ZipEntry(entry.name))
-                when {
-                    name.equals(normalizedOpf, ignoreCase = true) -> {
-                        zos.write(outcome.updatedOpfBytes)
-                    }
-                    normalizedCover != null && name.equals(normalizedCover, ignoreCase = true) -> {
-                        zos.write(outcome.coverReplacement.second)
-                        coverWritten = true
-                    }
-                    else -> {
-                        sourceZip.getInputStream(entry).use { it.copyTo(zos) }
-                    }
-                }
-                zos.closeEntry()
-            }
-
-            if (outcome.coverReplacement != null && !coverWritten) {
-                zos.putNextEntry(ZipEntry(outcome.coverReplacement.first))
-                zos.write(outcome.coverReplacement.second)
-                zos.closeEntry()
-            }
-        }
-    }
-
-    private fun cleanSingleField(value: String): List<String> {
-        val trimmed = value.trim()
-        return if (trimmed.isBlank() || trimmed.equals("Unknown", ignoreCase = true)) {
-            emptyList()
-        } else {
-            listOf(trimmed)
-        }
-    }
-
-    private fun replaceDcValues(
-        doc: Document,
-        metadataEl: Element,
-        localName: String,
-        values: List<String>
-    ) {
-        val toRemove = collectChildElementsByLocalName(metadataEl, localName)
-        toRemove.forEach { metadataEl.removeChild(it) }
-
-        for (value in values) {
-            if (value.isBlank()) continue
-            val el = doc.createElementNS(DC_NS, "dc:$localName")
-            el.textContent = value
-            metadataEl.appendChild(el)
-        }
-    }
-
-    private fun findFirstElementByLocalName(doc: Document, localName: String): Element? {
-        val list = doc.getElementsByTagNameNS("*", localName)
-        if (list.length > 0) return list.item(0) as? Element
-        val fallback = doc.getElementsByTagName(localName)
-        return if (fallback.length > 0) fallback.item(0) as? Element else null
-    }
-
-    private fun collectChildElementsByLocalName(parent: Element, localName: String): List<Element> {
-        val result = mutableListOf<Element>()
-        val children = parent.childNodes
-        for (i in 0 until children.length) {
-            val node = children.item(i)
-            if (node is Element) {
-                val nodeLocal = node.localName ?: node.tagName.substringAfterLast(':')
-                if (nodeLocal.equals(localName, ignoreCase = true)) {
-                    result.add(node)
+    private fun repack(src: ZipFile, out: File, opfP: String, opfB: ByteArray, cov: Pair<String, ByteArray>?, skip: Set<String>) {
+        ZipOutputStream(out.outputStream().buffered()).use { z ->
+            val m = "application/epub+zip".toByteArray(); val entry = ZipEntry("mimetype").apply { method = ZipEntry.STORED; size = m.size.toLong(); compressedSize = m.size.toLong(); crc = CRC32().apply { update(m) }.value }
+            z.putNextEntry(entry); z.write(m); z.closeEntry()
+            src.entries().asSequence().forEach { e ->
+                if (e.name != "mimetype" && e.name !in skip) {
+                    z.putNextEntry(ZipEntry(e.name))
+                    if (e.name == opfP) z.write(opfB) else src.getInputStream(e).copyTo(z)
+                    z.closeEntry()
                 }
             }
         }
-        return result
     }
 
-    private fun findEntryIgnoreCase(zip: ZipFile, targetPath: String): ZipEntry? {
-        val normalized = targetPath.trimStart('/')
-        zip.getEntry(normalized)?.let { return it }
-        val entries = zip.entries()
-        while (entries.hasMoreElements()) {
-            val e = entries.nextElement()
-            if (!e.isDirectory && e.name.trimStart('/').equals(normalized, ignoreCase = true)) {
-                return e
-            }
+    private fun writeBack(ctx: Context, uri: Uri, file: File): EpubWriteResult {
+        return try { ctx.contentResolver.openOutputStream(uri, "wt")?.use { file.inputStream().copyTo(it) }; EpubWriteResult.WrittenToFile }
+        catch (e: Exception) { EpubWriteResult.ReadOnlyFallback("Saved to library (File is Read-Only)") }
+    }
+
+    private fun parseOpfPath(b: ByteArray): String? {
+        val doc = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }.newDocumentBuilder().parse(b.inputStream())
+        return (doc.getElementsByTagNameNS("*", "rootfile").item(0) as? Element)?.getAttribute("full-path")
+    }
+
+    fun decodeSampledImageUri(ctx: Context, uri: Uri): Bitmap? = runCatching {
+        ctx.contentResolver.openInputStream(uri)?.use { ins ->
+            val b = ins.readBytes(); val opt = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(b, 0, b.size, opt)
+            var s = 1; while (opt.outWidth/s > 1200 || opt.outHeight/s > 1200) s *= 2
+            BitmapFactory.decodeByteArray(b, 0, b.size, BitmapFactory.Options().apply { inSampleSize = s })
         }
-        return null
-    }
+    }.getOrNull()
 
-    private fun parseOpfPathFromContainer(containerBytes: ByteArray): String? {
-        val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
-        val doc = factory.newDocumentBuilder().parse(containerBytes.inputStream())
-        val rootfiles = doc.getElementsByTagNameNS("*", "rootfile")
-        for (i in 0 until rootfiles.length) {
-            val el = rootfiles.item(i) as? Element ?: continue
-            val path = el.getAttribute("full-path")
-            if (path.isNotBlank()) return path
-        }
-        return null
-    }
+    fun saveFreshWebpCover(ctx: Context, uri: String, old: String?, bmp: Bitmap): String? = runCatching {
+        val dir = File(ctx.filesDir, "covers").apply { mkdirs() }
+        val file = File(dir, "${sha256(uri)}_${System.currentTimeMillis()}.webp")
+        val s = if (bmp.height > 320f) 320f / bmp.height else 1f
+        val t = if (s < 1f) Bitmap.createScaledBitmap(bmp, (bmp.width * s).toInt(), (bmp.height * s).toInt(), true) else bmp
+        file.outputStream().use { t.compress(if (Build.VERSION.SDK_INT >= 29) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.WEBP, 80, it) }
+        old?.let { File(it).delete() }; file.absolutePath
+    }.getOrNull()
 
-    private fun resolveZipPath(opfPath: String, href: String): String {
-        val decoded = Uri.decode(href).trimStart('/')
-        val baseDir = opfPath.substringBeforeLast('/', "")
-        val combined = if (baseDir.isEmpty()) decoded else "$baseDir/$decoded"
-        val parts = mutableListOf<String>()
-        for (part in combined.split('/')) {
-            when {
-                part.isEmpty() || part == "." -> {}
-                part == ".." -> if (parts.isNotEmpty()) parts.removeAt(parts.lastIndex)
-                else -> parts.add(part)
-            }
-        }
-        return parts.joinToString("/")
-    }
-
-    private fun sha256(input: String): String {
-        val bytes = MessageDigest.getInstance("SHA-256").digest(input.toByteArray())
-        return bytes.joinToString("") { "%02x".format(it) }.take(24)
-    }
+    private fun sha256(s: String): String = java.security.MessageDigest.getInstance("SHA-256").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }.take(24)
 }
