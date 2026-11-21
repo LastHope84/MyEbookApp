@@ -1,6 +1,6 @@
 # MyEbookApp user guide
 
-For the current app version. Automatic reading statuses and custom shelves are not yet available.
+For the current app version.
 
 ## Getting started
 
@@ -21,8 +21,11 @@ Type in Search in the menu, then choose a shelf. Search applies to that shelf an
 ### Choose shelves
 Tap a book, then use Add to Favorites or Remove from Favorites. Under Reading shelf, choose Unclassified, To Read, Reading or Finished. Select the matching shelf from the library menu. Favorites is independent of the one reading status.
 
-### Manual status
-You choose and change the reading shelf yourself. Opening a book or reaching the end does not automatically move it to Reading or Finished. Changing the shelf does not change saved reading progress.
+### Reading status
+You can change the reading shelf yourself without changing saved progress. When an EPUB opens successfully, an Unclassified or To Read book moves to Reading; a Finished book stays Finished when reopened. The reader attempts to mark a Reading book Finished at the end of its final reading-order section, including back matter. End detection is conservative and may miss some layouts, so change the status manually if needed.
+
+### Custom shelves
+In the library menu, tap + Create shelf and give it a name. Open a book and tap Custom shelves to add or remove it. A book can belong to multiple custom shelves as well as a reading shelf. Delete beside a custom shelf removes the shelf, not its books or reading progress.
 
 ### All Books and To Convert
 All Books includes every library entry. To Convert lists non-EPUB entries. A book can appear there as well as on a reading shelf or in Favorites.
@@ -34,7 +37,7 @@ Book details show available metadata and a Path. Tap the path to try opening its
 In book details, tap Remove from Library. This removes the library entry, not the source file, and does not ask for confirmation. Its app-only edits, favorite, status and library progress entry are removed too. A rescan can add the file again; keep a separate backup of anything important.
 
 ### Selection
-Long-press a cover to enter selection mode; tap covers to select or deselect them. This version has no bulk-action buttons. Press Android Back to leave selection mode.
+Long-press a cover to enter selection mode; tap covers to select or deselect them. All selects every book on the current shelf matching the active search, including books not yet loaded on screen. Actions lets you move books to a reading shelf, manage custom shelves, add or remove Favorites, share files, or convert non-EPUB books. In Manage custom shelves, Remove is available for the currently open custom shelf. Press Android Back or tap × to leave selection mode.
 
 ## Reading an EPUB
 
