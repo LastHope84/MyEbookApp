@@ -28,7 +28,7 @@ You can change the reading shelf yourself without changing saved progress. When 
 In the library menu, tap + Create shelf and give it a name. Open a book and tap Custom shelves to add or remove it. A book can belong to multiple custom shelves as well as a reading shelf. Delete beside a custom shelf removes the shelf, not its books or reading progress.
 
 ### All Books, Recent and To Convert
-All Books includes every library entry. Recent shows up to 50 most recently added entries, including newly converted EPUBs, in library insertion order; older imports follow their original scan order. To Convert lists non-EPUB entries. Counts in the menu show the full shelf, independent of search.
+All Books shows visible library entries. Recent shows up to 50 most recently added visible entries, including newly converted EPUBs, in library insertion order; older imports follow their original scan order. To Convert lists visible non-EPUB entries. Counts in the menu exclude hidden originals and are independent of search.
 
 ### Details and path
 Book details show available metadata and a Path. Tap the path to try opening its folder in a file manager. If that is not possible, the app copies a readable path instead.
@@ -81,7 +81,10 @@ Edits and cover changes are saved in this app's library only; the original ebook
 ## Convert to EPUB
 
 ### Conversion
-Choose To Convert in the menu, tap a non-EPUB book and tap Convert to EPUB. The app attempts to create a separate EPUB, adds it to the library and opens its details. Conversion can fail or produce imperfect results depending on the source; check the output. The source file is kept.
+Choose To Convert in the menu, tap a non-EPUB book and tap Convert to EPUB. The app attempts to create a separate EPUB, adds it to the library and opens its details. Once a MOBI or AZW3 is successfully converted and linked, its original library entry is hidden by default, not deleted. Conversion can fail or produce imperfect results depending on the source; check the output. Failed conversions remain visible and the source file is kept.
+
+### Show or hide originals
+Open the library menu and tap Converted original visibility. Switch on Show converted originals to reveal linked originals on shelves and include them in counts; switch it off to hide them again. Previously converted books cannot be linked automatically, so their originals remain visible. Hiding an entry never deletes its file.
 
 ### Where it goes
 By default, converted EPUBs are in the app's private storage. Share the converted book to save a copy elsewhere. App storage can be lost if the app is uninstalled or its data is cleared. Although Settings displays Pick SD / Folder and Reset, those controls are not connected in this version; do not rely on them to change the destination.
