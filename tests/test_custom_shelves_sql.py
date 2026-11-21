@@ -5,8 +5,10 @@ import sqlite3
 import unittest
 
 SOURCE = (pathlib.Path(__file__).resolve().parents[1] / "app/src/main/java/com/example/myebookapp/BookDatabase.kt").read_text()
-MIGRATION = SOURCE.split('internal val M34', 1)[1].split('fun getInstance', 1)[0]
-STATEMENTS = re.findall(r'db\.execSQL\("([^"]+)"\)', MIGRATION)
+MIGRATION_34 = SOURCE.split('internal val M34', 1)[1].split('internal val M45', 1)[0]
+MIGRATION_45 = SOURCE.split('internal val M45', 1)[1].split('fun getInstance', 1)[0]
+STATEMENTS_34 = re.findall(r'db\.execSQL\("([^"]+)"\)', MIGRATION_34)
+STATEMENTS_45 = re.findall(r'db\.execSQL\("([^"]+)"\)', MIGRATION_45)
 
 
 def query(method):
@@ -27,8 +29,9 @@ class CustomShelvesSqlTests(unittest.TestCase):
             (2, 'uri:2', 'Beta', 'Bob', 'Pub', None, None, 0, 'FINISHED', 1.0, 'other')])
         self.db.execute("INSERT INTO books_fts(books_fts) VALUES ('rebuild')")
         self.before = self.db.execute('SELECT * FROM books ORDER BY id').fetchall()
-        self.assertEqual(len(STATEMENTS), 4)
-        for sql in STATEMENTS:
+        self.assertEqual(len(STATEMENTS_34), 4)
+        self.assertEqual(len(STATEMENTS_45), 2)
+        for sql in STATEMENTS_34 + STATEMENTS_45:
             self.db.execute(sql)
 
     def tearDown(self):
@@ -41,9 +44,9 @@ class CustomShelvesSqlTests(unittest.TestCase):
     def test_membership_search_and_independence(self):
         self.db.executemany('INSERT INTO custom_shelves(id, name) VALUES (?, ?)', [(1, 'ew'), (2, 'Loved')])
         self.db.executemany('INSERT INTO custom_shelf_books VALUES (?, ?)', [(1, 1), (2, 1), (1, 2)])
-        self.assertEqual([r[0] for r in self.db.execute(query('customShelfPaged'), {'shelfId': 1})], [1, 2])
-        self.assertEqual([r[0] for r in self.db.execute(query('searchCustomShelfPaged'), {'shelfId': 1, 'q': 'Alpha*'})], [1])
-        self.assertEqual(list(self.db.execute(query('searchCustomShelfPaged'), {'shelfId': 2, 'q': 'Beta*'})), [])
+        self.assertEqual([r[0] for r in self.db.execute(query('customShelfPaged'), {'shelfId': 1, 'showConvertedOriginals': 0})], [1, 2])
+        self.assertEqual([r[0] for r in self.db.execute(query('searchCustomShelfPaged'), {'shelfId': 1, 'q': 'Alpha*', 'showConvertedOriginals': 0})], [1])
+        self.assertEqual(list(self.db.execute(query('searchCustomShelfPaged'), {'shelfId': 2, 'q': 'Beta*', 'showConvertedOriginals': 0})), [])
         self.db.execute('DELETE FROM custom_shelf_books WHERE shelfId=1 AND bookId=1')
         self.assertEqual(self.db.execute('SELECT * FROM custom_shelf_books WHERE bookId=1').fetchall(), [(2, 1)])
         self.assertEqual(self.db.execute('SELECT * FROM books ORDER BY id').fetchall(), self.before)

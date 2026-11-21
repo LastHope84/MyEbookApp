@@ -6,6 +6,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DAO = (ROOT / 'app/src/main/java/com/example/myebookapp/BookDatabase.kt').read_text()
 MAIN = (ROOT / 'app/src/main/java/com/example/myebookapp/MainActivity.kt').read_text()
+MIGRATION_45 = DAO.split('internal val M45', 1)[1].split('fun getInstance', 1)[0]
+STATEMENTS_45 = re.findall(r'db\.execSQL\("([^"]+)"\)', MIGRATION_45)
 
 def query_for(name):
     match = re.search(r'@Query\("([^"]+)"\)\s*(?:suspend )?fun ' + name + r'\(', DAO)
@@ -17,6 +19,9 @@ class RecentAndFavorites(unittest.TestCase):
     def setUp(self):
         self.db = sqlite3.connect(':memory:')
         self.db.execute('CREATE TABLE books (id INTEGER PRIMARY KEY, title TEXT, isFavorite INTEGER, readingStatus TEXT)')
+        self.assertEqual(len(STATEMENTS_45), 2)
+        for sql in STATEMENTS_45:
+            self.db.execute(sql)
         self.db.execute('CREATE VIRTUAL TABLE books_fts USING fts4(title)')
         for i in range(1, 71):
             title = 'needle' if i in (1, 30, 69) else 'other'
@@ -25,11 +30,11 @@ class RecentAndFavorites(unittest.TestCase):
         self.db.commit()
 
     def test_recent_and_search_apply_limit_before_search(self):
-        rows = self.db.execute(query_for('recentlyAddedPaged')).fetchall()
+        rows = self.db.execute(query_for('recentlyAddedPaged'), {'showConvertedOriginals': 0}).fetchall()
         self.assertEqual([row[0] for row in rows], list(range(70,20,-1)))
-        self.assertEqual([x[0] for x in self.db.execute(query_for('getRecentlyAddedIds'))], list(range(70,20,-1)))
-        self.assertEqual([x[0] for x in self.db.execute(query_for('searchRecentlyAddedPaged'), {'q':'needle'})], [69,30])
-        self.assertEqual([x[0] for x in self.db.execute(query_for('searchRecentlyAddedIds'), {'q':'needle'})], [69,30])
+        self.assertEqual([x[0] for x in self.db.execute(query_for('getRecentlyAddedIds'), {'showConvertedOriginals': 0})], list(range(70,20,-1)))
+        self.assertEqual([x[0] for x in self.db.execute(query_for('searchRecentlyAddedPaged'), {'q':'needle', 'showConvertedOriginals': 0})], [69,30])
+        self.assertEqual([x[0] for x in self.db.execute(query_for('searchRecentlyAddedIds'), {'q':'needle', 'showConvertedOriginals': 0})], [69,30])
 
     def test_favorite_toggle_is_individual_and_rolls_back(self):
         sql = query_for('toggleFavoritesChunk').replace(':ids', '?,?')
@@ -42,9 +47,9 @@ class RecentAndFavorites(unittest.TestCase):
         self.assertIn('check(count == unique.size)', DAO)
 
     def test_counts_and_ui_wiring(self):
-        self.assertEqual(self.db.execute(query_for('observeFavoriteCount')).fetchone()[0], 35)
-        self.assertEqual(self.db.execute(query_for('observeStatusCount'), {'status':'READING'}).fetchone()[0], 23)
-        for token in ('badge={Text("$count")}', 'badge={Text("${shelf.bookCount}")}', 'dao.toggleFavorites(ids)', 'dao.searchRecentlyAddedIds(f)', 'dao.searchRecentlyAddedPaged(f)'):
+        self.assertEqual(self.db.execute(query_for('observeFavoriteCount'), {'showConvertedOriginals': 0}).fetchone()[0], 35)
+        self.assertEqual(self.db.execute(query_for('observeStatusCount'), {'status':'READING', 'showConvertedOriginals': 0}).fetchone()[0], 23)
+        for token in ('badge={Text("$count")}', 'badge={Text("${shelf.bookCount}")}', 'dao.toggleFavorites(ids)', 'dao.searchRecentlyAddedIds(f, showConvertedOriginals)', 'dao.searchRecentlyAddedPaged(f, showConvertedOriginals)'):
             self.assertIn(token, MAIN)
 
 if __name__ == '__main__':
