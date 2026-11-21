@@ -67,6 +67,15 @@ data class ExtractedBookMeta(
     val coverPath: String?
 )
 
+data class BookDuplicateRow(
+    val id: Long,
+    val fileName: String,
+    val fileSize: Long,
+    val lastOpenedAt: Long,
+    val progressPercent: Double,
+    val hasCover: Boolean
+)
+
 @Dao
 interface BookDao {
 
@@ -81,6 +90,15 @@ interface BookDao {
 
     @Query("SELECT * FROM books WHERE id IN (:ids)")
     suspend fun getByIds(ids: List<Long>): List<BookEntity>
+
+    @Query("SELECT * FROM books WHERE lastOpenedAt > 0 ORDER BY lastOpenedAt DESC LIMIT 1")
+    suspend fun getLastOpenedOnce(): BookEntity?
+
+    @Query("SELECT LOWER(fileName) || '|' || fileSize FROM books WHERE fileSize > 0")
+    suspend fun getAllNameSizeKeys(): List<String>
+
+    @Query("SELECT id, fileName, fileSize, lastOpenedAt, progressPercent, (coverPath IS NOT NULL) AS hasCover FROM books WHERE fileSize > 0")
+    suspend fun getDuplicateCandidates(): List<BookDuplicateRow>
 
     @Query("SELECT * FROM books WHERE format = 'EPUB' AND metadataExtracted = 0 ORDER BY id ASC LIMIT :limit")
     suspend fun getPendingEpubs(limit: Int): List<BookEntity>
@@ -132,6 +150,25 @@ interface BookDao {
         ORDER BY books.title COLLATE NOCASE ASC
     """)
     fun searchToConvertPaged(ftsQuery: String): PagingSource<Int, BookEntity>
+
+    // ID queries for Select All
+    @Query("SELECT id FROM books")
+    suspend fun getAllIds(): List<Long>
+
+    @Query("SELECT books.id FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books_fts MATCH :ftsQuery")
+    suspend fun searchAllIds(ftsQuery: String): List<Long>
+
+    @Query("SELECT id FROM books WHERE lastOpenedAt > 0")
+    suspend fun getRecentIds(): List<Long>
+
+    @Query("SELECT books.id FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.lastOpenedAt > 0 AND books_fts MATCH :ftsQuery")
+    suspend fun searchRecentIds(ftsQuery: String): List<Long>
+
+    @Query("SELECT id FROM books WHERE format != 'EPUB'")
+    suspend fun getToConvertIds(): List<Long>
+
+    @Query("SELECT books.id FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.format != 'EPUB' AND books_fts MATCH :ftsQuery")
+    suspend fun searchToConvertIds(ftsQuery: String): List<Long>
 
     @Query("""
         UPDATE books SET
@@ -235,4 +272,24 @@ fun toFtsQuery(raw: String): String? {
         .filter { it.isNotBlank() }
     if (tokens.isEmpty()) return null
     return tokens.joinToString(" ") { "$it*" }
+}
+
+suspend fun removeDuplicateBooks(dao: BookDao): Int {
+    val rows = dao.getDuplicateCandidates()
+    val grouped = rows.groupBy { it.fileName.lowercase() to it.fileSize }
+    val toDelete = mutableListOf<Long>()
+    for ((_, group) in grouped) {
+        if (group.size <= 1) continue
+        val sorted = group.sortedWith(
+            compareByDescending<BookDuplicateRow> { it.lastOpenedAt }
+                .thenByDescending { it.progressPercent }
+                .thenByDescending { it.hasCover }
+                .thenBy { it.id }
+        )
+        for (i in 1 until sorted.size) {
+            toDelete.add(sorted[i].id)
+        }
+    }
+    toDelete.chunked(500).forEach { dao.deleteByIds(it) }
+    return toDelete.size
 }
