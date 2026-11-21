@@ -54,7 +54,32 @@ fun LibraryScreen(tm: AppThemeMode, acc: AppAccent, am: Boolean, incU: Uri?, onC
     var selB by remember { mutableStateOf<BookEntity?>(null) }; var edtB by remember { mutableStateOf<BookEntity?>(null) }
     var showSet by remember { mutableStateOf(false) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var converting by remember { mutableStateOf(false) }
+    var preparingKindle by remember { mutableStateOf(false) }
     val folders = LibraryScanner.getSavedFolders(ctx)
+
+    fun sendToKindle(book: BookEntity) {
+        if (preparingKindle) return
+        val email = ThemePrefs.getKindleEmail(ctx)
+        if (email.isBlank()) {
+            Toast.makeText(ctx, "Add your Kindle email in Settings first.", Toast.LENGTH_LONG).show()
+            return
+        }
+        preparingKindle = true
+        scp.launch {
+            try {
+                val intent = withContext(Dispatchers.IO) {
+                    FileOpener.prepareKindleEmailIntent(ctx, listOf(book), email)
+                }
+                ctx.startActivity(intent)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Toast.makeText(ctx, "Could not prepare email: ${e.localizedMessage ?: "unknown error"}", Toast.LENGTH_LONG).show()
+            } finally {
+                preparingKindle = false
+            }
+        }
+    }
 
     fun convertBook(book: BookEntity) {
         if (converting) return
@@ -141,6 +166,6 @@ fun LibraryScreen(tm: AppThemeMode, acc: AppAccent, am: Boolean, incU: Uri?, onC
         }
     }
     if (showSet) AppSettingsBottomSheet(tm, acc, am, ThemePrefs.isAutoOpenLastBook(ctx), ThemePrefs.getKindleEmail(ctx), ThemePrefs.getConvertedOutputUri(ctx), onT, onA, onAm, {ThemePrefs.saveAutoOpenLastBook(ctx,it)}, {ThemePrefs.saveKindleEmail(ctx,it)}, {}, {}, {}, {showSet=false})
-    selB?.let { b -> BookDetailsBottomSheet(b, ThemePrefs.getKindleEmail(ctx).isNotBlank(), {selB=null}, {selB=null; openInReader(ctx, b.uriString)}, {selB=null; edtB=b}, {val i=FileOpener.prepareShareIntent(ctx,listOf(b)); ctx.startActivity(i)}, {}, {convertBook(b)}, {scp.launch(Dispatchers.IO){dao.deleteById(b.id)}; selB=null}) }
+    selB?.let { b -> BookDetailsBottomSheet(b, ThemePrefs.getKindleEmail(ctx).isNotBlank(), {selB=null}, {selB=null; openInReader(ctx, b.uriString)}, {selB=null; edtB=b}, {val i=FileOpener.prepareShareIntent(ctx,listOf(b)); ctx.startActivity(i)}, {sendToKindle(b)}, {convertBook(b)}, {scp.launch(Dispatchers.IO){dao.deleteById(b.id)}; selB=null}) }
     edtB?.let { b -> MetadataEditorBottomSheet(b, {edtB=null}, {r,w -> runSave(b,r,w)}) }
 }
