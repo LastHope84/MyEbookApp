@@ -17,7 +17,12 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BookDetailsBottomSheet(b: BookEntity, hasK: Boolean, onD: ()->Unit, onR: ()->Unit, onE: ()->Unit, onS: ()->Unit, onK: ()->Unit, onC: ()->Unit, onDel: ()->Unit) {
+fun BookDetailsBottomSheet(
+    b: BookEntity, hasK: Boolean, onD: ()->Unit, onR: ()->Unit, onE: ()->Unit,
+    onS: ()->Unit, onK: ()->Unit, onC: ()->Unit, onDel: ()->Unit,
+    onFavoriteChange: (Boolean) -> Unit, onStatusChange: (String) -> Unit,
+    statusChangeEnabled: Boolean
+) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val sheetS = rememberModalBottomSheetState(true)
     val pct = (b.progressPercent * 100).roundToInt()
@@ -54,7 +59,30 @@ fun BookDetailsBottomSheet(b: BookEntity, hasK: Boolean, onD: ()->Unit, onR: ()-
                 Text("Convert to EPUB before sending to Kindle.", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 8.dp))
             }
             Spacer(Modifier.height(12.dp)); HorizontalDivider(); Spacer(Modifier.height(12.dp))
-            
+            OutlinedButton(
+                onClick = { onFavoriteChange(!b.isFavorite) },
+                enabled = statusChangeEnabled,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(if (b.isFavorite) "Remove from Favorites" else "Add to Favorites") }
+            Text("Reading shelf", modifier = Modifier.fillMaxWidth().padding(top = 8.dp), style = MaterialTheme.typography.labelLarge)
+            Text("Choose a shelf if you like. Your reading progress stays unchanged.", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodySmall)
+            listOf(
+                listOf("NEW" to "Unclassified", "TBR" to "To Read"),
+                listOf("READING" to "Reading", "FINISHED" to "Finished")
+            ).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { (value, label) ->
+                        FilterChip(
+                            selected = b.readingStatus == value,
+                            onClick = { onStatusChange(value) },
+                            enabled = statusChangeEnabled,
+                            label = { Text(label) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp)); HorizontalDivider(); Spacer(Modifier.height(12.dp))
             MetadataRow("Title", b.title)
             MetadataRow("Author", b.author)
             if (!b.series.isNullOrBlank()) {
