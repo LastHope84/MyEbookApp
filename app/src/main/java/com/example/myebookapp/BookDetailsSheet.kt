@@ -43,6 +43,16 @@ fun BookDetailsBottomSheet(b: BookEntity, hasK: Boolean, onD: ()->Unit, onR: ()-
                 OutlinedButton(onClick = onE, Modifier.weight(1f)) { Text("Edit") }
                 OutlinedButton(onClick = onS, Modifier.weight(1f)) { Text("Share") }
             }
+            if (b.format == "EPUB") {
+                OutlinedButton(onClick = onK, enabled = hasK, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    Text("Send to Kindle")
+                }
+                if (!hasK) {
+                    Text("Add your Kindle email in Settings first.", style = MaterialTheme.typography.labelSmall)
+                }
+            } else {
+                Text("Convert to EPUB before sending to Kindle.", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 8.dp))
+            }
             Spacer(Modifier.height(12.dp)); HorizontalDivider(); Spacer(Modifier.height(12.dp))
             
             MetadataRow("Title", b.title)
