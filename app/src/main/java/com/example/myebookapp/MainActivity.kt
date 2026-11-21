@@ -1,5 +1,6 @@
 package com.example.myebookapp
 import android.content.Intent
+import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
@@ -50,15 +51,17 @@ private fun handleI(i: Intent?) { if (i?.action == Intent.ACTION_VIEW && i.data 
 @Composable
 fun LibraryScreen(tm: AppThemeMode, acc: AppAccent, am: Boolean, incU: Uri?, onCons: () -> Unit, onT: (AppThemeMode)->Unit, onA: (AppAccent)->Unit, onAm: (Boolean)->Unit) {
 val ctx = LocalContext.current; val scp = rememberCoroutineScope(); val dao = remember { AppDatabase.getInstance(ctx).bookDao() }
-val drw = rememberDrawerState(DrawerValue.Closed); val total by dao.observeTotalCount().collectAsState(0)
-val toConv by dao.observeToConvertCount().collectAsState(0); val scanS by LibraryScanner.status.collectAsState()
-val favoriteCount by dao.observeFavoriteCount().collectAsState(0)
-val readingCount by dao.observeStatusCount("READING").collectAsState(0)
-val toReadCount by dao.observeStatusCount("TBR").collectAsState(0)
-val finishedCount by dao.observeStatusCount("FINISHED").collectAsState(0)
+val visibilityPrefs = remember { ctx.getSharedPreferences("library_visibility", Context.MODE_PRIVATE) }
+var showConvertedOriginals by remember { mutableStateOf(visibilityPrefs.getBoolean("show_converted_originals", false)) }
+val drw = rememberDrawerState(DrawerValue.Closed); val total by remember(showConvertedOriginals) { dao.observeTotalCount(showConvertedOriginals) }.collectAsState(0)
+val toConv by remember(showConvertedOriginals) { dao.observeToConvertCount(showConvertedOriginals) }.collectAsState(0); val scanS by LibraryScanner.status.collectAsState()
+val favoriteCount by remember(showConvertedOriginals) { dao.observeFavoriteCount(showConvertedOriginals) }.collectAsState(0)
+val readingCount by remember(showConvertedOriginals) { dao.observeStatusCount("READING", showConvertedOriginals) }.collectAsState(0)
+val toReadCount by remember(showConvertedOriginals) { dao.observeStatusCount("TBR", showConvertedOriginals) }.collectAsState(0)
+val finishedCount by remember(showConvertedOriginals) { dao.observeStatusCount("FINISHED", showConvertedOriginals) }.collectAsState(0)
 var tab by remember { mutableStateOf(LibraryTab.ALL) }; var qry by remember { mutableStateOf("") }; var dbQry by remember { mutableStateOf("") }
 var selB by remember { mutableStateOf<BookEntity?>(null) }; var edtB by remember { mutableStateOf<BookEntity?>(null) }
-var showSet by remember { mutableStateOf(false) }; var showGuide by rememberSaveable { mutableStateOf(false) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+var showSet by remember { mutableStateOf(false) }; var showVisibility by remember { mutableStateOf(false) }; var showGuide by rememberSaveable { mutableStateOf(false) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
 var showBulkActions by remember { mutableStateOf(false) }
 var showBulkMove by remember { mutableStateOf(false) }
 var showBulkShelves by remember { mutableStateOf(false) }
@@ -76,7 +79,7 @@ fun cancelSelectAll() {
     selectingAll = false
 }
 val customShelves by dao.observeCustomShelves().collectAsState(initial = emptyList())
-val customShelvesWithCounts by dao.observeCustomShelvesWithCounts().collectAsState(initial = emptyList())
+val customShelvesWithCounts by remember(showConvertedOriginals) { dao.observeCustomShelvesWithCounts(showConvertedOriginals) }.collectAsState(initial = emptyList())
 var selectedCustomId by remember { mutableStateOf<Long?>(null) }
 var showCreateShelf by remember { mutableStateOf(false) }
 var shelfToDelete by remember { mutableStateOf<CustomShelf?>(null) }
@@ -133,6 +136,10 @@ preparingKindle = false
 
 fun convertBooks(books: List<BookEntity>, showConverted: Boolean) {
 if (converting || books.isEmpty()) return
+// A conversion can hide an original; never leave an invisible book selected.
+cancelSelectAll(); selIds = emptySet(); selMode = false
+showBulkActions = false; showBulkMove = false; showBulkShelves = false
+showBulkFavorites = false; showBulkShareConfirm = false
 converting = true
 if (showConverted) selB = null
 Toast.makeText(ctx, if (showConverted) "Converting ${books.first().fileName}..." else "Converting ${books.size} book${if (books.size == 1) "" else "s"}...", Toast.LENGTH_SHORT).show()
@@ -146,10 +153,17 @@ for (book in books) {
             val folder = ThemePrefs.getConvertedOutputUri(ctx)?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
             val out = MobiConverter.convertToEpubOutput(ctx, Uri.parse(book.uriString), book.fileName, folder)
             val meta = EpubParser.parseEpub(ctx, out.uri, out.fileName)
-            val cover = LibraryScanner.saveWebpThumbnail(ctx, out.uri.toString(), meta.coverBitmap)
+            // A unique cover key cannot overwrite a cover belonging to an existing output.
+            val cover = LibraryScanner.saveWebpThumbnail(ctx, out.uri.toString() + "|conversion|" + java.util.UUID.randomUUID(), meta.coverBitmap)
             val entry = BookEntity(uriString = out.uri.toString(), fileName = out.fileName, format = "EPUB", fileSize = out.size, lastModified = out.lastModified, title = meta.title, author = meta.author, publishingDate = meta.publishingDate, publisher = meta.publisher, language = meta.language, coverPath = cover, lastLocatorJson = null, progressPercent = 0.0, lastOpenedAt = 0L, metadataExtracted = true, series = meta.series, seriesIndex = meta.seriesIndex, tags = meta.tags)
-            dao.insertIgnore(entry)
-            (dao.getByUri(out.uri.toString()) ?: error("Could not add the converted book to the library.")) to out.savedToCustomFolder
+            val converted = try {
+                // The DAO resolves the exact URIs and commits indexing, shelf state and link together.
+                dao.indexConvertedOutput(book.id, book.uriString, entry)
+            } catch (e: CancellationException) { throw e
+            } catch (e: Exception) {
+                throw IllegalStateException("EPUB was created, but could not be indexed and linked; original visibility was not changed.", e)
+            }
+            converted to out.savedToCustomFolder
         }
         convertedCount++
         if (showConverted) {
@@ -178,15 +192,15 @@ fun convertBook(book: BookEntity) = convertBooks(listOf(book), true)
 
 suspend fun idsOnShelf(tab: LibraryTab, custom: Long?, f: String?): List<Long> {
     return when {
-        custom != null -> if (f == null) dao.getCustomShelfBookIds(custom) else dao.searchCustomShelfIds(custom, f)
-        tab == LibraryTab.ALL -> if (f == null) dao.getAllIds() else dao.searchAllIds(f)
-        tab == LibraryTab.RECENT -> if (f == null) dao.getRecentlyAddedIds() else dao.searchRecentlyAddedIds(f)
-        tab == LibraryTab.FAV -> if (f == null) dao.getFavoriteIds() else dao.searchFavoriteIds(f)
+        custom != null -> if (f == null) dao.getCustomShelfBookIds(custom, showConvertedOriginals) else dao.searchCustomShelfIds(custom, f, showConvertedOriginals)
+        tab == LibraryTab.ALL -> if (f == null) dao.getAllIds(showConvertedOriginals) else dao.searchAllIds(f, showConvertedOriginals)
+        tab == LibraryTab.RECENT -> if (f == null) dao.getRecentlyAddedIds(showConvertedOriginals) else dao.searchRecentlyAddedIds(f, showConvertedOriginals)
+        tab == LibraryTab.FAV -> if (f == null) dao.getFavoriteIds(showConvertedOriginals) else dao.searchFavoriteIds(f, showConvertedOriginals)
         tab in listOf(LibraryTab.READING, LibraryTab.TBR, LibraryTab.DONE) -> {
             val status = when (tab) { LibraryTab.READING -> "READING"; LibraryTab.TBR -> "TBR"; else -> "FINISHED" }
-            if (f == null) dao.getStatusIds(status) else dao.searchStatusIds(status, f)
+            if (f == null) dao.getStatusIds(status, showConvertedOriginals) else dao.searchStatusIds(status, f, showConvertedOriginals)
         }
-        else -> if (f == null) dao.getToConvertIds() else dao.searchToConvertIds(f)
+        else -> if (f == null) dao.getToConvertIds(showConvertedOriginals) else dao.searchToConvertIds(f, showConvertedOriginals)
     }
 }
 
@@ -248,18 +262,18 @@ BackHandler(drw.isOpen || selMode) { if (!bulkSaving) { if (drw.isOpen) scp.laun
 LaunchedEffect(qry) { delay(250); if (dbQry != qry) { cancelSelectAll(); dbQry = qry } }
 
 val customId = selectedCustomId
-val paged = remember(dbQry, tab, customId, scp) { Pager(PagingConfig(60, 180, true)) {
+val paged = remember(dbQry, tab, customId, showConvertedOriginals, scp) { Pager(PagingConfig(60, 180, true)) {
 val f = toFtsQuery(dbQry)
 if (customId != null) {
-if (f == null) dao.customShelfPaged(customId) else dao.searchCustomShelfPaged(customId, f)
+if (f == null) dao.customShelfPaged(customId, showConvertedOriginals) else dao.searchCustomShelfPaged(customId, f, showConvertedOriginals)
 } else when (tab) {
-LibraryTab.ALL -> if (f == null) dao.allPaged() else dao.searchAllPaged(f)
-LibraryTab.RECENT -> if (f == null) dao.recentlyAddedPaged() else dao.searchRecentlyAddedPaged(f)
-LibraryTab.FAV -> if (f == null) dao.favoritePaged() else dao.searchFavoritePaged(f)
-LibraryTab.READING -> if (f == null) dao.statusPaged("READING") else dao.searchStatusPaged("READING", f)
-LibraryTab.TBR -> if (f == null) dao.statusPaged("TBR") else dao.searchStatusPaged("TBR", f)
-LibraryTab.DONE -> if (f == null) dao.statusPaged("FINISHED") else dao.searchStatusPaged("FINISHED", f)
-LibraryTab.CONV -> if (f == null) dao.toConvertPaged() else dao.searchToConvertPaged(f)
+LibraryTab.ALL -> if (f == null) dao.allPaged(showConvertedOriginals) else dao.searchAllPaged(f, showConvertedOriginals)
+LibraryTab.RECENT -> if (f == null) dao.recentlyAddedPaged(showConvertedOriginals) else dao.searchRecentlyAddedPaged(f, showConvertedOriginals)
+LibraryTab.FAV -> if (f == null) dao.favoritePaged(showConvertedOriginals) else dao.searchFavoritePaged(f, showConvertedOriginals)
+LibraryTab.READING -> if (f == null) dao.statusPaged("READING", showConvertedOriginals) else dao.searchStatusPaged("READING", f, showConvertedOriginals)
+LibraryTab.TBR -> if (f == null) dao.statusPaged("TBR", showConvertedOriginals) else dao.searchStatusPaged("TBR", f, showConvertedOriginals)
+LibraryTab.DONE -> if (f == null) dao.statusPaged("FINISHED", showConvertedOriginals) else dao.searchStatusPaged("FINISHED", f, showConvertedOriginals)
+LibraryTab.CONV -> if (f == null) dao.toConvertPaged(showConvertedOriginals) else dao.searchToConvertPaged(f, showConvertedOriginals)
 }
 }.flow.cachedIn(scp) }.collectAsLazyPagingItems()
 
@@ -286,6 +300,7 @@ Spacer(Modifier.height(8.dp)); HorizontalDivider(); Spacer(Modifier.height(8.dp)
 NavigationDrawerItem(label={Text("Add Folder")}, selected=false, onClick={scp.launch{drw.close()}; folderP.launch(null)})
 if (folders.isNotEmpty()) NavigationDrawerItem(label={Text("Rescan Folders")}, selected=false, onClick={scp.launch{drw.close()}; LibraryScanner.scanFolders(ctx, folders.map{Uri.parse(it)})})
 NavigationDrawerItem(label={Text("Settings")}, selected=false, onClick={scp.launch{drw.close()}; showSet=true})
+NavigationDrawerItem(label={Text("Converted original visibility")}, selected=false, onClick={scp.launch{drw.close()}; showVisibility=true})
 NavigationDrawerItem(label={Text("User Guide")}, selected=false, onClick={scp.launch { drw.close(); showGuide=true }})
 }
 }
@@ -312,13 +327,29 @@ val message = if (dbQry.isNotBlank()) "No books match this search on this shelf.
 Text(message, modifier = Modifier.padding(20.dp), style = MaterialTheme.typography.bodyMedium)
 } else LazyVerticalGrid(columns = GridCells.Fixed(3), contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp), modifier = Modifier.fillMaxSize()) {
 items(paged.itemCount, key=paged.itemKey{it.id}) { i ->
-    val b = paged[i]; if (b != null) BookGridTile(b, selMode, selIds.contains(b.id), { if (!bulkSaving) { cancelSelectAll(); if (selMode) { selIds = if (selIds.contains(b.id)) selIds - b.id else selIds + b.id; if (selIds.isEmpty()) selMode=false } else selB = b } }, { if (!bulkSaving) { cancelSelectAll(); selMode=true; selIds = selIds + b.id } }) else BookPlaceholderTile()
+    val b = paged[i]; if (b != null) BookGridTile(b, selMode, selIds.contains(b.id), { if (!bulkSaving && !converting) { cancelSelectAll(); if (selMode) { selIds = if (selIds.contains(b.id)) selIds - b.id else selIds + b.id; if (selIds.isEmpty()) selMode=false } else selB = b } }, { if (!bulkSaving && !converting) { cancelSelectAll(); selMode=true; selIds = selIds + b.id } }) else BookPlaceholderTile()
 }
 }
 }
 }
 }
 if (showSet) AppSettingsBottomSheet(tm, acc, am, ThemePrefs.isAutoOpenLastBook(ctx), ThemePrefs.getKindleEmail(ctx), ThemePrefs.getConvertedOutputUri(ctx), onT, onA, onAm, {ThemePrefs.saveAutoOpenLastBook(ctx,it)}, {ThemePrefs.saveKindleEmail(ctx,it)}, {}, {}, {}, {showSet=false})
+if (showVisibility) AlertDialog(
+    onDismissRequest={showVisibility=false},
+    title={Text("Converted original visibility")},
+    text={Column {
+        Text("Successfully converted MOBI and AZW3 originals are hidden by default. Their files are never deleted. Older conversions cannot be linked automatically.")
+        Row(Modifier.fillMaxWidth().padding(top=12.dp), verticalAlignment=Alignment.CenterVertically) {
+            Text("Show converted originals", modifier=Modifier.weight(1f))
+            Switch(checked=showConvertedOriginals, onCheckedChange={ visible ->
+                cancelSelectAll(); selIds=emptySet(); selMode=false
+                visibilityPrefs.edit().putBoolean("show_converted_originals", visible).apply()
+                showConvertedOriginals=visible
+            })
+        }
+    }},
+    confirmButton={TextButton(onClick={showVisibility=false}) { Text("Done") }}
+)
 selB?.let { selected ->
 key(selected.id) {
 val liveBook by remember(selected.id) { dao.observeById(selected.id) }.collectAsState(initial = selected)

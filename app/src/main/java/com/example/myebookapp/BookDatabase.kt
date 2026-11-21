@@ -45,6 +45,13 @@ data class CustomShelf(
 data class CustomShelfBook(val shelfId: Long, val bookId: Long)
 data class CustomShelfWithCount(val id: Long, val name: String, val bookCount: Int)
 
+// Both endpoints are real book IDs; deleting either endpoint deletes only this link.
+@Entity(tableName = "conversion_links", foreignKeys = [
+    ForeignKey(entity = BookEntity::class, parentColumns = ["id"], childColumns = ["sourceBookId"], onDelete = ForeignKey.CASCADE),
+    ForeignKey(entity = BookEntity::class, parentColumns = ["id"], childColumns = ["outputBookId"], onDelete = ForeignKey.CASCADE)
+], indices = [Index("outputBookId")])
+data class ConversionLink(@PrimaryKey val sourceBookId: Long, val outputBookId: Long)
+
 data class ExtractedBookMeta(val id: Long, val title: String, val author: String, val publishingDate: String, val publisher: String, val language: String, val coverPath: String?, val series: String?, val seriesIndex: Double?, val tags: String?)
 data class BookDuplicateRow(val id: Long, val fileName: String, val fileSize: Long, val lastOpenedAt: Long, val progressPercent: Double, val hasCover: Boolean)
 
@@ -53,15 +60,50 @@ private const val BULK_ID_CHUNK_SIZE = 500
 
 @Dao
 interface BookDao {
+    @Query("SELECT * FROM books WHERE id = :id LIMIT 1") suspend fun getByIdOnce(id: Long): BookEntity?
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putConversionLink(link: ConversionLink)
+    @Query("DELETE FROM conversion_links WHERE sourceBookId = :sourceBookId") suspend fun removeConversionLink(sourceBookId: Long): Int
+
+    // Call only after successful output writing and indexing, with the exact IDs.
+    @Transaction suspend fun recordSuccessfulConversion(sourceBookId: Long, outputBookId: Long) {
+        require(sourceBookId != outputBookId) { "Source and output must be different books." }
+        val source = requireNotNull(getByIdOnce(sourceBookId)) { "Source book is missing." }
+        val output = requireNotNull(getByIdOnce(outputBookId)) { "Output book is missing." }
+        require(source.format.uppercase() in setOf("MOBI", "AZW3")) { "Source must be MOBI or AZW3." }
+        require(output.format.uppercase() == "EPUB") { "Output must be EPUB." }
+        putConversionLink(ConversionLink(sourceBookId, outputBookId))
+    }
+    @Query("INSERT OR IGNORE INTO custom_shelf_books (shelfId, bookId) SELECT shelfId, :outputBookId FROM custom_shelf_books WHERE bookId = :sourceBookId")
+    suspend fun copyCustomShelfMemberships(sourceBookId: Long, outputBookId: Long)
+
+    // Index, copy shelf state only for a newly inserted output, and link as one transaction.
+    // An existing output may have user-edited state: never replace or merge it.
+    @Transaction suspend fun indexConvertedOutput(sourceBookId: Long, sourceUri: String, entry: BookEntity): BookEntity {
+        val source = requireNotNull(getByIdOnce(sourceBookId)) { "Source book is missing." }
+        require(source.uriString == sourceUri) { "Source no longer matches the library entry." }
+        require(sourceUri != entry.uriString) { "Converted output has the same URI as the source." }
+        require(entry.format.uppercase() == "EPUB") { "Output must be EPUB." }
+        val insertedId = insertIgnore(entry.copy(isFavorite = source.isFavorite, readingStatus = source.readingStatus))
+        val output = requireNotNull(getByUri(entry.uriString)) { "Could not add the converted book to the library." }
+        require(output.format.uppercase() == "EPUB") { "Output entry is not EPUB." }
+        if (insertedId != -1L) {
+            check(output.id == insertedId) { "Output no longer matches the inserted entry." }
+            copyCustomShelfMemberships(source.id, output.id)
+        }
+        if (source.format.uppercase() in setOf("MOBI", "AZW3")) {
+            recordSuccessfulConversion(source.id, output.id)
+        }
+        return output
+    }
     @Query("SELECT * FROM custom_shelves ORDER BY name COLLATE NOCASE, id") fun observeCustomShelves(): Flow<List<CustomShelf>>
-    @Query("SELECT s.id, s.name, COUNT(sb.bookId) AS bookCount FROM custom_shelves s LEFT JOIN custom_shelf_books sb ON s.id = sb.shelfId GROUP BY s.id, s.name ORDER BY s.name COLLATE NOCASE, s.id") fun observeCustomShelvesWithCounts(): Flow<List<CustomShelfWithCount>>
+    @Query("SELECT s.id, s.name, COUNT(CASE WHEN sb.bookId IS NOT NULL AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = sb.bookId)) THEN 1 END) AS bookCount FROM custom_shelves s LEFT JOIN custom_shelf_books sb ON s.id = sb.shelfId GROUP BY s.id, s.name ORDER BY s.name COLLATE NOCASE, s.id") fun observeCustomShelvesWithCounts(showConvertedOriginals: Boolean = false): Flow<List<CustomShelfWithCount>>
     @Query("SELECT shelfId FROM custom_shelf_books WHERE bookId = :bookId") fun observeShelfIdsForBook(bookId: Long): Flow<List<Long>>
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun createCustomShelf(shelf: CustomShelf): Long
     @Query("DELETE FROM custom_shelves WHERE id = :shelfId") suspend fun deleteCustomShelf(shelfId: Long): Int
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun addBookToCustomShelf(membership: CustomShelfBook): Long
     @Query("DELETE FROM custom_shelf_books WHERE shelfId = :shelfId AND bookId = :bookId") suspend fun removeBookFromCustomShelf(shelfId: Long, bookId: Long): Int
-    @Query("SELECT books.* FROM books JOIN custom_shelf_books ON books.id = custom_shelf_books.bookId WHERE custom_shelf_books.shelfId = :shelfId ORDER BY books.title COLLATE NOCASE, books.id") fun customShelfPaged(shelfId: Long): PagingSource<Int, BookEntity>
-    @Query("SELECT books.* FROM books JOIN custom_shelf_books ON books.id = custom_shelf_books.bookId JOIN books_fts ON books.id = books_fts.rowid WHERE custom_shelf_books.shelfId = :shelfId AND books_fts MATCH :q ORDER BY books.title COLLATE NOCASE, books.id") fun searchCustomShelfPaged(shelfId: Long, q: String): PagingSource<Int, BookEntity>
+    @Query("SELECT books.* FROM books JOIN custom_shelf_books ON books.id = custom_shelf_books.bookId WHERE custom_shelf_books.shelfId = :shelfId AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY books.title COLLATE NOCASE, books.id") fun customShelfPaged(shelfId: Long, showConvertedOriginals: Boolean = false): PagingSource<Int, BookEntity>
+    @Query("SELECT books.* FROM books JOIN custom_shelf_books ON books.id = custom_shelf_books.bookId JOIN books_fts ON books.id = books_fts.rowid WHERE custom_shelf_books.shelfId = :shelfId AND books_fts MATCH :q AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY books.title COLLATE NOCASE, books.id") fun searchCustomShelfPaged(shelfId: Long, q: String, showConvertedOriginals: Boolean = false): PagingSource<Int, BookEntity>
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertIgnoreBatch(books: List<BookEntity>): List<Long>
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertIgnore(book: BookEntity): Long
     @Query("SELECT * FROM books WHERE uriString = :u LIMIT 1") suspend fun getByUri(u: String): BookEntity?
@@ -99,43 +141,43 @@ interface BookDao {
         for (chunk in ids.distinct().chunked(BULK_ID_CHUNK_SIZE)) books.addAll(getByIdsChunk(chunk))
         return books
     }
-    @Query("SELECT id FROM books") suspend fun getAllIds(): List<Long>
-    @Query("SELECT id FROM books WHERE isFavorite = 1") suspend fun getFavoriteIds(): List<Long>
-    @Query("SELECT id FROM books WHERE readingStatus = :status") suspend fun getStatusIds(status: String): List<Long>
-    @Query("SELECT bookId FROM custom_shelf_books WHERE shelfId = :shelfId") suspend fun getCustomShelfBookIds(shelfId: Long): List<Long>
+    @Query("SELECT id FROM books WHERE (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun getAllIds(showConvertedOriginals: Boolean = false): List<Long>
+    @Query("SELECT id FROM books WHERE isFavorite = 1 AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun getFavoriteIds(showConvertedOriginals: Boolean = false): List<Long>
+    @Query("SELECT id FROM books WHERE readingStatus = :status AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun getStatusIds(status: String, showConvertedOriginals: Boolean = false): List<Long>
+    @Query("SELECT books.id FROM books JOIN custom_shelf_books ON books.id = custom_shelf_books.bookId WHERE custom_shelf_books.shelfId = :shelfId AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun getCustomShelfBookIds(shelfId: Long, showConvertedOriginals: Boolean = false): List<Long>
     @Query("SELECT id, fileName, fileSize, lastOpenedAt, progressPercent, (coverPath IS NOT NULL) AS hasCover FROM books WHERE fileSize > 0") suspend fun getDuplicateCandidates(): List<BookDuplicateRow>
     @Query("SELECT LOWER(fileName) || '|' || fileSize FROM books WHERE fileSize > 0") suspend fun getAllNameSizeKeys(): List<String>
     @Query("SELECT COUNT(*) FROM books WHERE format = 'EPUB' AND metadataExtracted = 0") suspend fun countPendingEpubs(): Int
     @Query("SELECT * FROM books WHERE format = 'EPUB' AND metadataExtracted = 0 ORDER BY id ASC LIMIT :limit") suspend fun getPendingEpubs(limit: Int): List<BookEntity>
-    @Query("SELECT * FROM books WHERE lastOpenedAt > 0 ORDER BY lastOpenedAt DESC LIMIT 1") suspend fun getLastOpenedOnce(): BookEntity?
-    @Query("SELECT COUNT(*) FROM books") fun observeTotalCount(): Flow<Int>
-    @Query("SELECT COUNT(*) FROM books WHERE format = 'EPUB' AND metadataExtracted = 0") fun observePendingMetadataCount(): Flow<Int>
-    @Query("SELECT COUNT(*) FROM books WHERE format != 'EPUB'") fun observeToConvertCount(): Flow<Int>
-    @Query("SELECT COUNT(*) FROM books WHERE isFavorite = 1") fun observeFavoriteCount(): Flow<Int>
-    @Query("SELECT COUNT(*) FROM books WHERE readingStatus = :status") fun observeStatusCount(status: String): Flow<Int>
-    @Query("SELECT * FROM books WHERE id IN (SELECT id FROM books ORDER BY id DESC LIMIT 50) ORDER BY id DESC") fun recentlyAddedPaged(): PagingSource<Int, BookEntity>
-    @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.id IN (SELECT id FROM books ORDER BY id DESC LIMIT 50) AND books_fts MATCH :q ORDER BY books.id DESC") fun searchRecentlyAddedPaged(q: String): PagingSource<Int, BookEntity>
-    @Query("SELECT id FROM books ORDER BY id DESC LIMIT 50") suspend fun getRecentlyAddedIds(): List<Long>
-    @Query("SELECT books.id FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.id IN (SELECT id FROM books ORDER BY id DESC LIMIT 50) AND books_fts MATCH :q ORDER BY books.id DESC") suspend fun searchRecentlyAddedIds(q: String): List<Long>
-    @Query("SELECT * FROM books WHERE lastOpenedAt > 0 ORDER BY lastOpenedAt DESC LIMIT 1") fun observeLastOpened(): Flow<BookEntity?>
-    @Query("SELECT * FROM books ORDER BY title COLLATE NOCASE ASC") fun allPaged(): PagingSource<Int, BookEntity>
-    @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books_fts MATCH :q ORDER BY title COLLATE NOCASE ASC") fun searchAllPaged(q: String): PagingSource<Int, BookEntity>
-    @Query("SELECT * FROM books WHERE isFavorite = 1 ORDER BY title COLLATE NOCASE ASC, id ASC") fun favoritePaged(): PagingSource<Int, BookEntity>
-    @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.isFavorite = 1 AND books_fts MATCH :q ORDER BY books.title COLLATE NOCASE ASC, books.id ASC") fun searchFavoritePaged(q: String): PagingSource<Int, BookEntity>
-    @Query("SELECT * FROM books WHERE readingStatus = :status ORDER BY title COLLATE NOCASE ASC, id ASC") fun statusPaged(status: String): PagingSource<Int, BookEntity>
-    @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.readingStatus = :status AND books_fts MATCH :q ORDER BY books.title COLLATE NOCASE ASC, books.id ASC") fun searchStatusPaged(status: String, q: String): PagingSource<Int, BookEntity>
-    @Query("SELECT * FROM books WHERE lastOpenedAt > 0 ORDER BY lastOpenedAt DESC") fun recentPaged(): PagingSource<Int, BookEntity>
-    @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.lastOpenedAt > 0 AND books_fts MATCH :q ORDER BY books.lastOpenedAt DESC") fun searchRecentPaged(q: String): PagingSource<Int, BookEntity>
-    @Query("SELECT * FROM books WHERE format != 'EPUB' ORDER BY title COLLATE NOCASE ASC") fun toConvertPaged(): PagingSource<Int, BookEntity>
-    @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.format != 'EPUB' AND books_fts MATCH :q ORDER BY books.title COLLATE NOCASE ASC") fun searchToConvertPaged(q: String): PagingSource<Int, BookEntity>
-    @Query("SELECT id FROM books WHERE lastOpenedAt > 0") suspend fun getRecentIds(): List<Long>
-    @Query("SELECT id FROM books WHERE format != 'EPUB'") suspend fun getToConvertIds(): List<Long>
-    @Query("SELECT books.id FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books_fts MATCH :q") suspend fun searchAllIds(q: String): List<Long>
-    @Query("SELECT books.id FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.lastOpenedAt > 0 AND books_fts MATCH :q") suspend fun searchRecentIds(q: String): List<Long>
-    @Query("SELECT books.id FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.format != 'EPUB' AND books_fts MATCH :q") suspend fun searchToConvertIds(q: String): List<Long>
-    @Query("SELECT books.id FROM books JOIN custom_shelf_books ON books.id = custom_shelf_books.bookId JOIN books_fts ON books.id = books_fts.rowid WHERE custom_shelf_books.shelfId = :shelfId AND books_fts MATCH :q") suspend fun searchCustomShelfIds(shelfId: Long, q: String): List<Long>
-    @Query("SELECT books.id FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.isFavorite = 1 AND books_fts MATCH :q") suspend fun searchFavoriteIds(q: String): List<Long>
-    @Query("SELECT books.id FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.readingStatus = :status AND books_fts MATCH :q") suspend fun searchStatusIds(status: String, q: String): List<Long>
+    @Query("SELECT * FROM books WHERE lastOpenedAt > 0 AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY lastOpenedAt DESC LIMIT 1") suspend fun getLastOpenedOnce(showConvertedOriginals: Boolean = false): BookEntity?
+    @Query("SELECT COUNT(*) FROM books WHERE (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") fun observeTotalCount(showConvertedOriginals: Boolean = false): Flow<Int>
+    @Query("SELECT COUNT(*) FROM books WHERE format = 'EPUB' AND metadataExtracted = 0 AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") fun observePendingMetadataCount(showConvertedOriginals: Boolean = false): Flow<Int>
+    @Query("SELECT COUNT(*) FROM books WHERE format != 'EPUB' AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") fun observeToConvertCount(showConvertedOriginals: Boolean = false): Flow<Int>
+    @Query("SELECT COUNT(*) FROM books WHERE isFavorite = 1 AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") fun observeFavoriteCount(showConvertedOriginals: Boolean = false): Flow<Int>
+    @Query("SELECT COUNT(*) FROM books WHERE readingStatus = :status AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") fun observeStatusCount(status: String, showConvertedOriginals: Boolean = false): Flow<Int>
+    @Query("SELECT * FROM books WHERE (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY id DESC LIMIT 50") fun recentlyAddedPaged(showConvertedOriginals: Boolean = false): PagingSource<Int, BookEntity>
+    @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.id IN (SELECT id FROM books WHERE (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY id DESC LIMIT 50) AND books_fts MATCH :q ORDER BY books.id DESC") fun searchRecentlyAddedPaged(q: String, showConvertedOriginals: Boolean = false): PagingSource<Int, BookEntity>
+    @Query("SELECT id FROM books WHERE (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY id DESC LIMIT 50") suspend fun getRecentlyAddedIds(showConvertedOriginals: Boolean = false): List<Long>
+    @Query("SELECT books.id FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.id IN (SELECT id FROM books WHERE (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY id DESC LIMIT 50) AND books_fts MATCH :q ORDER BY books.id DESC") suspend fun searchRecentlyAddedIds(q: String, showConvertedOriginals: Boolean = false): List<Long>
+    @Query("SELECT * FROM books WHERE lastOpenedAt > 0 AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY lastOpenedAt DESC LIMIT 1") fun observeLastOpened(showConvertedOriginals: Boolean = false): Flow<BookEntity?>
+    @Query("SELECT * FROM books WHERE (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY title COLLATE NOCASE ASC") fun allPaged(showConvertedOriginals: Boolean = false): PagingSource<Int, BookEntity>
+    @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books_fts MATCH :q AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY books.title COLLATE NOCASE ASC") fun searchAllPaged(q: String, showConvertedOriginals: Boolean = false): PagingSource<Int, BookEntity>
+    @Query("SELECT * FROM books WHERE isFavorite = 1 AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY title COLLATE NOCASE ASC, id ASC") fun favoritePaged(showConvertedOriginals: Boolean = false): PagingSource<Int, BookEntity>
+    @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.isFavorite = 1 AND books_fts MATCH :q AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY books.title COLLATE NOCASE ASC, books.id ASC") fun searchFavoritePaged(q: String, showConvertedOriginals: Boolean = false): PagingSource<Int, BookEntity>
+    @Query("SELECT * FROM books WHERE readingStatus = :status AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY title COLLATE NOCASE ASC, id ASC") fun statusPaged(status: String, showConvertedOriginals: Boolean = false): PagingSource<Int, BookEntity>
+    @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.readingStatus = :status AND books_fts MATCH :q AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY books.title COLLATE NOCASE ASC, books.id ASC") fun searchStatusPaged(status: String, q: String, showConvertedOriginals: Boolean = false): PagingSource<Int, BookEntity>
+    @Query("SELECT * FROM books WHERE lastOpenedAt > 0 AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY lastOpenedAt DESC") fun recentPaged(showConvertedOriginals: Boolean = false): PagingSource<Int, BookEntity>
+    @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.lastOpenedAt > 0 AND books_fts MATCH :q AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY books.lastOpenedAt DESC") fun searchRecentPaged(q: String, showConvertedOriginals: Boolean = false): PagingSource<Int, BookEntity>
+    @Query("SELECT * FROM books WHERE format != 'EPUB' AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY title COLLATE NOCASE ASC") fun toConvertPaged(showConvertedOriginals: Boolean = false): PagingSource<Int, BookEntity>
+    @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.format != 'EPUB' AND books_fts MATCH :q AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY books.title COLLATE NOCASE ASC") fun searchToConvertPaged(q: String, showConvertedOriginals: Boolean = false): PagingSource<Int, BookEntity>
+    @Query("SELECT id FROM books WHERE lastOpenedAt > 0 AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun getRecentIds(showConvertedOriginals: Boolean = false): List<Long>
+    @Query("SELECT id FROM books WHERE format != 'EPUB' AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun getToConvertIds(showConvertedOriginals: Boolean = false): List<Long>
+    @Query("SELECT books.id FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books_fts MATCH :q AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun searchAllIds(q: String, showConvertedOriginals: Boolean = false): List<Long>
+    @Query("SELECT books.id FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.lastOpenedAt > 0 AND books_fts MATCH :q AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun searchRecentIds(q: String, showConvertedOriginals: Boolean = false): List<Long>
+    @Query("SELECT books.id FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.format != 'EPUB' AND books_fts MATCH :q AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun searchToConvertIds(q: String, showConvertedOriginals: Boolean = false): List<Long>
+    @Query("SELECT books.id FROM books JOIN custom_shelf_books ON books.id = custom_shelf_books.bookId JOIN books_fts ON books.id = books_fts.rowid WHERE custom_shelf_books.shelfId = :shelfId AND books_fts MATCH :q AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun searchCustomShelfIds(shelfId: Long, q: String, showConvertedOriginals: Boolean = false): List<Long>
+    @Query("SELECT books.id FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.isFavorite = 1 AND books_fts MATCH :q AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun searchFavoriteIds(q: String, showConvertedOriginals: Boolean = false): List<Long>
+    @Query("SELECT books.id FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.readingStatus = :status AND books_fts MATCH :q AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun searchStatusIds(status: String, q: String, showConvertedOriginals: Boolean = false): List<Long>
     @Query("UPDATE books SET title=:t, author=:a, publishingDate=:d, publisher=:p, language=:l, coverPath=COALESCE(:c, coverPath), series=:s, seriesIndex=:si, tags=:tags, metadataExtracted=1 WHERE id=:id")
     suspend fun updateExtractedMetadata(id: Long, t: String, a: String, d: String, p: String, l: String, c: String?, s: String?, si: Double?, tags: String?)
     @Query("UPDATE books SET title=:t, author=:a, publishingDate=:d, publisher=:p, language=:l, coverPath=COALESCE(:c, coverPath), series=:s, seriesIndex=:si, tags=:tags, metadataExtracted=1 WHERE id=:id AND metadataExtracted=0")
@@ -175,7 +217,7 @@ interface BookDao {
     @Query("DELETE FROM books WHERE id = :id") suspend fun deleteById(id: Long)
 }
 
-@Database(entities = [BookEntity::class, BookFtsEntity::class, CustomShelf::class, CustomShelfBook::class], version = 4, exportSchema = false)
+@Database(entities = [BookEntity::class, BookFtsEntity::class, CustomShelf::class, CustomShelfBook::class, ConversionLink::class], version = 5, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao
     companion object {
@@ -197,7 +239,11 @@ abstract class AppDatabase : RoomDatabase() {
             db.execSQL("CREATE TABLE IF NOT EXISTS `custom_shelf_books` (`shelfId` INTEGER NOT NULL, `bookId` INTEGER NOT NULL, PRIMARY KEY(`shelfId`, `bookId`), FOREIGN KEY(`shelfId`) REFERENCES `custom_shelves`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE, FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)")
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_custom_shelf_books_bookId` ON `custom_shelf_books` (`bookId`)")
         } }
-        fun getInstance(context: Context): AppDatabase = INSTANCE ?: synchronized(this) { INSTANCE ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "my_ebook_library.db").addMigrations(M12, M23, M34).build().also { INSTANCE = it } }
+        internal val M45 = object : Migration(4, 5) { override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `conversion_links` (`sourceBookId` INTEGER NOT NULL, `outputBookId` INTEGER NOT NULL, PRIMARY KEY(`sourceBookId`), FOREIGN KEY(`sourceBookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE, FOREIGN KEY(`outputBookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_conversion_links_outputBookId` ON `conversion_links` (`outputBookId`)")
+        } }
+        fun getInstance(context: Context): AppDatabase = INSTANCE ?: synchronized(this) { INSTANCE ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "my_ebook_library.db").addMigrations(M12, M23, M34, M45).build().also { INSTANCE = it } }
     }
 }
 fun toFtsQuery(raw: String): String? {
