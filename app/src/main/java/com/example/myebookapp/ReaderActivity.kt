@@ -97,12 +97,10 @@ class ReaderActivity : FragmentActivity() {
     private var settings by mutableStateOf(ReaderSettings())
     private var appThemeMode by mutableStateOf(AppThemeMode.AUTO)
 
-    // In-book search state
     private var searchQuery by mutableStateOf("")
     private var isSearchingBook by mutableStateOf(false)
     private var searchResults by mutableStateOf<List<Locator>>(emptyList())
 
-    // Dictionary state
     private var dictWord by mutableStateOf<String?>(null)
     private var dictLoading by mutableStateOf(false)
     private var dictEntry by mutableStateOf<DictionaryEntry?>(null)
@@ -525,7 +523,7 @@ class ReaderActivity : FragmentActivity() {
             val found = withContext(Dispatchers.IO) {
                 val collected = mutableListOf<Locator>()
                 runCatching {
-                    val iter = pub.search(trimmed).getOrNull() ?: return@runCatching
+                    val iter = pub.search(trimmed) ?: return@runCatching
                     try {
                         while (collected.size < 60) {
                             val page = iter.next().getOrNull() ?: break
