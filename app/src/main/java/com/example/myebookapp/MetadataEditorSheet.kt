@@ -44,7 +44,7 @@ fun MetadataEditorBottomSheet(b: BookEntity, onD: () -> Unit, onSave: (EpubEditR
     }
 
     ModalBottomSheet(onDismissRequest = onD, sheetState = sheetS) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) { = 20.dp, vertical = 10.dp), Alignment.CenterHorizontally) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Edit Book Info", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(10.dp))
             if (remCov) Box(Modifier.size(100.dp, 140.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)), Alignment.Center) { Text("Removed") }
