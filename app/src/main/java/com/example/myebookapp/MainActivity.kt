@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -52,7 +53,7 @@ val drw = rememberDrawerState(DrawerValue.Closed); val total by dao.observeTotal
 val toConv by dao.observeToConvertCount().collectAsState(0); val scanS by LibraryScanner.status.collectAsState()
 var tab by remember { mutableStateOf(LibraryTab.ALL) }; var qry by remember { mutableStateOf("") }; var dbQry by remember { mutableStateOf("") }
 var selB by remember { mutableStateOf<BookEntity?>(null) }; var edtB by remember { mutableStateOf<BookEntity?>(null) }
-var showSet by remember { mutableStateOf(false) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+var showSet by remember { mutableStateOf(false) }; var showGuide by rememberSaveable { mutableStateOf(false) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
 var shelfSaving by remember { mutableStateOf(false) }
 fun updateShelf(bookId: Long, favorite: Boolean? = null, status: String? = null) {
 if (shelfSaving) return
@@ -171,6 +172,10 @@ savingMetadata = false
 }
 
 val folderP = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { u -> if (u != null) { runCatching { ctx.contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }; LibraryScanner.addFolder(ctx, u); LibraryScanner.scanFolders(ctx, listOf(u)) } }
+if (showGuide) {
+    UserGuideScreen(onClose = { showGuide = false })
+    return
+}
 BackHandler(drw.isOpen || selMode) { if (drw.isOpen) scp.launch { drw.close() } else { selIds = emptySet(); selMode = false } }
 LaunchedEffect(qry) { delay(250); dbQry = qry }
 
@@ -196,6 +201,7 @@ Spacer(Modifier.height(8.dp)); HorizontalDivider(); Spacer(Modifier.height(8.dp)
 NavigationDrawerItem(label={Text("Add Folder")}, selected=false, onClick={scp.launch{drw.close()}; folderP.launch(null)})
 if (folders.isNotEmpty()) NavigationDrawerItem(label={Text("Rescan Folders")}, selected=false, onClick={scp.launch{drw.close()}; LibraryScanner.scanFolders(ctx, folders.map{Uri.parse(it)})})
 NavigationDrawerItem(label={Text("Settings")}, selected=false, onClick={scp.launch{drw.close()}; showSet=true})
+NavigationDrawerItem(label={Text("User Guide")}, selected=false, onClick={scp.launch { drw.close(); showGuide=true }})
 }
 }
 }) {
