@@ -45,7 +45,14 @@ interface BookDao {
     @Query("SELECT * FROM books ORDER BY title COLLATE NOCASE ASC") fun allPaged(): PagingSource<Int, BookEntity>
     @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books_fts MATCH :q ORDER BY title COLLATE NOCASE ASC") fun searchAllPaged(q: String): PagingSource<Int, BookEntity>
     @Query("SELECT * FROM books WHERE lastOpenedAt > 0 ORDER BY lastOpenedAt DESC") fun recentPaged(): PagingSource<Int, BookEntity>
+    @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.lastOpenedAt > 0 AND books_fts MATCH :q ORDER BY books.lastOpenedAt DESC") fun searchRecentPaged(q: String): PagingSource<Int, BookEntity>
     @Query("SELECT * FROM books WHERE format != 'EPUB' ORDER BY title COLLATE NOCASE ASC") fun toConvertPaged(): PagingSource<Int, BookEntity>
+    @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.format != 'EPUB' AND books_fts MATCH :q ORDER BY books.title COLLATE NOCASE ASC") fun searchToConvertPaged(q: String): PagingSource<Int, BookEntity>
+    @Query("SELECT id FROM books WHERE lastOpenedAt > 0") suspend fun getRecentIds(): List<Long>
+    @Query("SELECT id FROM books WHERE format != 'EPUB'") suspend fun getToConvertIds(): List<Long>
+    @Query("SELECT books.id FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books_fts MATCH :q") suspend fun searchAllIds(q: String): List<Long>
+    @Query("SELECT books.id FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.lastOpenedAt > 0 AND books_fts MATCH :q") suspend fun searchRecentIds(q: String): List<Long>
+    @Query("SELECT books.id FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.format != 'EPUB' AND books_fts MATCH :q") suspend fun searchToConvertIds(q: String): List<Long>
     @Query("UPDATE books SET title=:t, author=:a, publishingDate=:d, publisher=:p, language=:l, coverPath=COALESCE(:c, coverPath), series=:s, seriesIndex=:si, tags=:tags, metadataExtracted=1 WHERE id=:id")
     suspend fun updateExtractedMetadata(id: Long, t: String, a: String, d: String, p: String, l: String, c: String?, s: String?, si: Double?, tags: String?)
     @Transaction suspend fun updateExtractedMetadataBatch(items: List<ExtractedBookMeta>) { for (i in items) updateExtractedMetadata(i.id, i.title, i.author, i.publishingDate, i.publisher, i.language, i.coverPath, i.series, i.seriesIndex, i.tags) }
@@ -71,6 +78,11 @@ abstract class AppDatabase : RoomDatabase() {
         } }
         fun getInstance(context: Context): AppDatabase = INSTANCE ?: synchronized(this) { INSTANCE ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "my_ebook_library.db").addMigrations(M12, M23).build().also { INSTANCE = it } }
     }
+}
+
+fun toFtsQuery(raw: String): String? {
+    val tokens = raw.trim().split(Regex("[^\\p{L}\\p{Nd}]+")).filter { it.isNotBlank() }
+    return if (tokens.isEmpty()) null else tokens.joinToString(" ") { "$it*" }
 }
 
 suspend fun removeDuplicateBooks(dao: BookDao): Int {
