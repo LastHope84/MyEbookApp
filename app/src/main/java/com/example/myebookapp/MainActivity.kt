@@ -121,12 +121,32 @@ fun LibraryScreen(tm: AppThemeMode, acc: AppAccent, am: Boolean, incU: Uri?, onC
         }
     }
 
-    fun runSave(b: BookEntity, r: EpubEditRequest, w: Boolean) {
-        edtB = null; selB = null; scp.launch(Dispatchers.IO) {
-            val cov = if (r.removeCover) { b.coverPath?.let { File(it).delete() }; dao.clearCover(b.id); null } else { r.newCoverBitmap?.let { LibraryScanner.saveWebpThumbnail(ctx, b.uriString, it) } }
-            dao.updateExtractedMetadata(b.id, r.title, r.author, r.publishingDate, r.publisher, r.language, cov, r.series, r.seriesIndex, r.tags)
-            if (w && b.format == "EPUB") runCatching { EpubMetadataEditor.writeMetadataToEpub(ctx, Uri.parse(b.uriString), r) }
-            withContext(Dispatchers.Main) { selB = dao.getByUri(b.uriString) }
+    var savingMetadata by remember { mutableStateOf(false) }
+    fun runSave(b: BookEntity, r: EpubEditRequest) {
+        if (savingMetadata) return
+        savingMetadata = true
+        scp.launch {
+            try {
+                val updated = withContext(Dispatchers.IO) {
+                    val changeCover = r.removeCover || r.newCoverBitmap != null
+                    val cover = r.newCoverBitmap?.let {
+                        LibraryScanner.saveWebpThumbnail(ctx, b.uriString + "|edit|" + java.util.UUID.randomUUID(), it)
+                            ?: error("Could not save the cover.")
+                    }
+                    val count = dao.saveEditedMetadata(b.id, r.title, r.author, r.publishingDate, r.publisher, r.language, changeCover, cover, r.series, r.seriesIndex, r.tags)
+                    check(count == 1) { "Book is no longer in the library." }
+                    dao.getByUri(b.uriString)
+                }
+                edtB = null
+                selB = updated
+                Toast.makeText(ctx, "Saved in the app. Original file unchanged.", Toast.LENGTH_LONG).show()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Toast.makeText(ctx, "Could not save: ${e.localizedMessage ?: "unknown error"}", Toast.LENGTH_LONG).show()
+            } finally {
+                savingMetadata = false
+            }
         }
     }
 
@@ -166,6 +186,6 @@ fun LibraryScreen(tm: AppThemeMode, acc: AppAccent, am: Boolean, incU: Uri?, onC
         }
     }
     if (showSet) AppSettingsBottomSheet(tm, acc, am, ThemePrefs.isAutoOpenLastBook(ctx), ThemePrefs.getKindleEmail(ctx), ThemePrefs.getConvertedOutputUri(ctx), onT, onA, onAm, {ThemePrefs.saveAutoOpenLastBook(ctx,it)}, {ThemePrefs.saveKindleEmail(ctx,it)}, {}, {}, {}, {showSet=false})
-    selB?.let { b -> BookDetailsBottomSheet(b, ThemePrefs.getKindleEmail(ctx).isNotBlank(), {selB=null}, {selB=null; openInReader(ctx, b.uriString)}, {selB=null; edtB=b}, {val i=FileOpener.prepareShareIntent(ctx,listOf(b)); ctx.startActivity(i)}, {sendToKindle(b)}, {convertBook(b)}, {scp.launch(Dispatchers.IO){dao.deleteById(b.id)}; selB=null}) }
-    edtB?.let { b -> MetadataEditorBottomSheet(b, {edtB=null}, {r,w -> runSave(b,r,w)}) }
+    selB?.let { b -> BookDetailsBottomSheet(b, ThemePrefs.getKindleEmail(ctx).isNotBlank(), {selB=null}, {selB=null; openInReader(ctx, b.uriString)}, { if (!b.metadataExtracted) { Toast.makeText(ctx, "Wait for this book's metadata scan to finish before editing.", Toast.LENGTH_LONG).show() } else { selB=null; edtB=b } }, {val i=FileOpener.prepareShareIntent(ctx,listOf(b)); ctx.startActivity(i)}, {sendToKindle(b)}, {convertBook(b)}, {scp.launch(Dispatchers.IO){dao.deleteById(b.id)}; selB=null}) }
+    edtB?.let { b -> MetadataEditorBottomSheet(b, {edtB=null}, {r -> runSave(b,r)}) }
 }
