@@ -37,6 +37,9 @@ interface BookDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertIgnoreBatch(books: List<BookEntity>): List<Long>
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertIgnore(book: BookEntity): Long
     @Query("SELECT * FROM books WHERE uriString = :u LIMIT 1") suspend fun getByUri(u: String): BookEntity?
+    @Query("SELECT * FROM books WHERE id = :id LIMIT 1") fun observeById(id: Long): Flow<BookEntity?>
+    @Query("UPDATE books SET isFavorite = :favorite WHERE id = :id") suspend fun setFavorite(id: Long, favorite: Boolean): Int
+    @Query("UPDATE books SET readingStatus = :status WHERE id = :id AND :status IN ('NEW', 'TBR', 'READING', 'FINISHED')") suspend fun setReadingStatus(id: Long, status: String): Int
     @Query("SELECT * FROM books WHERE id IN (:ids)") suspend fun getByIds(ids: List<Long>): List<BookEntity>
     @Query("SELECT id FROM books") suspend fun getAllIds(): List<Long>
     @Query("SELECT id, fileName, fileSize, lastOpenedAt, progressPercent, (coverPath IS NOT NULL) AS hasCover FROM books WHERE fileSize > 0") suspend fun getDuplicateCandidates(): List<BookDuplicateRow>
@@ -50,6 +53,10 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE lastOpenedAt > 0 ORDER BY lastOpenedAt DESC LIMIT 1") fun observeLastOpened(): Flow<BookEntity?>
     @Query("SELECT * FROM books ORDER BY title COLLATE NOCASE ASC") fun allPaged(): PagingSource<Int, BookEntity>
     @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books_fts MATCH :q ORDER BY title COLLATE NOCASE ASC") fun searchAllPaged(q: String): PagingSource<Int, BookEntity>
+    @Query("SELECT * FROM books WHERE isFavorite = 1 ORDER BY title COLLATE NOCASE ASC, id ASC") fun favoritePaged(): PagingSource<Int, BookEntity>
+    @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.isFavorite = 1 AND books_fts MATCH :q ORDER BY books.title COLLATE NOCASE ASC, books.id ASC") fun searchFavoritePaged(q: String): PagingSource<Int, BookEntity>
+    @Query("SELECT * FROM books WHERE readingStatus = :status ORDER BY title COLLATE NOCASE ASC, id ASC") fun statusPaged(status: String): PagingSource<Int, BookEntity>
+    @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.readingStatus = :status AND books_fts MATCH :q ORDER BY books.title COLLATE NOCASE ASC, books.id ASC") fun searchStatusPaged(status: String, q: String): PagingSource<Int, BookEntity>
     @Query("SELECT * FROM books WHERE lastOpenedAt > 0 ORDER BY lastOpenedAt DESC") fun recentPaged(): PagingSource<Int, BookEntity>
     @Query("SELECT books.* FROM books JOIN books_fts ON books.id = books_fts.rowid WHERE books.lastOpenedAt > 0 AND books_fts MATCH :q ORDER BY books.lastOpenedAt DESC") fun searchRecentPaged(q: String): PagingSource<Int, BookEntity>
     @Query("SELECT * FROM books WHERE format != 'EPUB' ORDER BY title COLLATE NOCASE ASC") fun toConvertPaged(): PagingSource<Int, BookEntity>
