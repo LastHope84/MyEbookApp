@@ -2,6 +2,7 @@ package com.example.myebookapp
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -52,7 +53,48 @@ fun LibraryScreen(tm: AppThemeMode, acc: AppAccent, am: Boolean, incU: Uri?, onC
     var tab by remember { mutableStateOf(LibraryTab.ALL) }; var qry by remember { mutableStateOf("") }; var dbQry by remember { mutableStateOf("") }
     var selB by remember { mutableStateOf<BookEntity?>(null) }; var edtB by remember { mutableStateOf<BookEntity?>(null) }
     var showSet by remember { mutableStateOf(false) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var converting by remember { mutableStateOf(false) }
     val folders = LibraryScanner.getSavedFolders(ctx)
+
+    fun convertBook(book: BookEntity) {
+        if (converting) return
+        converting = true
+        selB = null
+        Toast.makeText(ctx, "Converting ${book.fileName}...", Toast.LENGTH_SHORT).show()
+        scp.launch {
+            try {
+                val (converted, savedToCustom) = withContext(Dispatchers.IO) {
+                    val folder = ThemePrefs.getConvertedOutputUri(ctx)?.takeIf { it.isNotBlank() }?.let { Uri.parse(it) }
+                    val out = MobiConverter.convertToEpubOutput(ctx, Uri.parse(book.uriString), book.fileName, folder)
+                    val meta = EpubParser.parseEpub(ctx, out.uri, out.fileName)
+                    val cover = LibraryScanner.saveWebpThumbnail(ctx, out.uri.toString(), meta.coverBitmap)
+                    val entry = BookEntity(
+                        uriString = out.uri.toString(), fileName = out.fileName, format = "EPUB",
+                        fileSize = out.size, lastModified = out.lastModified,
+                        title = meta.title, author = meta.author, publishingDate = meta.publishingDate,
+                        publisher = meta.publisher, language = meta.language, coverPath = cover,
+                        lastLocatorJson = null, progressPercent = 0.0, lastOpenedAt = 0L,
+                        metadataExtracted = true, series = meta.series, seriesIndex = meta.seriesIndex, tags = meta.tags
+                    )
+                    dao.insertIgnore(entry)
+                    (dao.getByUri(out.uri.toString()) ?: error("Could not add the converted book to the library.")) to out.savedToCustomFolder
+                }
+                selB = converted
+                val location = if (savedToCustom) "chosen folder" else "app storage"
+                Toast.makeText(ctx, "Converted to EPUB and saved in $location. Original kept.", Toast.LENGTH_LONG).show()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Toast.makeText(ctx, "Conversion failed: ${e.localizedMessage ?: "unknown error"}", Toast.LENGTH_LONG).show()
+                selB = book
+            } catch (e: LinkageError) {
+                Toast.makeText(ctx, "Conversion engine could not be loaded.", Toast.LENGTH_LONG).show()
+                selB = book
+            } finally {
+                converting = false
+            }
+        }
+    }
 
     fun runSave(b: BookEntity, r: EpubEditRequest, w: Boolean) {
         edtB = null; selB = null; scp.launch(Dispatchers.IO) {
@@ -99,6 +141,6 @@ fun LibraryScreen(tm: AppThemeMode, acc: AppAccent, am: Boolean, incU: Uri?, onC
         }
     }
     if (showSet) AppSettingsBottomSheet(tm, acc, am, ThemePrefs.isAutoOpenLastBook(ctx), ThemePrefs.getKindleEmail(ctx), ThemePrefs.getConvertedOutputUri(ctx), onT, onA, onAm, {ThemePrefs.saveAutoOpenLastBook(ctx,it)}, {ThemePrefs.saveKindleEmail(ctx,it)}, {}, {}, {}, {showSet=false})
-    selB?.let { b -> BookDetailsBottomSheet(b, ThemePrefs.getKindleEmail(ctx).isNotBlank(), {selB=null}, {selB=null; openInReader(ctx, b.uriString)}, {selB=null; edtB=b}, {val i=FileOpener.prepareShareIntent(ctx,listOf(b)); ctx.startActivity(i)}, {}, {}, {scp.launch(Dispatchers.IO){dao.deleteById(b.id)}; selB=null}) }
+    selB?.let { b -> BookDetailsBottomSheet(b, ThemePrefs.getKindleEmail(ctx).isNotBlank(), {selB=null}, {selB=null; openInReader(ctx, b.uriString)}, {selB=null; edtB=b}, {val i=FileOpener.prepareShareIntent(ctx,listOf(b)); ctx.startActivity(i)}, {}, {convertBook(b)}, {scp.launch(Dispatchers.IO){dao.deleteById(b.id)}; selB=null}) }
     edtB?.let { b -> MetadataEditorBottomSheet(b, {edtB=null}, {r,w -> runSave(b,r,w)}) }
 }
