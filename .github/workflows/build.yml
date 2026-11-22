@@ -2,7 +2,7 @@ name: Build Diagnostic Folder Preview APK
 
 on:
   push:
-    branches: [ diagnostic/recoveryguard153-20261122-2142-c1 ]
+    branches: [ diagnostic/recovery-corrected-20261122-2205-a ]
   workflow_dispatch:
 
 jobs:
@@ -97,7 +97,7 @@ jobs:
             echo "Could not parse APK package name" >&2
             exit 1
           fi
-          if [[ "${BASH_REMATCH[1]}" != "com.example.myebookapp.foxlet.recoveryguard153c20261122" ]]; then
+          if [[ "${BASH_REMATCH[1]}" != "com.example.myebookapp.foxlet.serialized20261122" ]]; then
             echo "Unexpected APK package name: ${BASH_REMATCH[1]}" >&2
             exit 1
           fi
@@ -107,7 +107,7 @@ jobs:
         id: upload_preview
         uses: actions/upload-artifact@v4
         with:
-          name: MyEbookApp-Foxlet-Recovery-Guard153c-Diagnostic-20261122
+          name: MyEbookApp-Foxlet-Corrected-Recovery-Diagnostic-20261122-NOT-FOR-INSTALL
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
