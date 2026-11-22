@@ -43,6 +43,8 @@ object LibraryScanner {
     private val paused = MutableStateFlow(false)
     private var activeJob: Job? = null
     private var generation = 0L
+    // Admission gate spans the cancellation, provider reads, and Room commit.
+    private var folderRemovalInProgress = false
     private val _status = MutableStateFlow(ScanStatus())
     val status: StateFlow<ScanStatus> = _status.asStateFlow()
 
@@ -60,13 +62,27 @@ object LibraryScanner {
 
     fun getSavedFolders(context: Context): Set<String> =
         context.getSharedPreferences("my_ebook_folders", Context.MODE_PRIVATE).getStringSet("folder_uris", emptySet())?.toSet() ?: emptySet()
-    fun addFolder(context: Context, treeUri: Uri) {
-        val updated = getSavedFolders(context).toMutableSet().apply { add(treeUri.toString()) }
-        check(context.getSharedPreferences("my_ebook_folders", Context.MODE_PRIVATE).edit().putStringSet("folder_uris", updated).commit())
+    suspend fun addFolder(context: Context, treeUri: Uri) {
+        val app = context.applicationContext
+        withScannerQuiescent(app) {
+            val dao = AppDatabase.getInstance(app).bookDao()
+            check(dao.removedScanRoots().none { it.rootUri == treeUri.toString() }) { "Restore this detached root first" }
+            // Fail open on a crash between Room and preferences: previously hidden books return.
+            withContext(NonCancellable) {
+                val saved = synchronized(lock) { getSavedFolders(app).toList().sorted() }
+                dao.initializeAndCheckConfig(saved)
+                dao.addConfiguredRoot(treeUri.toString())
+                synchronized(lock) {
+                    val updated = getSavedFolders(app).toMutableSet().apply { add(treeUri.toString()) }
+                    check(app.getSharedPreferences("my_ebook_folders", Context.MODE_PRIVATE).edit().putStringSet("folder_uris", updated).commit())
+                }
+            }
+        }
     }
 
     /** Called only from visible UI; never starts work automatically on process launch. */
     fun restore(context: Context) = synchronized(lock) {
+        if (folderRemovalInProgress) return@synchronized
         if (activeJob?.isActive == true) return@synchronized
         val current = mode(context)
         if (current == RUNNING) save(context, INTERRUPTED, roots(context))
@@ -83,6 +99,7 @@ object LibraryScanner {
         val app = context.applicationContext
         try {
             val shouldStart = synchronized(lock) {
+                if (folderRemovalInProgress) return@synchronized false
                 val queue = roots(app)
                 folderUris.map { it.toString() }.forEach { if (it !in queue) queue.add(it) }
                 val old = mode(app)
@@ -101,6 +118,7 @@ object LibraryScanner {
     fun pauseScan(context: Context) {
         val app = context.applicationContext
         try { synchronized(lock) {
+            if (folderRemovalInProgress) return
             if (mode(app) != RUNNING) return
             save(app, PAUSED, roots(app)); paused.value = true
             _status.update { it.copy(isPaused = true, canResume = true, phaseLabel = "Scan paused") }
@@ -111,6 +129,7 @@ object LibraryScanner {
         val app = context.applicationContext
         try {
             synchronized(lock) {
+                if (folderRemovalInProgress) return
                 if (mode(app) != PAUSED && mode(app) != INTERRUPTED) return
                 save(app, RUNNING, roots(app)); paused.value = false
                 _status.update { it.copy(isScanning = true, isPaused = false, canResume = false, phaseLabel = "Resuming…", error = null) }
@@ -122,6 +141,7 @@ object LibraryScanner {
     fun stopScan(context: Context) {
         val app = context.applicationContext
         try { synchronized(lock) {
+            if (folderRemovalInProgress) return
             save(app, STOPPED, emptyList()); generation++; paused.value = false
             activeJob?.cancel(); _status.value = ScanStatus(phaseLabel = "Scan stopped")
         } } catch (e: Exception) { reportStartFailure(app, e) }
@@ -143,7 +163,7 @@ object LibraryScanner {
     /** Service is the sole worker owner. Repeated starts never create overlapping workers. */
     fun startWorker(context: Context, finished: () -> Unit): Boolean = synchronized(lock) {
         // A paused existing worker still owns a completion callback; an absent one does not.
-        if (mode(context) != RUNNING || activeJob?.isActive == true) return@synchronized activeJob?.isActive == true
+        if (folderRemovalInProgress || mode(context) != RUNNING || activeJob?.isActive == true) return@synchronized activeJob?.isActive == true
         val token = ++generation
         val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
@@ -194,6 +214,7 @@ object LibraryScanner {
 
     /** Timeout or unexpected service destruction leaves the current root in the journal. */
     fun interrupt(context: Context, reason: String) = synchronized(lock) {
+        if (folderRemovalInProgress) return@synchronized
         try {
             if (mode(context) == RUNNING) save(context, INTERRUPTED, roots(context))
             if (mode(context) == RUNNING || mode(context) == INTERRUPTED) {
@@ -222,7 +243,7 @@ object LibraryScanner {
             val next = synchronized(lock) { roots(context).firstOrNull() }
             if (next != null) {
                 _status.update { if (it.isPaused) it else it.copy(phaseLabel = "Scanning folders…") }
-                walkTree(context, dao, Uri.parse(next), dao.getAllNameSizeKeys().toMutableSet())
+                walkTree(context, dao, Uri.parse(next))
                 checkpoint()
                 synchronized(lock) {
                     if (generation != token) throw CancellationException("Scan session changed")
@@ -240,20 +261,159 @@ object LibraryScanner {
         }
     }
 
-    private suspend fun walkTree(context: Context, dao: BookDao, treeUri: Uri, keys: MutableSet<String>) {
-        val queue = ArrayDeque<String>().apply { addLast(DocumentsContract.getTreeDocumentId(treeUri)) }
+    /** Interrupt without clearing the journal. While the gate is held no new worker/root can
+     * start. The processing mutex also waits for cancelled provider I/O and non-cancellable
+     * metadata cleanup, not merely Job.isActive becoming false. */
+    suspend fun removeSubfolder(context: Context, treeUri: Uri, directoryId: String): FolderRemovalResult {
+        val app = context.applicationContext
+        synchronized(lock) {
+            check(!folderRemovalInProgress) { "Folder removal already in progress" }
+            // Save first: if persistence fails, leave the running job and admission state alone.
+            val old = mode(app)
+            if (old == RUNNING) save(app, INTERRUPTED, roots(app))
+            folderRemovalInProgress = true
+            generation++
+            activeJob?.cancel()
+            paused.value = false
+            if (old == RUNNING || old == PAUSED || old == INTERRUPTED) {
+                _status.update { it.copy(isScanning = false, isPaused = old == PAUSED,
+                    canResume = true, phaseLabel = if (old == PAUSED) "Scan paused" else "Scan interrupted — resume to continue") }
+            }
+        }
+        try {
+            return processingMutex.withLock {
+                val rootUris = synchronized(lock) { (getSavedFolders(app) + roots(app)).toList().sorted() }
+                FolderRemovalCore.remove(app, treeUri, directoryId, rootUris)
+            }
+        } finally {
+            synchronized(lock) { folderRemovalInProgress = false }
+        }
+    }
+
+    /** Experimental, UI-disabled: refresh all app-owned roots before reversible visibility changes.
+     * A SAF walk is not an atomic provider snapshot; this remains an experimental backend. */
+    suspend fun detachWholeScanRoot(context: Context, treeUri: Uri): Int {
+        val app = context.applicationContext
+        require(treeUri.scheme == "content")
+        val authority = requireNotNull(treeUri.authority).also { require(it.isNotBlank()) }
+        val documentId = DocumentsContract.getTreeDocumentId(treeUri).also { require(it.isNotBlank()) }
+        return withScannerQuiescent(app) {
+            val rootStrings = synchronized(lock) {
+                check(treeUri.toString() in getSavedFolders(app)) { "Not a configured root" }
+                val saved = getSavedFolders(app)
+                check(roots(app).all { it in saved }) { "Queued root is not configured" }
+                saved.toList().sorted()
+            }
+            val dao = AppDatabase.getInstance(app).bookDao()
+            // Legacy preferences are imported once; subsequent divergence fails closed.
+            dao.initializeAndCheckConfig(rootStrings)
+            // Any exclusion, previous detach or unresolved identity prevents a complete sweep.
+            check(dao.getScanExclusions().isEmpty() && dao.removedScanRoots().isEmpty() &&
+                dao.unresolvedRouteCount() == 0 && rootStrings.all { dao.rootExclusions(it).isEmpty() }) {
+                "Cannot prove complete scan routes"
+            }
+            val generation = dao.beginInventorySweep(rootStrings)
+            for (root in rootStrings) {
+                checkpoint()
+                walkTree(app, dao, Uri.parse(root), strictInventory = true, inventoryGeneration = generation)
+                dao.completeInventoryRoot(root, generation)
+            }
+            currentCoroutineContext().ensureActive()
+            withContext(NonCancellable) {
+                // Room checks the complete inventory and generation in the same write transaction.
+                val hidden = dao.detachWithInventory(RemovedScanRoot(treeUri.toString(), authority, documentId), generation, rootStrings)
+                synchronized(lock) {
+                    val remaining = getSavedFolders(app) - treeUri.toString()
+                    check(app.getSharedPreferences("my_ebook_folders", Context.MODE_PRIVATE).edit()
+                        .putStringSet("folder_uris", remaining).commit()) { "Root blocked, but folder preferences need recovery" }
+                    val queue = roots(app).filterNot { it == treeUri.toString() }
+                    save(app, mode(app), queue)
+                    _status.update { it.copy(queuedFolders = queue.size) }
+                }
+                hidden
+            }
+        }
+    }
+
+    /** Explicit restore never releases or takes a grant, deletes data, or automatically starts a scan. */
+    suspend fun restoreDetachedScanRoot(context: Context, treeUri: Uri) {
+        val app = context.applicationContext
+        withScannerQuiescent(app) {
+            val dao = AppDatabase.getInstance(app).bookDao()
+            require(dao.removedScanRoots().any { it.rootUri == treeUri.toString() }) { "Root is not detached" }
+            val saved = synchronized(lock) { getSavedFolders(app).toList().sorted() }
+            dao.initializeAndCheckConfig(saved)
+            currentCoroutineContext().ensureActive()
+            withContext(NonCancellable) {
+                synchronized(lock) {
+                    val updated = getSavedFolders(app) + treeUri.toString()
+                    check(app.getSharedPreferences("my_ebook_folders", Context.MODE_PRIVATE).edit()
+                        .putStringSet("folder_uris", updated).commit())
+                }
+                check(dao.restoreInventoryRoot(treeUri.toString()) == 1)
+            }
+        }
+    }
+
+    /** Same admission gate and processing mutex as the actual service worker. */
+    private suspend fun <T> withScannerQuiescent(app: Context, work: suspend () -> T): T {
+        synchronized(lock) {
+            check(!folderRemovalInProgress) { "Folder operation already in progress" }
+            val old = mode(app)
+            if (old == RUNNING) save(app, INTERRUPTED, roots(app))
+            folderRemovalInProgress = true
+            generation++
+            activeJob?.cancel()
+            paused.value = false
+            if (old == RUNNING || old == PAUSED || old == INTERRUPTED) {
+                _status.update { it.copy(isScanning = false, isPaused = old == PAUSED,
+                    canResume = true, phaseLabel = if (old == PAUSED) "Scan paused" else "Scan interrupted — resume to continue") }
+            }
+        }
+        try { return processingMutex.withLock { work() } }
+        finally { synchronized(lock) { folderRemovalInProgress = false } }
+    }
+
+    /** Provisional exclusion only: does NOT remove library rows or the saved root. */
+    suspend fun excludeFolderFromScans(context: Context, treeUri: Uri, directoryId: String): FolderRemovalResult {
+        val app = context.applicationContext
+        val rootUris = synchronized(lock) { (getSavedFolders(app) + roots(app)).toList().sorted() }
+        return FolderRemovalCore.exclude(app, treeUri, directoryId, rootUris)
+    }
+
+    private suspend fun walkTree(context: Context, dao: BookDao, treeUri: Uri, strictInventory: Boolean = false, inventoryGeneration: Long? = null) {
+        val authority = requireNotNull(treeUri.authority).also { require(it.isNotBlank()) }
+        val rootId = DocumentsContract.getTreeDocumentId(treeUri).also { require(it.isNotEmpty()) }
+        // Paths are actual observed SAF edges, never derived from opaque document IDs.
+        // Even a completed walk is not an exhaustive provider snapshot: each directory is
+        // visited at most once, and the provider may change while it is being queried.
+        val queue = ArrayDeque<List<String>>().apply { add(listOf(rootId)) }
+        val seen = mutableSetOf<String>()
+        val queuedIds = mutableSetOf(rootId)
         val projection = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE, DocumentsContract.Document.COLUMN_SIZE, DocumentsContract.Document.COLUMN_LAST_MODIFIED)
-        val batch = ArrayList<BookEntity>(200)
+        val batch = ArrayList<ScannedItem>(200)
         suspend fun flush() {
             if (batch.isEmpty()) return
             checkpoint()
-            val inserted = dao.insertIgnoreBatch(batch).count { it != -1L }
+            check(!strictInventory || batch.all { it.book == null || verifiedScanRoute(it, authority) != null }) { "Invalid book route makes inventory incomplete" }
+            val result = if (strictInventory) dao.insertScannedBatch(batch, emptySet(), authority, requireNotNull(inventoryGeneration))
+                else dao.insertScannedBatch(batch, emptySet(), authority)
             batch.clear()
-            _status.update { it.copy(filesFoundInPass = it.filesFoundInPass + inserted) }
+            _status.update { it.copy(filesFoundInPass = it.filesFoundInPass + result.inserted) }
         }
         while (queue.isNotEmpty()) {
             checkpoint()
-            val children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, queue.removeFirst())
+            val path = queue.removeFirst()
+            val blocked = dao.rootExclusions(treeUri.toString()).map { it.documentId }.toSet() +
+                dao.getScanExclusions().filter { it.authority == authority }.map { it.documentId } +
+                removedRootBlocks(treeUri.toString(), authority, dao.removedScanRoots())
+            if (path.any { it in blocked }) {
+                check(!strictInventory) { "Excluded route makes inventory incomplete" }
+                continue
+            }
+            val parentId = path.last()
+            if (!seen.add(parentId)) continue
+            val children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId)
             val cursor = context.contentResolver.query(children, projection, null, null, null)
                 ?: throw IllegalStateException("Folder provider returned no results; permission may have been lost")
             cursor.use { c ->
@@ -266,12 +426,31 @@ object LibraryScanner {
                 requireCompleteResults()
                 while (c.moveToNext()) {
                     checkpoint()
-                    val name = c.getString(1) ?: continue
-                    if (c.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR) { if (!name.startsWith(".")) queue.addLast(c.getString(0)); continue }
-                    val format = when (name.substringAfterLast('.', "").lowercase()) { "epub" -> "EPUB"; "mobi" -> "MOBI"; "azw3", "azw", "prc" -> "AZW3"; else -> null } ?: continue
-                    val size = c.getLong(3)
-                    if (size > 0L && !keys.add("${name.lowercase()}|$size")) continue
-                    batch.add(BookEntity(uriString = DocumentsContract.buildDocumentUriUsingTree(treeUri, c.getString(0)).toString(), fileName = name, format = format, fileSize = size, lastModified = c.getLong(4), title = name.substringBeforeLast('.'), author = "Unknown", publishingDate = "Unknown", publisher = "Unknown", language = "Unknown", coverPath = null, lastLocatorJson = null, progressPercent = 0.0, lastOpenedAt = 0L, metadataExtracted = format != "EPUB"))
+                    val name = c.getString(1)
+                    if (name == null) {
+                        check(!strictInventory) { "Unnamed provider entry makes inventory incomplete" }
+                        continue
+                    }
+                    val documentId = c.getString(0)?.takeIf { it.isNotEmpty() }
+                        ?: throw IllegalStateException("Folder provider returned a document without an ID; resume to retry")
+                    val mime = c.getString(2)
+                    check(!strictInventory || !mime.isNullOrBlank()) { "Missing MIME type makes inventory incomplete" }
+                    val isDirectory = mime == DocumentsContract.Document.MIME_TYPE_DIR
+                    check(isDirectory || documentId !in path) { "Folder provider returned a file with a directory's ID; resume to retry" }
+                    val sighting = ScanSighting(treeUri.toString(), parentId, documentId, isDirectory)
+                    if (isDirectory) {
+                        val traversable = !name.startsWith(".") && documentId !in blocked && documentId !in seen && documentId !in path
+                        val firstRoute = if (traversable) queuedIds.add(documentId) else false
+                        check(!strictInventory || (traversable && firstRoute)) { "Skipped, cyclic or multiple directory route makes inventory incomplete" }
+                        if (traversable && firstRoute) queue.addLast(path + documentId)
+                        batch.add(ScannedItem(sighting, null, path))
+                    } else {
+                        val format = when (name.substringAfterLast('.', "").lowercase()) { "epub" -> "EPUB"; "mobi" -> "MOBI"; "azw3", "azw", "prc" -> "AZW3"; else -> null } ?: continue
+                        val size = c.getLong(3)
+                        // Equal filenames and sizes do not establish document identity.
+                        val book = BookEntity(uriString = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId).toString(), fileName = name, format = format, fileSize = size, lastModified = c.getLong(4), title = name.substringBeforeLast('.'), author = "Unknown", publishingDate = "Unknown", publisher = "Unknown", language = "Unknown", coverPath = null, lastLocatorJson = null, progressPercent = 0.0, lastOpenedAt = 0L, metadataExtracted = format != "EPUB")
+                        batch.add(ScannedItem(sighting, book, path))
+                    }
                     if (batch.size >= 200) flush()
                 }
                 // Providers may update extras while enumerating.
