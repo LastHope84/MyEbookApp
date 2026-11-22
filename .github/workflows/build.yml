@@ -2,7 +2,7 @@ name: Build Diagnostic Folder Preview APK
 
 on:
   push:
-    branches: [ diagnostic/membership-removal-20261122 ]
+    branches: [ diagnostic/journal-lab-compile-20261122 ]
   workflow_dispatch:
 
 jobs:
@@ -12,13 +12,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Reconstruct and verify frozen journal prototype
+        run: |
+          python3 reconstruct_journal.py
+          python3 verify_journal_snapshot.py
+
       - name: Reject stale checkout payloads
         run: python3 tests/check_preview_checkout.py
 
       # Both payloads are checked before writing; overlapping files must be identical.
       # The folder payload cannot overwrite the restore script, tests, or translation inputs.
       - name: Restore and verify preview sources
-        run: python3 tests/restore_preview_sources.py
+        run: |
+          python3 tests/restore_preview_sources.py
+          python3 verify_journal_snapshot.py
 
       - name: Check final preview integration and translation inputs
         run: |
@@ -94,7 +101,7 @@ jobs:
             echo "Could not parse APK package name" >&2
             exit 1
           fi
-          if [[ "${BASH_REMATCH[1]}" != "com.example.myebookapp.foxlet.removaldiag20261122" ]]; then
+          if [[ "${BASH_REMATCH[1]}" != "com.example.myebookapp.foxlet.journallab20261122" ]]; then
             echo "Unexpected APK package name: ${BASH_REMATCH[1]}" >&2
             exit 1
           fi
@@ -104,7 +111,7 @@ jobs:
         id: upload_preview
         uses: actions/upload-artifact@v4
         with:
-          name: MyEbookApp-Foxlet-Membership-Removal-Diagnostic-20261122
+          name: MyEbookApp-Foxlet-Journal-Lab-Prototype-Diagnostic-20261122
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
