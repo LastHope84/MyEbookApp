@@ -22,4 +22,18 @@ class TranslationLanguageSearchTest {
         assertTrue(translationLanguagesMatch(listOf("fr", "it", "en"), "French English Italian"))
         assertFalse(translationLanguagesMatch(listOf("fr", "it", "en"), "German"))
     }
+
+    @Test fun onlyRoutesWithAllPacksInstalledAreShown() {
+        val missing = TranslationPack("fr", "en", "1", 1, emptyList())
+        val present = missing.copy(installedVersions = listOf("1 (NotChecked)"))
+        val second = TranslationPack("en", "it", "1", 1, listOf("1 (NotChecked)"))
+        assertFalse(translationRouteHasInstalledPacks(TranslationRoute("fr", "it", emptyList())))
+        assertFalse(translationRouteHasInstalledPacks(TranslationRoute("fr", "it", listOf(missing, second))))
+        assertTrue(translationRouteHasInstalledPacks(TranslationRoute("fr", "it", listOf(present, second))))
+    }
+
+    @Test fun listExplainsUncheckedMetadataWithoutChangingOtherStatuses() {
+        assertEquals("1 (not checked in this list)", translationInstallationLabel("1 (NotChecked)"))
+        assertEquals("1 (Corrupt)", translationInstallationLabel("1 (Corrupt)"))
+    }
 }
