@@ -40,7 +40,7 @@ class ScanRouteMigrationDatabaseTest {
     }
 
     @Test fun migrationKeepsLegacyStateWithoutInferringRoutes() = runBlocking {
-        val builder = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.M89, AppDatabase.M910, AppDatabase.M1011)
+        val builder = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.M89, AppDatabase.M910, AppDatabase.M1011, AppDatabase.M1112, AppDatabase.M1213)
         val created = builder.build()
         db = created
         val dao = created.bookDao()
@@ -57,6 +57,8 @@ class ScanRouteMigrationDatabaseTest {
         created.close()
         db = null
         context.openOrCreateDatabase(name, Context.MODE_PRIVATE, null).use { sql ->
+            sql.execSQL("DROP TABLE scan_config_journal")
+            sql.execSQL("DROP TABLE scan_path_exclusions")
             sql.execSQL("DROP TABLE hidden_scan_books")
             sql.execSQL("DROP TABLE scan_memberships")
             sql.execSQL("DROP TABLE independent_books")
@@ -72,7 +74,7 @@ class ScanRouteMigrationDatabaseTest {
         }
         val upgraded = builder.build()
         db = upgraded
-        assertEquals(11, upgraded.openHelper.writableDatabase.version)
+        assertEquals(13, upgraded.openHelper.writableDatabase.version)
         assertIdentityIndex(upgraded)
         assertEquals(book, upgraded.bookDao().getByIdOnce(41))
         assertEquals(1, upgraded.bookDao().shelfCountForRemoval(41))
