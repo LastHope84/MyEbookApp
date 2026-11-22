@@ -18,6 +18,7 @@ def query_for(name):
 class RecentAndFavorites(unittest.TestCase):
     def setUp(self):
         self.db = sqlite3.connect(':memory:')
+        self.db.execute("CREATE TABLE hidden_scan_books(bookId INTEGER PRIMARY KEY, rootUri TEXT NOT NULL)")
         self.db.execute('CREATE TABLE books (id INTEGER PRIMARY KEY, title TEXT, isFavorite INTEGER, readingStatus TEXT)')
         self.assertEqual(len(STATEMENTS_45), 2)
         for sql in STATEMENTS_45:
