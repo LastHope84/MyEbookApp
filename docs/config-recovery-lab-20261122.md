@@ -1,0 +1,7 @@
+# Scanner configuration recovery — fail-closed guard
+
+Adding folders is disabled in the UI and at the scanner API. No permission grant is requested by this UI. A pending ADD journal blocks reconciliation and traversal without changing preferences, queue, pause state, or clearing the journal. Existing roots without a pending journal continue to use the prior scanner paths. This snapshot cannot add folders even on a fresh install; it is not a usable library-onboarding build.
+
+The previous protocol committed an added root in Room and folder preferences, then cleared its journal before MainActivity queued the scan. A process death in that gap could leave a configured but never-scanned folder with no durable indication of work. Restoring the journal alone did not repair that gap. A safe future design must persist the intended scan with the configuration transaction, reconcile cross-store state without clearing the intent until queue durability is verified, preserve explicit pause/stop semantics, handle concurrent queue writers and cancellation, and test every crash boundary on Android/SAF providers. The old journal itself is not proof a scan is pending; ambiguous legacy journals are deliberately not auto-repaired.
+
+This guard is not a migration or fix for an already installed experimental package; it uses a distinct application ID and never updates #165. No device/instrumentation execution is claimed. Root detach and restoration remain disabled; no user files are deleted.
