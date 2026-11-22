@@ -84,9 +84,11 @@ class SourceSqlTests(unittest.TestCase):
     def test_rescan_insert_contract_does_not_replace_book_rows(self):
         # This checks a current source guard, not that all future paths call it.
         source = (SRC / 'BookDatabase.kt').read_text()
-        for method in ('insertIgnore', 'insertIgnoreBatch'):
+        for method in ('insertBookRaw',):
             self.assertRegex(source, r'@Insert\s*\(\s*onConflict\s*=\s*OnConflictStrategy\.IGNORE\s*\)\s*'
                              r'suspend\s+fun\s+' + method + r'\s*\(')
+        self.assertIn('@Transaction suspend fun insertIgnore(', source)
+        self.assertIn('@Transaction suspend fun insertIgnoreBatch(', source)
         self.assertRegex(source, r'Index\(\s*"uriString"\s*,\s*unique\s*=\s*true\s*\)')
         before = self.snapshot()
         self.db.execute("INSERT OR IGNORE INTO books(id, uriString, title) VALUES(2, 'content://book/1', 'replacement')")
