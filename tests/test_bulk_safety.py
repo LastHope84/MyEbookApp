@@ -26,6 +26,7 @@ def sql_chunks(con, name, ids, params=None):
 class BulkSafety(unittest.TestCase):
     def setUp(self):
         self.db = sqlite3.connect(':memory:')
+        self.db.execute('CREATE TABLE hidden_scan_books(bookId INTEGER PRIMARY KEY, rootUri TEXT)')
         self.db.execute('PRAGMA foreign_keys=ON')
         self.db.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 999)
         self.db.executescript('''CREATE TABLE books(id INTEGER PRIMARY KEY, isFavorite INTEGER NOT NULL DEFAULT 0, readingStatus TEXT NOT NULL DEFAULT 'NEW');
