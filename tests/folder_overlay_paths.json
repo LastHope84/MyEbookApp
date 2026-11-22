@@ -26,6 +26,8 @@
   "app/src/main/java/com/example/myebookapp/RootRemovalCandidateDecision.kt",
   "app/src/main/java/com/example/myebookapp/ScanDirectoryQueue.kt",
   "app/src/main/java/com/example/myebookapp/ScanRouteOwnership.kt",
+  "app/src/main/java/com/example/myebookapp/ScanService.kt",
+  "app/src/main/java/com/example/myebookapp/ScanSessionAuthority.kt",
   "app/src/main/java/com/example/myebookapp/ScannerConfigIntentLab.kt",
   "app/src/main/java/com/example/myebookapp/ScannerConfigRecovery.kt",
   "app/src/main/java/com/example/myebookapp/ScannerSafetyGate.kt",
@@ -35,6 +37,7 @@
   "app/src/test/java/com/example/myebookapp/RootRemovalCandidateDecisionTest.kt",
   "app/src/test/java/com/example/myebookapp/ScanDirectoryQueueTest.kt",
   "app/src/test/java/com/example/myebookapp/ScanRouteOwnershipTest.kt",
+  "app/src/test/java/com/example/myebookapp/ScanSessionAuthorityTest.kt",
   "docs/config-journal-workable-lab-20261122.md",
   "docs/config-recovery-lab-20261122.md",
   "docs/folder-exclusion-core.md",
@@ -44,6 +47,7 @@
   "docs/ownership-decision-experiment.md",
   "docs/recovery-integration-20261122.md",
   "docs/serialized-recovery-20261122.md",
+  "docs/service-races-20261122.md",
   "docs/visibility-projection-next-20261122.md",
   "docs/whole-root-detach-experiment.md"
 ]
