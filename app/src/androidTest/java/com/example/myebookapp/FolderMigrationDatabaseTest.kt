@@ -32,7 +32,7 @@ class FolderMigrationDatabaseTest {
     }
 
     private fun builder() = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
-        .addMigrations(AppDatabase.M56, AppDatabase.M67, AppDatabase.M78, AppDatabase.M89, AppDatabase.M910, AppDatabase.M1011)
+        .addMigrations(AppDatabase.M56, AppDatabase.M67, AppDatabase.M78, AppDatabase.M89, AppDatabase.M910, AppDatabase.M1011, AppDatabase.M1112, AppDatabase.M1213)
 
     private fun original() = BookEntity(
         id = 41, uriString = "content://provider/document/original", fileName = "original.mobi",
@@ -68,6 +68,8 @@ class FolderMigrationDatabaseTest {
         created.close()
         room = null
         context.openOrCreateDatabase(databaseName, Context.MODE_PRIVATE, null).use { db ->
+            db.execSQL("DROP TABLE scan_config_journal")
+            db.execSQL("DROP TABLE scan_path_exclusions")
             db.execSQL("DROP TABLE hidden_scan_books")
             db.execSQL("DROP TABLE scan_memberships")
             db.execSQL("DROP TABLE independent_books")
@@ -100,7 +102,7 @@ class FolderMigrationDatabaseTest {
         room = upgraded
         // Forces open, migration, and Room's generated schema validation.
         val sql = upgraded.openHelper.writableDatabase
-        assertEquals(11, sql.version)
+        assertEquals(13, sql.version)
         assertTrue(upgraded.bookDao().removedScanRoots().isEmpty())
         val dao = upgraded.bookDao()
         assertEquals(original(), dao.getByIdOnce(41))
