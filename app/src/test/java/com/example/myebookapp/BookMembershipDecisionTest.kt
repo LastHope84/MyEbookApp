@@ -29,6 +29,19 @@ class BookMembershipDecisionTest {
         cases.forEach { assertEquals(MembershipDecision.RETAIN_UNKNOWN, decision(it)) }
     }
 
+    @Test fun `path qualified decision keeps alternate parent and unknown provenance`() {
+        val a = d("a"); val b = d("b"); val common = d("common")
+        val left = MembershipRoute(root.id, listOf(root.document, a, common), file, true)
+        val right = MembershipRoute(root.id, listOf(root.document, b, common), file, true)
+        val selection = MembershipExclusion(root.id, common, listOf(root.document, a, common))
+        val e = evidence().copy(observations = listOf(MembershipObservation(root.id, true, listOf(left, right))), exclusions = setOf(selection))
+        assertEquals(MembershipDecision.RETAIN_SHARED, BookMembershipDecision.decidePathQualified(e))
+        assertEquals(MembershipDecision.RETAIN_UNKNOWN, BookMembershipDecision.decidePathQualified(e.copy(ownershipProvenanceComplete = false)))
+        assertEquals(MembershipDecision.RETAIN_UNKNOWN, BookMembershipDecision.decidePathQualified(e.copy(exclusions = setOf(MembershipExclusion(root.id, common)))))
+        val rootPath = MembershipExclusion(root.id, root.document, listOf(root.document))
+        assertEquals(MembershipDecision.ELIGIBLE_TO_HIDE_REVERSIBLY, BookMembershipDecision.decidePathQualified(e.copy(exclusions = setOf(rootPath))))
+    }
+
     @Test fun `fresh complete sole route is eligible only for reversible hiding`() {
         assertEquals(MembershipDecision.ELIGIBLE_TO_HIDE_REVERSIBLY, decision(evidence()))
     }
