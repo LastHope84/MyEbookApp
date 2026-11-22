@@ -19,7 +19,7 @@ class TranslationSettingContractTest(unittest.TestCase):
         self.assertIn('if (foxletAar != null)', GRADLE)
         self.assertIn('else 24', GRADLE)
         self.assertIn('"armeabi-v7a"', GRADLE)
-        self.assertIn('applicationIdSuffix = ".foxlet"', GRADLE)
+        self.assertIn('applicationIdSuffix = if (foxletAar != null) ".foxlet.folderpreview20261122" else ".folderpreview20261122"', GRADLE)
     def test_preference_defaults_off_and_toggle_has_no_pack_effects(self):
         getter = PREFS.split('fun isOfflineTranslationEnabled(context: Context): Boolean =', 1)[1].split('fun saveOfflineTranslationEnabled', 1)[0]
         self.assertIn('TranslationAvailability.isAvailable &&', getter)
