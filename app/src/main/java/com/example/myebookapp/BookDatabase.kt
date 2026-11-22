@@ -142,6 +142,7 @@ interface BookDao {
         return books
     }
     @Query("SELECT id FROM books WHERE (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun getAllIds(showConvertedOriginals: Boolean = false): List<Long>
+    @Query("SELECT uriString FROM books") suspend fun getAllUris(): List<String>
     @Query("SELECT id FROM books WHERE isFavorite = 1 AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun getFavoriteIds(showConvertedOriginals: Boolean = false): List<Long>
     @Query("SELECT id FROM books WHERE readingStatus = :status AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun getStatusIds(status: String, showConvertedOriginals: Boolean = false): List<Long>
     @Query("SELECT books.id FROM books JOIN custom_shelf_books ON books.id = custom_shelf_books.bookId WHERE custom_shelf_books.shelfId = :shelfId AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun getCustomShelfBookIds(shelfId: Long, showConvertedOriginals: Boolean = false): List<Long>
@@ -149,6 +150,8 @@ interface BookDao {
     @Query("SELECT LOWER(fileName) || '|' || fileSize FROM books WHERE fileSize > 0") suspend fun getAllNameSizeKeys(): List<String>
     @Query("SELECT COUNT(*) FROM books WHERE format = 'EPUB' AND metadataExtracted = 0") suspend fun countPendingEpubs(): Int
     @Query("SELECT * FROM books WHERE format = 'EPUB' AND metadataExtracted = 0 ORDER BY id ASC LIMIT :limit") suspend fun getPendingEpubs(limit: Int): List<BookEntity>
+    @Query("SELECT * FROM books WHERE format = 'EPUB' AND metadataExtracted = 0 AND id > :afterId ORDER BY id ASC LIMIT :limit") suspend fun getPendingEpubsAfter(afterId: Long, limit: Int): List<BookEntity>
+    @Query("UPDATE books SET metadataExtracted = 1 WHERE id = :id AND metadataExtracted = 0") suspend fun markMetadataFailed(id: Long): Int
     @Query("SELECT * FROM books WHERE lastOpenedAt > 0 AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY lastOpenedAt DESC LIMIT 1") suspend fun getLastOpenedOnce(showConvertedOriginals: Boolean = false): BookEntity?
     @Query("SELECT COUNT(*) FROM books WHERE (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") fun observeTotalCount(showConvertedOriginals: Boolean = false): Flow<Int>
     @Query("SELECT COUNT(*) FROM books WHERE format = 'EPUB' AND metadataExtracted = 0 AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") fun observePendingMetadataCount(showConvertedOriginals: Boolean = false): Flow<Int>
@@ -181,7 +184,7 @@ interface BookDao {
     @Query("UPDATE books SET title=:t, author=:a, publishingDate=:d, publisher=:p, language=:l, coverPath=COALESCE(:c, coverPath), series=:s, seriesIndex=:si, tags=:tags, metadataExtracted=1 WHERE id=:id")
     suspend fun updateExtractedMetadata(id: Long, t: String, a: String, d: String, p: String, l: String, c: String?, s: String?, si: Double?, tags: String?)
     @Query("UPDATE books SET title=:t, author=:a, publishingDate=:d, publisher=:p, language=:l, coverPath=COALESCE(:c, coverPath), series=:s, seriesIndex=:si, tags=:tags, metadataExtracted=1 WHERE id=:id AND metadataExtracted=0")
-    suspend fun updatePendingMetadata(id: Long, t: String, a: String, d: String, p: String, l: String, c: String?, s: String?, si: Double?, tags: String?)
+    suspend fun updatePendingMetadata(id: Long, t: String, a: String, d: String, p: String, l: String, c: String?, s: String?, si: Double?, tags: String?): Int
     @Transaction suspend fun updateExtractedMetadataBatch(items: List<ExtractedBookMeta>) { for (i in items) updatePendingMetadata(i.id, i.title, i.author, i.publishingDate, i.publisher, i.language, i.coverPath, i.series, i.seriesIndex, i.tags) }
     @Query("UPDATE books SET title=:t, author=:a, publishingDate=:d, publisher=:p, language=:l, coverPath=CASE WHEN :changeCover THEN :c ELSE coverPath END, series=:s, seriesIndex=:si, tags=:tags, metadataExtracted=1 WHERE id=:id")
     suspend fun saveEditedMetadata(id: Long, t: String, a: String, d: String, p: String, l: String, changeCover: Boolean, c: String?, s: String?, si: Double?, tags: String?): Int

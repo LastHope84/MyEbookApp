@@ -48,7 +48,7 @@ Online metadata lookup sends the title and author you enter to catalogue service
 
 - Reading statuses are **manual**: opening a book or reaching its end does not automatically change its shelf. Custom shelves are not available in this version.
 - Some displayed settings are not connected yet, including the conversion-output folder picker, duplicate cleanup and reopening the last book on launch.
-- Folder scanning can skip files with the same name and size, even in different folders. Hidden folders are skipped.
+- Folder scanning runs in a foreground service so it can continue while the app is in the background. Hidden folders are skipped. An unreadable EPUB is kept in the library with basic details instead of blocking the rest of the scan.
 - Some EPUBs may not open correctly, and conversion quality depends on the source.
 - The app has no visible export for its library edits or shelves. See the [guide](docs/USER_GUIDE.md#storage-safety-and-troubleshooting) before clearing app data or uninstalling.
 
