@@ -39,6 +39,7 @@ class ScanService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        LibraryScanner.claimService(this)
         try {
             val manager = getSystemService(NotificationManager::class.java)
             if (Build.VERSION.SDK_INT >= 26) {
@@ -64,7 +65,7 @@ class ScanService : Service() {
                 }
             }
         } catch (e: Exception) {
-            LibraryScanner.interrupt(applicationContext, e.localizedMessage ?: "Foreground service could not start")
+            LibraryScanner.interruptFromService(applicationContext, this, e.localizedMessage ?: "Foreground service could not start", release = true)
             stopSelf()
         }
     }
@@ -72,11 +73,13 @@ class ScanService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         latestStartId = startId
         if (!promoted) { stopSelf(startId); return START_NOT_STICKY }
+        LibraryScanner.claimService(this)
         ensureWorker()
         return START_NOT_STICKY
     }
 
     private fun ensureWorker() {
+        if (!promoted || !LibraryScanner.isServiceOwner(this)) return
         val hasWorker = LibraryScanner.startWorker(applicationContext) {
             handler.post {
                 // A completion posted by an old service must not start work after destruction.
@@ -87,13 +90,14 @@ class ScanService : Service() {
     }
 
     override fun onTimeout(startId: Int, fgsType: Int) {
-        LibraryScanner.interrupt(applicationContext, "Android's background scan time limit was reached. Resume when the app is visible.")
+        if (startId != latestStartId) return
+        LibraryScanner.interruptFromService(applicationContext, this, "Android's background scan time limit was reached. Resume when the app is visible.")
         stopSelf()
     }
 
     override fun onDestroy() {
         promoted = false
-        LibraryScanner.interrupt(applicationContext, "Background scan stopped. Resume when the app is visible.")
+        LibraryScanner.interruptFromService(applicationContext, this, "Background scan stopped. Resume when the app is visible.", release = true)
         serviceScope.cancel()
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
