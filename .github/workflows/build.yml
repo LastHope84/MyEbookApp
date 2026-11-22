@@ -2,7 +2,7 @@ name: Build Diagnostic Folder Preview APK
 
 on:
   push:
-    branches: [ diagnostic/membership-removal-20261122 ]
+    branches: [ diagnostic/recovery-integrated-ci-20261122 ]
   workflow_dispatch:
 
 jobs:
@@ -12,13 +12,26 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Reject stale checkout payloads
-        run: python3 tests/check_preview_checkout.py
-
-      # Both payloads are checked before writing; overlapping files must be identical.
-      # The folder payload cannot overwrite the restore script, tests, or translation inputs.
-      - name: Restore and verify preview sources
-        run: python3 tests/restore_preview_sources.py
+      # Three large tracked files are intentionally restored from the verified payload.
+      # Every other payload file must match the checkout before restoration.
+      - name: Validate checkout and restore exact snapshot sources
+        run: |
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'tests')
+          from restore_preview_sources import payloads
+          translation, folder = payloads()
+          restored = {'app/src/main/java/com/example/myebookapp/BookDatabase.kt', 'app/src/main/java/com/example/myebookapp/MainActivity.kt', 'app/src/main/java/com/example/myebookapp/LibraryScanner.kt'}
+          for name, data in {**translation, **folder}.items():
+              path = Path(name)
+              if path.is_symlink() or not path.is_file():
+                  raise ValueError('Unsafe or missing checkout file: ' + name)
+              if name not in restored and path.read_bytes() != data:
+                  raise ValueError('Payload differs from checkout: ' + name)
+          PY
+          python3 tests/restore_preview_sources.py
+          python3 tests/check_preview_checkout.py
 
       - name: Check final preview integration and translation inputs
         run: |
@@ -72,8 +85,8 @@ jobs:
           (cd "$RUNNER_TEMP/foxlet-source" && ./gradlew :foxlet:assembleRelease)
           cp "$RUNNER_TEMP/foxlet-source/foxlet/build/outputs/aar/foxlet-release.aar" "$RUNNER_TEMP/foxlet.aar"
 
-      - name: Build folder preview with Foxlet
-        run: gradle clean assembleDebug -PfoxletAar="$RUNNER_TEMP/foxlet.aar"
+      - name: Compile diagnostic app and instrumentation with Foxlet
+        run: gradle clean assembleDebug assembleDebugAndroidTest -PfoxletAar="$RUNNER_TEMP/foxlet.aar"
 
       - name: Verify preview APK identity and signature
         shell: bash
@@ -94,7 +107,7 @@ jobs:
             echo "Could not parse APK package name" >&2
             exit 1
           fi
-          if [[ "${BASH_REMATCH[1]}" != "com.example.myebookapp.foxlet.removaldiag20261122" ]]; then
+          if [[ "${BASH_REMATCH[1]}" != "com.example.myebookapp.foxlet.recovery20261122" ]]; then
             echo "Unexpected APK package name: ${BASH_REMATCH[1]}" >&2
             exit 1
           fi
@@ -104,7 +117,7 @@ jobs:
         id: upload_preview
         uses: actions/upload-artifact@v4
         with:
-          name: MyEbookApp-Foxlet-Membership-Removal-Diagnostic-20261122
+          name: MyEbookApp-Foxlet-Recovery-Guard-Diagnostic-20261122
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14

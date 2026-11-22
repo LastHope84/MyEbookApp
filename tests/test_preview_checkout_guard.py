@@ -33,6 +33,8 @@ class CheckoutGuardTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Folder overlay paths differ'):
             check(self.root)
 
-    def test_preflight_runs_before_restore(self):
+    def test_preflight_and_full_check_surround_restore(self):
         text = (ROOT / '.github/workflows/build.yml').read_text()
-        self.assertLess(text.index('python3 tests/check_preview_checkout.py'), text.index('python3 tests/restore_preview_sources.py'))
+        self.assertLess(text.index('translation, folder = payloads()'), text.index('python3 tests/restore_preview_sources.py'))
+        self.assertLess(text.index('python3 tests/restore_preview_sources.py'), text.index('python3 tests/check_preview_checkout.py'))
+        self.assertIn('name not in restored and path.read_bytes() != data', text)
