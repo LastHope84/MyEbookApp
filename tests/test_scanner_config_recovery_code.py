@@ -38,7 +38,7 @@ class ScannerConfigRecoveryCode(unittest.TestCase):
     def test_queue_and_pause_boundary_is_unchanged(self):
         scan = SCANNER.split('fun scanFolders(', 1)[1].split('fun resumeMetadataOnly', 1)[0]
         self.assertIn('if (old == PAUSED) PAUSED else RUNNING', scan)
-        self.assertLess(scan.index('save(app, next, queue)'), scan.index('if (shouldStart) startForeground(app)'))
+        self.assertLess(scan.index('save(app, next, queue)'), scan.index('if (startRevision != null) startForeground(app, startRevision)'))
         ui = (ROOT / 'app/src/main/java/com/example/myebookapp/MainActivity.kt').read_text()
         self.assertNotIn('folderP.launch(', ui)
         self.assertNotIn('takePersistableUriPermission(u,', ui)

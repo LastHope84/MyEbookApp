@@ -11,14 +11,14 @@ SERVICE = (R/'app/src/main/java/com/example/myebookapp/ScanService.kt').read_tex
 class RecoveryV3(unittest.TestCase):
     def test_pending_journal_fails_closed_at_startup_and_worker(self):
         self.assertNotIn('ScannerConfigRecovery.replay(', S)
-        self.assertIn('processingMutex.withLock {\n                    reconcileFolderConfig(app)', S)
+        self.assertRegex(S, r'processingMutex\.withLock \{\s+reconcileFolderConfig\(app\)')
         self.assertIn('reconcileFolderConfig(context.applicationContext)', S)
         self.assertIn('check(dao.configJournal() == null)', S)
         self.assertIn('Adding folders is disabled', S)
         self.assertNotIn('BOOT_COMPLETED', (R/'app/src/main/AndroidManifest.xml').read_text())
     def test_worker_checks_mode_queue_and_generation_after_reconciliation(self):
         worker = S[S.index('fun startWorker('):S.index('/** Service lifecycle callbacks')]
-        reconcile = worker.index('val validated = reconcileFolderConfig(')
+        reconcile = worker.index('reconcileFolderConfig(context.applicationContext)')
         run = worker.index('runScan(context, token)')
         guard = worker[reconcile:run]
         self.assertIn('ensureActive()', guard)
