@@ -1,8 +1,8 @@
-name: Build APK
+name: Build Folder Preview APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, feature/folder-identity-preview-20261122 ]
   workflow_dispatch:
   pull_request:
     branches: [ main ]
@@ -27,6 +27,25 @@ jobs:
               path.parent.mkdir(parents=True, exist_ok=True)
               path.write_bytes(data)
           PY
+
+      # This preview uses a checked, compressed source overlay to transport large files.
+      - name: Restore and verify preview source overlay
+        run: |
+          python3 - <<'PYOVERLAY'
+          import base64, hashlib, json, pathlib, zlib
+          root = pathlib.Path('.folder-preview-input')
+          parts = sorted(root.glob('*.part'))
+          assert len(parts) == 21
+          raw = zlib.decompress(base64.b64decode(''.join(p.read_text() for p in parts), validate=True))
+          assert hashlib.sha256(raw).hexdigest() == 'e158f41dce014456ba9b16b32a73af0302160190b66504b6761c117ad1b0fe15'
+          files = json.loads(raw)
+          assert len(files) == 43
+          for name, content in files.items():
+              path = pathlib.Path(name)
+              assert not path.is_absolute() and '..' not in path.parts and path.parts[0] in ('app', 'tests', 'docs', '.translation-build-input')
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_text(content)
+          PYOVERLAY
 
       - name: Fetch libmobi v0.12
         run: |
@@ -74,12 +93,46 @@ jobs:
           (cd "$RUNNER_TEMP/foxlet-source" && ./gradlew :foxlet:assembleRelease)
           cp "$RUNNER_TEMP/foxlet-source/foxlet/build/outputs/aar/foxlet-release.aar" "$RUNNER_TEMP/foxlet.aar"
 
-      - name: Build experimental translation APK
-        run: gradle assembleDebug -PfoxletAar="$RUNNER_TEMP/foxlet.aar"
+      - name: Build folder preview with Foxlet
+        run: gradle clean assembleDebug -PfoxletAar="$RUNNER_TEMP/foxlet.aar"
 
-      - name: Upload APK
+      - name: Verify preview APK identity and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$apk"
+          tools_dir=""
+          while IFS= read -r candidate; do
+            if [[ -x "$candidate/aapt" && -x "$candidate/apksigner" ]]; then
+              tools_dir="$candidate"
+              break
+            fi
+          done < <(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -Vr)
+          test -n "$tools_dir"
+          package_line=$("$tools_dir/aapt" dump badging "$apk" | grep '^package: ')
+          if [[ ! "$package_line" =~ ^package:\ name=\'([^\']+)\' ]]; then
+            echo "Could not parse APK package name" >&2
+            exit 1
+          fi
+          if [[ "${BASH_REMATCH[1]}" != "com.example.myebookapp.foxlet.folderpreview20261122" ]]; then
+            echo "Unexpected APK package name: ${BASH_REMATCH[1]}" >&2
+            exit 1
+          fi
+          "$tools_dir/apksigner" verify --verbose "$apk"
+
+      - name: Upload folder preview APK
+        id: upload_preview
         uses: actions/upload-artifact@v4
         with:
-          name: MyEbookApp-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: MyEbookApp-Foxlet-Folder-Preview-20261122
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
           retention-days: 14
+
+      - name: Publish artifact link
+        env:
+          ARTIFACT_URL: ${{ steps.upload_preview.outputs.artifact-url }}
+        run: |
+          test -n "$ARTIFACT_URL"
+          printf '[Download the folder preview artifact](%s)\n' "$ARTIFACT_URL" >> "$GITHUB_STEP_SUMMARY"
