@@ -21,12 +21,12 @@ class ScanSourceContracts(unittest.TestCase):
     def test_idle_service_does_not_wait_for_missing_callback(self):
         scanner = source('LibraryScanner.kt')
         service = source('ScanService.kt')
-        self.assertIn('fun startWorker(context: Context, finished: () -> Unit): Boolean', scanner)
+        self.assertIn('fun startWorker(context: Context, owner: Any, request: String, finished: () -> Unit): Boolean', scanner)
         self.assertIn('return@synchronized activeJob?.isActive == true', scanner)
         self.assertIn('job.invokeOnCompletion', scanner)
         self.assertLess(scanner.index('job.invokeOnCompletion'), scanner.index('job.start()'))
-        self.assertIn('if (!hasWorker) stopSelfResult(latestStartId)', service)
-        self.assertIn('if (promoted) ensureWorker()', service)
+        self.assertIn('if (!hasWorker) LibraryScanner.serviceWorkerExhausted', service)
+        self.assertIn('ensureWorker(token, latestStartId)', service)
         self.assertIn('promoted = false\n        LibraryScanner.interrupt', service)
 
     def test_provider_extras_checked_before_and_after_enumeration(self):
@@ -48,8 +48,8 @@ class ScanSourceContracts(unittest.TestCase):
 
     def test_notification_action_is_saveable_and_uses_values(self):
         activity = source('MainActivity.kt')
-        self.assertIn('pendingScanAction by rememberSaveable', activity)
-        self.assertIn('pendingScanFolder by rememberSaveable', activity)
+        self.assertIn('pendingScanAction by remember', activity)
+        self.assertIn('pendingScanFolder by remember', activity)
         # Folder onboarding is deliberately blocked in the recovery-guard snapshot.
         self.assertNotIn('folderP.launch(', activity)
         self.assertIn('Add Folder (temporarily disabled)', activity)
