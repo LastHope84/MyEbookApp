@@ -42,9 +42,15 @@ class TranslationSettingContractTest(unittest.TestCase):
         self.assertIn('DeleteStatus.Failed', EXPERIMENTAL)
         self.assertIn('check(unload.allReleased)', EXPERIMENTAL)
     def test_pack_status_is_not_claimed_verified(self):
-        self.assertIn('installation metadata', PACK_UI)
-        self.assertIn('not yet verified', PACK_UI)
+        self.assertIn('installation records, not the integrity', PACK_UI)
+        self.assertIn('not checked in this list', PACK_UI)
+        self.assertIn('models are checked before use', PACK_UI)
         self.assertIn('Models download only when requested', UI)
+    def test_only_complete_installed_routes_are_shown_without_hiding_downloads(self):
+        self.assertIn('route.packs.isNotEmpty() && route.packs.all', PACK_UI)
+        self.assertIn('translationRouteHasInstalledPacks(route) && translationLanguagesMatch(codes, search)', PACK_UI)
+        self.assertIn('val packs = routes.flatMap { it.packs }', PACK_UI)
+        self.assertIn('prompt = "download" to pack', PACK_UI)
 
 if __name__ == '__main__':
     unittest.main()
