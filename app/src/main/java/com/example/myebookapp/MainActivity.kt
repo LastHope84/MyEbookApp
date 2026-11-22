@@ -63,6 +63,8 @@ val finishedCount by remember(showConvertedOriginals) { dao.observeStatusCount("
 var tab by remember { mutableStateOf(LibraryTab.ALL) }; var qry by remember { mutableStateOf("") }; var dbQry by remember { mutableStateOf("") }
 var selB by remember { mutableStateOf<BookEntity?>(null) }; var edtB by remember { mutableStateOf<BookEntity?>(null) }
 var showSet by remember { mutableStateOf(false) }; var showVisibility by remember { mutableStateOf(false) }; var showGuide by rememberSaveable { mutableStateOf(false) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+var showFolderManagement by remember { mutableStateOf(false) }
+val folderManagementAdapter = remember(ctx) { ReadOnlyFolderManagementAdapter(ctx) }
 var showBulkActions by remember { mutableStateOf(false) }
 var showBulkMove by remember { mutableStateOf(false) }
 var showBulkShelves by remember { mutableStateOf(false) }
@@ -106,6 +108,12 @@ Toast.makeText(ctx, "Could not update shelf: ${e.localizedMessage ?: "unknown er
 } finally { shelfSaving = false }
 }
 }
+var translatingBook by remember { mutableStateOf<BookEntity?>(null) }
+var translationJob by remember { mutableStateOf<Job?>(null) }
+var translationProgress by remember { mutableStateOf<String?>(null) }
+var translationError by remember { mutableStateOf<String?>(null) }
+var translatingSource by remember { mutableStateOf("") }
+var translatingTarget by remember { mutableStateOf("") }
 var converting by remember { mutableStateOf(false) }
 var bulkConversionFailures by remember { mutableStateOf<List<ConversionFailure>>(emptyList()) }
 var preparingKindle by remember { mutableStateOf(false) }
@@ -277,12 +285,14 @@ fun requestScan(action: String, folder: String? = null) {
 }
 val folderP = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { u ->
     if (u != null) {
-        try {
-            ctx.contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            LibraryScanner.addFolder(ctx, u)
-            requestScan("folder", u.toString())
-        } catch (e: Exception) {
-            Toast.makeText(ctx, "Could not save folder permission: ${e.localizedMessage ?: "unknown error"}", Toast.LENGTH_LONG).show()
+        scp.launch {
+            try {
+                ctx.contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                LibraryScanner.addFolder(ctx, u)
+                requestScan("folder", u.toString())
+            } catch (e: Exception) {
+                Toast.makeText(ctx, "Could not save folder permission: ${e.localizedMessage ?: "unknown error"}", Toast.LENGTH_LONG).show()
+            }
         }
     }
 }
@@ -330,6 +340,7 @@ customShelvesWithCounts.forEach { shelf ->
 TextButton(onClick={showCreateShelf=true}) { Text("+ Create shelf") }
 Spacer(Modifier.height(8.dp)); HorizontalDivider(); Spacer(Modifier.height(8.dp))
 NavigationDrawerItem(label={Text("Add Folder")}, selected=false, onClick={scp.launch{drw.close()}; folderP.launch(null)})
+NavigationDrawerItem(label={Text("Manage folders")}, selected=false, onClick={scp.launch { drw.close(); showFolderManagement=true }})
 if (folders.isNotEmpty()) NavigationDrawerItem(label={Text("Rescan Folders")}, selected=false, onClick={scp.launch{drw.close()}; requestScan("rescan")})
 NavigationDrawerItem(label={Text("Settings")}, selected=false, onClick={scp.launch{drw.close()}; showSet=true})
 NavigationDrawerItem(label={Text("Converted original visibility")}, selected=false, onClick={scp.launch{drw.close()}; showVisibility=true})
@@ -382,6 +393,7 @@ items(paged.itemCount, key=paged.itemKey{it.id}) { i ->
 }
 }
 }
+if (showFolderManagement) FolderManagementDialog(folderManagementAdapter) { showFolderManagement = false }
 if (showSet) AppSettingsBottomSheet(tm, acc, am, ThemePrefs.isAutoOpenLastBook(ctx), ThemePrefs.getKindleEmail(ctx), ThemePrefs.getConvertedOutputUri(ctx), onT, onA, onAm, {ThemePrefs.saveAutoOpenLastBook(ctx,it)}, {ThemePrefs.saveKindleEmail(ctx,it)}, {}, {}, {}, {showSet=false})
 if (showVisibility) AlertDialog(
     onDismissRequest={showVisibility=false},
@@ -414,10 +426,46 @@ onDel = { scp.launch(Dispatchers.IO) { dao.deleteById(b.id) }; selB = null },
 onFavoriteChange = { updateShelf(b.id, favorite = it) },
 onStatusChange = { updateShelf(b.id, status = it) },
 onCustomShelves = { membershipBook = b },
-statusChangeEnabled = !shelfSaving
+statusChangeEnabled = !shelfSaving,
+translationEnabled = ThemePrefs.isOfflineTranslationEnabled(ctx) && translationJob == null,
+onTranslate = { translatingSource = ""; translatingTarget = ""; translatingBook = b }
 )
 }
 }
+}
+translatingBook?.let { book ->
+    AlertDialog(onDismissRequest = { translatingBook = null }, title = { Text("Translate EPUB offline") },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+            Text("The original stays unchanged; a separate copy is added to your library. Enter the source and target language codes for installed packs (for example en and it).")
+            OutlinedTextField(value = translatingSource, onValueChange = { translatingSource = it.trim() }, label = { Text("Source language code") }, singleLine = true)
+            OutlinedTextField(value = translatingTarget, onValueChange = { translatingTarget = it.trim() }, label = { Text("Target language code") }, singleLine = true)
+            Text("Text is translated one markup segment at a time, so context and quality can vary. Text in images, CSS-generated text, code/preformatted text and book metadata other than language are not translated. SVG, scripts, embedded multimedia, encrypted or signed EPUBs and DOCTYPEs are unsupported. Some valid EPUBs may be refused.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+        } }, confirmButton = { TextButton(enabled = translatingSource.isNotBlank() && translatingTarget.isNotBlank(), onClick = {
+            val src = translatingSource.trim(); val dst = translatingTarget.trim()
+            translatingBook = null
+            translationProgress = "Preparing…"
+            translationJob = scp.launch {
+                try {
+                    val result = WholeEpubTranslation.translate(ctx.applicationContext, book, src, dst) { status ->
+                        withContext(Dispatchers.Main) { translationProgress = status }
+                    }
+                    selB = result
+                    Toast.makeText(ctx, "Translated copy added. Original kept.", Toast.LENGTH_LONG).show()
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) { translationError = e.localizedMessage ?: "Unknown error." }
+                catch (e: LinkageError) { translationError = "Translation engine could not be loaded." }
+                finally { translationProgress = null; translationJob = null }
+            }
+        }) { Text("Translate") } }, dismissButton = { TextButton(onClick = { translatingBook = null }) { Text("Cancel") } })
+}
+translationProgress?.let { progress ->
+    AlertDialog(onDismissRequest = {}, title = { Text("Translating EPUB") }, text = { Column { Text(progress); LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp)) } },
+        confirmButton = { TextButton(enabled = progress != "Saving translated copy…" && progress != "Cancelling…", onClick = { translationProgress = "Cancelling…"; translationJob?.cancel() }) { Text("Cancel") } })
+}
+translationError?.let { reason ->
+    AlertDialog(onDismissRequest = { translationError = null }, title = { Text("Translation not completed") },
+        text = { Text("$reason\n\nNo partial copy was added. The original remains unchanged.") },
+        confirmButton = { TextButton(onClick = { translationError = null }) { Text("Close") } })
 }
 if (showCreateShelf) CreateShelfDialog(onDismiss = { showCreateShelf = false }, onCreate = { name ->
     if (!customSaving) {
