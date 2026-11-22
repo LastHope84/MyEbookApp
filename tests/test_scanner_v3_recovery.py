@@ -17,7 +17,7 @@ class RecoveryV3(unittest.TestCase):
         self.assertIn('Adding folders is disabled', S)
         self.assertNotIn('BOOT_COMPLETED', (R/'app/src/main/AndroidManifest.xml').read_text())
     def test_worker_checks_mode_queue_and_generation_after_reconciliation(self):
-        worker = S[S.index('fun startWorker('):S.index('/** Service lifecycle callbacks')]
+        worker = S[S.index('fun startWorker('):S.index('/** All token/owner checks')]
         reconcile = worker.index('reconcileFolderConfig(context.applicationContext)')
         run = worker.index('runScan(context, token)')
         guard = worker[reconcile:run]
@@ -50,9 +50,9 @@ class RecoveryV3(unittest.TestCase):
         self.assertIn('save(app, STOPPED, emptyList(), "stop")', S)
         self.assertIn('save(app, PAUSED, roots(app), "pause")', S)
     def test_stale_service_callback_rejected(self):
-        self.assertIn('serviceOwner !== owner', S)
-        self.assertIn('!LibraryScanner.isServiceOwner(this)', SERVICE)
-        self.assertIn('startId != latestStartId', SERVICE)
+        self.assertIn('!sessions.retire(request, owner)', S)
+        self.assertIn('!LibraryScanner.isServiceOwner(this, token)', SERVICE)
+        self.assertIn('startId != latestDeliveredStartId', SERVICE)
     def test_v2_is_not_replayed(self):
         self.assertIn('check(j.operation == "ADD_SCAN_V3")', C)
         self.assertNotIn('ScannerConfigRecovery.replay(', S)
