@@ -36,6 +36,23 @@ class FolderRemovalDatabaseTest {
         assertNull(dao.getByUri(book("two").uriString))
     }
 
+    @Test fun checkedExclusionRejectsStaleBatchesAndRestoresWithoutDeletingBooks() = runBlocking {
+        val roots = listOf(root)
+        dao.initializeAndCheckConfig(roots)
+        assertEquals(1, dao.insertScannedBatch(listOf(item("kept")), emptySet(), "provider", scanGeneration = 0L).inserted)
+        dao.commitCheckedRootExclusion(ScanRootExclusion(root, "folder"), roots, 0L)
+        try {
+            dao.insertScannedBatch(listOf(item("stale")), emptySet(), "provider", scanGeneration = 0L)
+            fail("stale batch accepted")
+        } catch (_: IllegalStateException) { }
+        val gen = requireNotNull(dao.inventoryState()).generation
+        assertEquals(0, dao.insertScannedBatch(listOf(item("blocked")), emptySet(), "provider", scanGeneration = gen).inserted)
+        assertEquals(1, dao.restoreCheckedRootExclusion(ScanRootExclusion(root, "folder"), roots, gen))
+        val restoredGen = requireNotNull(dao.inventoryState()).generation
+        assertEquals(1, dao.insertScannedBatch(listOf(item("restored")), emptySet(), "provider", scanGeneration = restoredGen).inserted)
+        assertNotNull(dao.getByUri(book("kept").uriString))
+    }
+
     @Test fun exclusionPreservesFavoriteAndShelf() = runBlocking {
         assertEquals(1, dao.insertScannedBatch(listOf(item("kept")), emptySet(), "provider").inserted)
         val row = requireNotNull(dao.getByUri(book("kept").uriString))

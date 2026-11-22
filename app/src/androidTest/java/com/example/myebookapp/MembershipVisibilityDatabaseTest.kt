@@ -25,7 +25,7 @@ class MembershipVisibilityDatabaseTest {
         val book = BookEntity(uriString = android.provider.DocumentsContract.buildDocumentUriUsingTree(doc, id).toString(), fileName = "$id.epub", format = "EPUB", fileSize = 1, lastModified = 0, title = id, author = "", publishingDate = "", publisher = "", language = "", coverPath = null, lastLocatorJson = null, progressPercent = 0.0, lastOpenedAt = 1, metadataExtracted = true)
         return ScannedItem(ScanSighting(r, android.provider.DocumentsContract.getTreeDocumentId(doc), id, false), book, listOf(android.provider.DocumentsContract.getTreeDocumentId(doc)))
     }
-    @Test fun knownExclusiveHidesAndRestoresButSharedAndLegacyStay() = runBlocking {
+    @Test fun unprovenOwnershipNeverHidesSharedOrExclusiveOrLegacy() = runBlocking {
         val a = item(root, "exclusive"); val shared = item(root, "shared")
         val legacy = item(root, "legacy")
         val legacyId = dao.insertIgnore(legacy.book!!)
@@ -41,14 +41,13 @@ class MembershipVisibilityDatabaseTest {
         dao.completeInventoryRoot(root, gen)
         dao.insertScannedBatch(listOf(item(other, "shared")), emptySet(), "provider", gen)
         dao.completeInventoryRoot(other, gen)
-        assertEquals(1, dao.detachWithInventory(RemovedScanRoot(root, "provider", "root"), gen, listOf(root, other)))
-        assertEquals(2, dao.observeTotalCount(true).first())
+        try { dao.detachWithInventory(RemovedScanRoot(root, "provider", "root"), gen, listOf(root, other)); fail("unproven hide accepted") } catch (_: IllegalStateException) { }
+        assertEquals(3, dao.observeTotalCount(true).first())
         assertEquals(3, dao.countAllBooks())
         assertEquals(1, dao.shelfCountForRemoval(exclusiveId))
         assertTrue(requireNotNull(dao.getByIdOnce(exclusiveId)).isFavorite)
         assertNotNull(dao.getByIdOnce(legacyId))
-        assertEquals(1, dao.restoreInventoryRoot(root))
-        assertEquals(3, dao.observeTotalCount(true).first())
+        assertTrue(dao.removedScanRoots().isEmpty())
     }
     @Test fun staleOrIncompleteGenerationNeverCommits() = runBlocking {
         dao.initializeAndCheckConfig(listOf(root))
