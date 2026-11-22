@@ -1,0 +1,11 @@
+# Folder removal: groundwork only
+
+There is **no folder or subfolder removal feature** in this change. Do not infer that removal is safe, that a library has been cleaned up, or that an exclusion exists.
+
+Database version 6 records (1) the exact root URI, parent document ID and document ID at insertion for newly scanner-created book rows, atomically with those rows, and (2) historical parent-child sightings of directories and supported ebooks, including files skipped by name/size deduplication. IDs are opaque. Sightings can have multiple parents and roots. An existing or ignored book never gains a scanner-created origin merely because it was encountered again. Migration deliberately does not invent origins for existing books. Removing a book row cascades only its origin record; it does not delete provider documents. Sightings are retained as history.
+
+Neither origin nor sightings establish present, exclusive ownership. The observations are incomplete, may be stale, may include partial walks, skip hidden-directory contents and unsupported files, and cannot tell which record corresponds to a name/size skip. The app can keep accumulating historical sightings during rescans. No current UI uses this information to remove or exclude anything.
+
+Before real removal, implement and test a durable removal/exclusion operation whose crash recovery and writes coordinate with the scanner's running, paused, queued, cancelled and in-flight states. Establish folder identity and reachability using complete current provider enumeration (not ID prefixes), handle lost grants, incomplete cursors, provider changes, multiple parents and overlapping roots, and reconcile old/imported/deduplicated records without guessing. Other book insertion/write paths must also be covered. Communicate retained/unresolved records rather than reporting complete removal. Preserve source ebook files and needed SAF grants. The evidence preview prototype is read-only and does not authorize deletion.
+
+Tests here exercise SQLite schema/transaction models and source contracts, plus the standalone evidence classifier; they are not Android Room migration, provider, lifecycle, process-death, throughput, or device tests. The scanner now persists more data per scan and its disk and performance cost need measurement on a representative library before deployment.
