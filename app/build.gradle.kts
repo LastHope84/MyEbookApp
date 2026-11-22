@@ -4,6 +4,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
 }
+// Optional experimental build. Pass a locally source-built Foxlet 0.5.0 AAR;
+// the normal API-24/two-ABI build never consumes a prebuilt binary.
+val foxletAar = providers.gradleProperty("foxletAar").orNull
+
 android {
     namespace = "com.example.myebookapp"
     compileSdk = 35 // Downgraded from 36 to use stable tools
@@ -12,9 +16,11 @@ android {
     val buildNum = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
     defaultConfig {
         applicationId = "com.example.myebookapp"
-        minSdk = 24; targetSdk = 35
+        // Keep the narrower experimental APK from replacing the standard app.
+        if (foxletAar != null) applicationIdSuffix = ".foxlet"
+        minSdk = if (foxletAar != null) 28 else 24; targetSdk = 35
         versionCode = buildNum; versionName = "0.$buildNum"
-        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+        ndk { abiFilters += if (foxletAar != null) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a") }
     }
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt") } }
     signingConfigs {
@@ -27,8 +33,18 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17; isCoreLibraryDesugaringEnabled = true }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
+    if (foxletAar != null) {
+        require(file(foxletAar).isFile) { "-PfoxletAar must point to a source-built Foxlet 0.5.0 AAR" }
+        sourceSets.getByName("main").java.srcDir("src/foxlet/java")
+    } else {
+        sourceSets.getByName("main").java.srcDir("src/nofoxlet/java")
+    }
 }
 dependencies {
+    if (foxletAar != null) {
+        implementation(files(foxletAar))
+        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    }
     testImplementation("junit:junit:4.13.2")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     implementation(platform("androidx.compose:compose-bom:2025.01.00"))
