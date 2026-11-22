@@ -27,8 +27,8 @@ class IncrementalScanRouteProvenance(unittest.TestCase):
         self.assertEqual(self.db.execute('SELECT * FROM books').fetchall(), [(1, 'legacy', 'Edited title')])
         self.assertEqual(self.db.execute('SELECT * FROM scan_book_routes').fetchall(), [])
         self.assertEqual(self.db.execute('SELECT * FROM scan_unresolved_routes').fetchall(), [])
-        self.assertIn('M78, M89, M910, M1011)', DB)
-        self.assertIn('version = 11', DB)
+        self.assertIn('M78, M89, M910, M1011, M1112, M1213)', DB)
+        self.assertIn('version = 13', DB)
 
     def test_identity_index_schema_and_query_plan(self):
         index_name = 'index_scan_book_routes_authority_documentId'
@@ -84,7 +84,7 @@ class IncrementalScanRouteProvenance(unittest.TestCase):
         self.assertNotIn('bookId', DB.split('data class ScanUnresolvedRoute(', 1)[1].split(')', 1)[0])
         self.assertIn('DocumentsContract.buildDocumentUriUsingTree(root, sighting.documentId)', DB)
         self.assertIn('path.first() != DocumentsContract.getTreeDocumentId(root)', DB)
-        self.assertIn('dao.insertScannedBatch(batch, emptySet(), authority)', SCAN)
+        self.assertIn('dao.insertScannedBatch(batch, emptySet(), authority, scanGeneration = scanGeneration)', SCAN)
         self.assertNotIn('deleteDocument(', SCAN)
 
 if __name__ == '__main__': unittest.main()
