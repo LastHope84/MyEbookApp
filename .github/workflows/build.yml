@@ -1,8 +1,6 @@
 name: Build Diagnostic Folder Preview APK
 
 on:
-  push:
-    branches: [ diagnostic/membership-removal-20261122 ]
   workflow_dispatch:
 
 jobs:
@@ -12,13 +10,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Reconstruct and verify isolated diagnostic source
+        run: |
+          base64 -d .diagnostic-source.patch.gz.b64 | gzip -d > "$RUNNER_TEMP/diagnostic.patch"
+          git apply --check "$RUNNER_TEMP/diagnostic.patch"
+          git apply "$RUNNER_TEMP/diagnostic.patch"
+          python3 tests/verify_diagnostic_snapshot.py
+
       - name: Reject stale checkout payloads
         run: python3 tests/check_preview_checkout.py
 
       # Both payloads are checked before writing; overlapping files must be identical.
       # The folder payload cannot overwrite the restore script, tests, or translation inputs.
       - name: Restore and verify preview sources
-        run: python3 tests/restore_preview_sources.py
+        run: |
+          python3 tests/restore_preview_sources.py
+          python3 tests/verify_diagnostic_snapshot.py
 
       - name: Check final preview integration and translation inputs
         run: |
