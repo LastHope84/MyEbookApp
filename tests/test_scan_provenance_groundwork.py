@@ -35,7 +35,7 @@ class ProvenanceGroundwork(unittest.TestCase):
         self.assertEqual(self.db.execute('SELECT * FROM books ORDER BY id').fetchall(), [(1, 'legacy:1', 'Edited title'), (2, 'legacy:2', 'Another')])
         self.assertEqual(self.db.execute('SELECT * FROM scan_book_origins').fetchall(), [])
         self.assertEqual(self.db.execute('SELECT * FROM scan_sightings').fetchall(), [])
-        self.assertIn('addMigrations(M12, M23, M34, M45, M56, M67, M78, M89, M910, M1011)', DB)
+        self.assertIn('addMigrations(M12, M23, M34, M45, M56, M67, M78, M89, M910, M1011, M1112, M1213)', DB)
 
     def test_origin_cascade_deletes_only_metadata(self):
         self.db.execute('INSERT INTO scan_book_origins VALUES(?, ?, ?, ?)', (1, 'content://provider/tree/root', 'parent', 'doc'))
@@ -73,7 +73,7 @@ class ProvenanceGroundwork(unittest.TestCase):
         self.assertIn('if (id == -1L) continue', batch)
         self.assertLess(batch.index('if (id == -1L) continue'), batch.index('origins.add(ScanBookOrigin'))
         self.assertIn('batch.add(ScannedItem(sighting, book, path))', SCANNER)
-        self.assertIn('dao.insertScannedBatch(batch, emptySet(), authority)', SCANNER)
+        self.assertIn('dao.insertScannedBatch(batch, emptySet(), authority, scanGeneration = scanGeneration)', SCANNER)
         self.assertNotIn('deleteDocument(', SCANNER)
         self.assertNotIn('openOutputStream(', SCANNER)
 
@@ -84,7 +84,7 @@ class ProvenanceGroundwork(unittest.TestCase):
         raw = zlib.decompress(base64.b64decode(''.join((build / p).read_text() for p in entry['parts']), validate=True))
         self.assertEqual(hashlib.sha256(raw).hexdigest(), entry['sha256'])
         activity = raw.decode()
-        for marker in ('LaunchedEffect(Unit) { LibraryScanner.restore(ctx) }', 'pendingScanAction by rememberSaveable', 'requestScan("folder", u.toString())', 'requestScan("rescan")', 'requestScan("resume")', 'LibraryScanner.pauseScan(ctx)', 'LibraryScanner.stopScan(ctx)', 'translatingBook?.let { book ->', 'WholeEpubTranslation.translate'):
+        for marker in ('LaunchedEffect(Unit) { LibraryScanner.restore(ctx) }', 'pendingScanAction by rememberSaveable', 'Add Folder (temporarily disabled)', 'requestScan("rescan")', 'requestScan("resume")', 'LibraryScanner.pauseScan(ctx)', 'LibraryScanner.stopScan(ctx)', 'translatingBook?.let { book ->', 'WholeEpubTranslation.translate'):
             self.assertIn(marker, activity)
 
 if __name__ == '__main__':
