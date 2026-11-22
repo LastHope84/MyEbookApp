@@ -18,7 +18,7 @@ android {
         applicationId = "com.example.myebookapp"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Keep both preview variants separate from their existing installations.
-        applicationIdSuffix = if (foxletAar != null) ".foxlet.serialized20261122" else ".serialized20261122"
+        applicationIdSuffix = if (foxletAar != null) ".foxlet.serviceraces20261122" else ".serviceraces20261122"
         minSdk = if (foxletAar != null) 28 else 24; targetSdk = 35
         versionCode = buildNum; versionName = "0.$buildNum"
         ndk { abiFilters += if (foxletAar != null) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a") }
