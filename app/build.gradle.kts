@@ -10,7 +10,7 @@ val foxletAar = providers.gradleProperty("foxletAar").orNull
 
 android {
     namespace = "com.example.myebookapp"
-    compileSdk = 35 // Downgraded from 36 to use stable tools
+    compileSdk = if (foxletAar != null) 36 else 35 // Foxlet requires API 36 at compile time.
     ndkVersion = "26.1.10909125" // Uses the version pre-installed on GitHub
 
     val buildNum = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
