@@ -33,6 +33,13 @@ internal fun translationLanguagesMatch(codes: List<String>, query: String): Bool
 internal fun translationPairMatches(source: String, target: String, query: String): Boolean =
     translationLanguagesMatch(listOf(source, target), query)
 
+/** This checks installation records, not the integrity of model files. */
+internal fun translationRouteHasInstalledPacks(route: TranslationRoute): Boolean =
+    route.packs.isNotEmpty() && route.packs.all { it.installedVersions.isNotEmpty() }
+
+internal fun translationInstallationLabel(version: String): String =
+    version.replace("(NotChecked)", "(not checked in this list)")
+
 /** Pack metadata is local; explicit confirmation is required before any network or deletion. */
 @Composable
 internal fun TranslationPackSettings(enabled: Boolean) {
@@ -70,12 +77,12 @@ internal fun TranslationPackSettings(enabled: Boolean) {
     val matchingPacks = packs.filter { translationPairMatches(it.source, it.target, search) }
     val matchingRoutes = routes.filter { route ->
         val codes = listOf(route.source, route.target) + route.packs.flatMap { listOf(it.source, it.target) }
-        translationLanguagesMatch(codes, search)
+        translationRouteHasInstalledPacks(route) && translationLanguagesMatch(codes, search)
     }
     val visiblePacks = if (showAllPacks) matchingPacks else matchingPacks.take(6)
     Spacer(Modifier.height(12.dp))
     Text("Language packs", style = MaterialTheme.typography.titleSmall)
-    Text("Packs remain installed when translation is switched off. Status is installation metadata; models are checked before use.", style = MaterialTheme.typography.bodySmall)
+    Text("Packs remain installed when translation is switched off. This list does not recheck installed files; downloads are checked, and models are checked before use.", style = MaterialTheme.typography.bodySmall)
     if (busy) Text("Working…", style = MaterialTheme.typography.bodySmall)
     message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
     if (routes.isEmpty() && !busy) Text("No catalogue available.", style = MaterialTheme.typography.bodySmall)
@@ -94,7 +101,7 @@ internal fun TranslationPackSettings(enabled: Boolean) {
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
         Text("${translationLanguageLabel(pack.source)} → ${translationLanguageLabel(pack.target)}")
         Text("v${pack.version} • ${String.format("%.1f", pack.downloadBytes / 1048576.0)} MiB download", style = MaterialTheme.typography.bodySmall)
-        Text(if (pack.installedVersions.isEmpty()) "Not installed" else "Installed: ${pack.installedVersions.joinToString()}", style = MaterialTheme.typography.bodySmall)
+        Text(if (pack.installedVersions.isEmpty()) "Not installed" else "Installed: ${pack.installedVersions.joinToString { translationInstallationLabel(it) }}", style = MaterialTheme.typography.bodySmall)
         Row {
             TextButton(enabled = enabled && !busy, onClick = { prompt = "download" to pack }) { Text("Download") }
             TextButton(enabled = !busy && pack.installedVersions.isNotEmpty(), onClick = {
@@ -109,14 +116,13 @@ internal fun TranslationPackSettings(enabled: Boolean) {
     }
     if (routes.isNotEmpty()) {
         TextButton(onClick = { showRoutes = !showRoutes }) {
-            Text(if (showRoutes) "Hide supported routes" else "Show supported routes (${matchingRoutes.size})")
+            Text(if (showRoutes) "Hide installed routes" else "Show installed routes (${matchingRoutes.size})")
         }
-        if (showRoutes) Text("Supported routes (via English when shown)", style = MaterialTheme.typography.titleSmall)
-        if (showRoutes && matchingRoutes.isEmpty()) Text("No routes match your search.", style = MaterialTheme.typography.bodySmall)
+        if (showRoutes) Text("Routes with installed pack records (via English when shown)", style = MaterialTheme.typography.titleSmall)
+        if (showRoutes && matchingRoutes.isEmpty()) Text("No installed routes match your search.", style = MaterialTheme.typography.bodySmall)
         if (showRoutes) matchingRoutes.forEach { route ->
             val path = route.packs.joinToString(" + ") { "${translationLanguageLabel(it.source)} → ${translationLanguageLabel(it.target)}" }
-            val status = if (route.packs.all { it.installedVersions.isNotEmpty() }) "installed (not yet verified)" else "missing pack(s)"
-            Text("${translationLanguageLabel(route.source)} → ${translationLanguageLabel(route.target)}: $path • $status", style = MaterialTheme.typography.bodySmall)
+            Text("${translationLanguageLabel(route.source)} → ${translationLanguageLabel(route.target)}: $path", style = MaterialTheme.typography.bodySmall)
         }
     }
     prompt?.let { (action, pack) ->
