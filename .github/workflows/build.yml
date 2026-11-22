@@ -1,11 +1,9 @@
-name: Build Folder Preview APK
+name: Build Diagnostic Folder Preview APK
 
 on:
   push:
-    branches: [ main, feature/folder-identity-preview-20261122 ]
+    branches: [ diagnostic/membership-removal-20261122 ]
   workflow_dispatch:
-  pull_request:
-    branches: [ main ]
 
 jobs:
   build:
@@ -14,38 +12,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Restore large test source files
-        run: |
-          python3 - <<'PY'
-          import base64, hashlib, json, pathlib, zlib
-          root = pathlib.Path('.translation-build-input')
-          for entry in json.loads((root / 'manifest.json').read_text()):
-              encoded = ''.join((root / name).read_text() for name in entry['parts'])
-              data = zlib.decompress(base64.b64decode(encoded, validate=True))
-              assert hashlib.sha256(data).hexdigest() == entry['sha256']
-              path = pathlib.Path(entry['path'])
-              path.parent.mkdir(parents=True, exist_ok=True)
-              path.write_bytes(data)
-          PY
+      - name: Reject stale checkout payloads
+        run: python3 tests/check_preview_checkout.py
 
-      # This preview uses a checked, compressed source overlay to transport large files.
-      - name: Restore and verify preview source overlay
+      # Both payloads are checked before writing; overlapping files must be identical.
+      # The folder payload cannot overwrite the restore script, tests, or translation inputs.
+      - name: Restore and verify preview sources
+        run: python3 tests/restore_preview_sources.py
+
+      - name: Check final preview integration and translation inputs
         run: |
-          python3 - <<'PYOVERLAY'
-          import base64, hashlib, json, pathlib, zlib
-          root = pathlib.Path('.folder-preview-input')
-          parts = sorted(root.glob('*.part'))
-          assert len(parts) == 21
-          raw = zlib.decompress(base64.b64decode(''.join(p.read_text() for p in parts), validate=True))
-          assert hashlib.sha256(raw).hexdigest() == 'e158f41dce014456ba9b16b32a73af0302160190b66504b6761c117ad1b0fe15'
-          files = json.loads(raw)
-          assert len(files) == 43
-          for name, content in files.items():
-              path = pathlib.Path(name)
-              assert not path.is_absolute() and '..' not in path.parts and path.parts[0] in ('app', 'tests', 'docs', '.translation-build-input')
-              path.parent.mkdir(parents=True, exist_ok=True)
-              path.write_text(content)
-          PYOVERLAY
+          python3 -m unittest discover -s tests -p 'test_final_preview_integration.py' -v
+          python3 -m unittest discover -s tests -p 'test_ci_input_consistency.py' -v
+          python3 -m unittest discover -s tests -p 'test_*.py'
 
       - name: Fetch libmobi v0.12
         run: |
@@ -115,7 +94,7 @@ jobs:
             echo "Could not parse APK package name" >&2
             exit 1
           fi
-          if [[ "${BASH_REMATCH[1]}" != "com.example.myebookapp.foxlet.folderpreview20261122" ]]; then
+          if [[ "${BASH_REMATCH[1]}" != "com.example.myebookapp.foxlet.removaldiag20261122" ]]; then
             echo "Unexpected APK package name: ${BASH_REMATCH[1]}" >&2
             exit 1
           fi
@@ -125,7 +104,7 @@ jobs:
         id: upload_preview
         uses: actions/upload-artifact@v4
         with:
-          name: MyEbookApp-Foxlet-Folder-Preview-20261122
+          name: MyEbookApp-Foxlet-Membership-Removal-Diagnostic-20261122
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
