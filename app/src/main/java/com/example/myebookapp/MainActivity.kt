@@ -63,6 +63,8 @@ val finishedCount by remember(showConvertedOriginals) { dao.observeStatusCount("
 var tab by remember { mutableStateOf(LibraryTab.ALL) }; var qry by remember { mutableStateOf("") }; var dbQry by remember { mutableStateOf("") }
 var selB by remember { mutableStateOf<BookEntity?>(null) }; var edtB by remember { mutableStateOf<BookEntity?>(null) }
 var showSet by remember { mutableStateOf(false) }; var showVisibility by remember { mutableStateOf(false) }; var showGuide by rememberSaveable { mutableStateOf(false) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+var showFolderManagement by remember { mutableStateOf(false) }
+val folderManagementAdapter = remember(ctx) { ReadOnlyFolderManagementAdapter(ctx) }
 var showBulkActions by remember { mutableStateOf(false) }
 var showBulkMove by remember { mutableStateOf(false) }
 var showBulkShelves by remember { mutableStateOf(false) }
@@ -330,6 +332,7 @@ customShelvesWithCounts.forEach { shelf ->
 TextButton(onClick={showCreateShelf=true}) { Text("+ Create shelf") }
 Spacer(Modifier.height(8.dp)); HorizontalDivider(); Spacer(Modifier.height(8.dp))
 NavigationDrawerItem(label={Text("Add Folder")}, selected=false, onClick={scp.launch{drw.close()}; folderP.launch(null)})
+NavigationDrawerItem(label={Text("Manage folders")}, selected=false, onClick={scp.launch { drw.close(); showFolderManagement=true }})
 if (folders.isNotEmpty()) NavigationDrawerItem(label={Text("Rescan Folders")}, selected=false, onClick={scp.launch{drw.close()}; requestScan("rescan")})
 NavigationDrawerItem(label={Text("Settings")}, selected=false, onClick={scp.launch{drw.close()}; showSet=true})
 NavigationDrawerItem(label={Text("Converted original visibility")}, selected=false, onClick={scp.launch{drw.close()}; showVisibility=true})
@@ -382,6 +385,7 @@ items(paged.itemCount, key=paged.itemKey{it.id}) { i ->
 }
 }
 }
+if (showFolderManagement) FolderManagementDialog(folderManagementAdapter) { showFolderManagement = false }
 if (showSet) AppSettingsBottomSheet(tm, acc, am, ThemePrefs.isAutoOpenLastBook(ctx), ThemePrefs.getKindleEmail(ctx), ThemePrefs.getConvertedOutputUri(ctx), onT, onA, onAm, {ThemePrefs.saveAutoOpenLastBook(ctx,it)}, {ThemePrefs.saveKindleEmail(ctx,it)}, {}, {}, {}, {showSet=false})
 if (showVisibility) AlertDialog(
     onDismissRequest={showVisibility=false},

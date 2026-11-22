@@ -55,6 +55,44 @@ data class ConversionLink(@PrimaryKey val sourceBookId: Long, val outputBookId: 
 data class ExtractedBookMeta(val id: Long, val title: String, val author: String, val publishingDate: String, val publisher: String, val language: String, val coverPath: String?, val series: String?, val seriesIndex: Double?, val tags: String?)
 data class BookDuplicateRow(val id: Long, val fileName: String, val fileSize: Long, val lastOpenedAt: Long, val progressPercent: Double, val hasCover: Boolean)
 
+/** Evidence of a scanner-created row, NOT proof of exclusive ownership or deletion authority.
+ * Older/imported/deduplicated rows intentionally have no origin. The SAF IDs are opaque. */
+@Entity(tableName = "scan_book_origins", foreignKeys = [
+    ForeignKey(entity = BookEntity::class, parentColumns = ["id"], childColumns = ["bookId"], onDelete = ForeignKey.CASCADE)
+])
+data class ScanBookOrigin(
+    @PrimaryKey val bookId: Long,
+    val rootUri: String,
+    val parentDocumentId: String,
+    val documentId: String
+)
+
+/** Historical observations are not a complete or current provider snapshot. A child can have
+ * multiple parents, and a provider can change at any time. Never use sightings alone to delete. */
+@Entity(tableName = "scan_sightings", primaryKeys = ["rootUri", "parentDocumentId", "documentId"])
+data class ScanSighting(
+    val rootUri: String,
+    val parentDocumentId: String,
+    val documentId: String,
+    val isDirectory: Boolean
+)
+
+/** A seen child and, only when eligible, a proposed new book row. */
+data class ScannedItem(val sighting: ScanSighting, val book: BookEntity?, val directoryPath: List<String>)
+data class ScannedBatchResult(val inserted: Int, val acceptedKeys: Set<String>)
+
+/** An exclusion applies only to a specific root grant. IDs are opaque. */
+@Entity(tableName = "scan_root_exclusions", primaryKeys = ["rootUri", "documentId"])
+data class ScanRootExclusion(val rootUri: String, val documentId: String)
+
+/** Global document-identity exclusion, not a URI/path prefix. */
+@Entity(tableName = "scan_exclusions", primaryKeys = ["authority", "documentId"])
+data class ScanExclusion(val authority: String, val documentId: String)
+@Entity(tableName = "scan_allowed_roots")
+data class ScanAllowedRoot(@PrimaryKey val uri: String)
+data class RemovalBookRow(val id: Long, val uriString: String, val rootUri: String?, val documentId: String?)
+data class RemovalCandidate(val book: BookEntity, val origin: ScanBookOrigin)
+
 // Leaves room for other query parameters on SQLite builds with a 999-variable limit.
 private const val BULK_ID_CHUNK_SIZE = 500
 
@@ -104,7 +142,90 @@ interface BookDao {
     @Query("DELETE FROM custom_shelf_books WHERE shelfId = :shelfId AND bookId = :bookId") suspend fun removeBookFromCustomShelf(shelfId: Long, bookId: Long): Int
     @Query("SELECT books.* FROM books JOIN custom_shelf_books ON books.id = custom_shelf_books.bookId WHERE custom_shelf_books.shelfId = :shelfId AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY books.title COLLATE NOCASE, books.id") fun customShelfPaged(shelfId: Long, showConvertedOriginals: Boolean = false): PagingSource<Int, BookEntity>
     @Query("SELECT books.* FROM books JOIN custom_shelf_books ON books.id = custom_shelf_books.bookId JOIN books_fts ON books.id = books_fts.rowid WHERE custom_shelf_books.shelfId = :shelfId AND books_fts MATCH :q AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id)) ORDER BY books.title COLLATE NOCASE, books.id") fun searchCustomShelfPaged(shelfId: Long, q: String, showConvertedOriginals: Boolean = false): PagingSource<Int, BookEntity>
+    @Query("SELECT * FROM scan_exclusions") suspend fun getScanExclusions(): List<ScanExclusion>
+    @Query("SELECT * FROM scan_exclusions") fun observeScanExclusions(): Flow<List<ScanExclusion>>
+    @Query("SELECT uri FROM scan_allowed_roots") suspend fun getAllowedScanRoots(): List<String>
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertAllowedScanRoots(roots: List<ScanAllowedRoot>)
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertScanExclusion(exclusion: ScanExclusion): Long
+    @Query("DELETE FROM scan_exclusions WHERE authority = :authority AND documentId = :documentId") suspend fun clearScanExclusionRow(authority: String, documentId: String): Int
+    @Query("DELETE FROM scan_allowed_roots") suspend fun clearAllowedScanRoots()
+    @Transaction suspend fun clearScanExclusion(authority: String, documentId: String): Int {
+        val changed = clearScanExclusionRow(authority, documentId)
+        if (getScanExclusions().isEmpty()) clearAllowedScanRoots()
+        return changed
+    }
+    @Query("SELECT books.id AS id, books.uriString AS uriString, scan_book_origins.rootUri AS rootUri, scan_book_origins.documentId AS documentId FROM books LEFT JOIN scan_book_origins ON books.id = scan_book_origins.bookId") suspend fun removalBookRows(): List<RemovalBookRow>
+    /** No deletion: SAF does not supply an atomic provider snapshot. */
+    @Transaction suspend fun commitFolderExclusion(exclusion: ScanExclusion, roots: List<String>) {
+        val existing = getScanExclusions()
+        if (existing.isEmpty()) insertAllowedScanRoots(roots.distinct().map(::ScanAllowedRoot))
+        else require(roots.all { it in getAllowedScanRoots() }) { "New scan roots require exclusions to be cleared first" }
+        insertScanExclusion(exclusion)
+    }
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertIgnoreBatch(books: List<BookEntity>): List<Long>
+    @Insert suspend fun insertScanBookOrigins(origins: List<ScanBookOrigin>)
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertScanSightings(sightings: List<ScanSighting>)
+    @Query("SELECT * FROM scan_book_origins WHERE bookId = :bookId LIMIT 1") suspend fun getScanBookOrigin(bookId: Long): ScanBookOrigin?
+    @Query("SELECT * FROM scan_sightings WHERE rootUri = :rootUri AND parentDocumentId = :parentId") suspend fun getScanSightings(rootUri: String, parentId: String): List<ScanSighting>
+    @Query("SELECT COUNT(*) FROM books") suspend fun countAllBooks(): Int
+    @Query("SELECT * FROM scan_root_exclusions WHERE rootUri = :rootUri") suspend fun rootExclusions(rootUri: String): List<ScanRootExclusion>
+    @Query("SELECT * FROM scan_root_exclusions") fun observeRootExclusions(): Flow<List<ScanRootExclusion>>
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertRootExclusion(row: ScanRootExclusion): Long
+    @Query("DELETE FROM scan_root_exclusions WHERE rootUri = :rootUri AND documentId = :documentId") suspend fun clearRootExclusion(rootUri: String, documentId: String): Int
+
+    // Same Room write transaction as batch commits: exclusion wins regardless of the order
+    // in which either coroutine began.
+    @Transaction suspend fun commitRootExclusion(row: ScanRootExclusion) { insertRootExclusion(row) }
+
+    @Query("SELECT * FROM scan_book_origins") suspend fun allScanBookOrigins(): List<ScanBookOrigin>
+    @Query("SELECT * FROM books") suspend fun allRemovalBooks(): List<BookEntity>
+    @Query("SELECT COUNT(*) FROM custom_shelf_books WHERE bookId = :id") suspend fun shelfCountForRemoval(id: Long): Int
+    @Query("SELECT COUNT(*) FROM conversion_links WHERE sourceBookId = :id OR outputBookId = :id") suspend fun conversionCountForRemoval(id: Long): Int
+    @Query("DELETE FROM books WHERE id = :id") suspend fun deleteRemovalRow(id: Long): Int
+
+    /** All changes, including exclusion and actual counts, commit together or not at all.
+     * Never accepts a changed row, a changed origin, shelf state, or a conversion link. */
+    @Transaction suspend fun commitProvenFolderRemoval(row: ScanRootExclusion, candidates: List<RemovalCandidate>): Int {
+        insertRootExclusion(row)
+        var removed = 0
+        for (candidate in candidates) {
+            val id = candidate.book.id
+            if (getByIdOnce(id) != candidate.book || getScanBookOrigin(id) != candidate.origin) continue
+            if (!candidate.book.hasPristineScannerState()) continue
+            if (shelfCountForRemoval(id) != 0 || conversionCountForRemoval(id) != 0) continue
+            removed += deleteRemovalRow(id)
+        }
+        return removed
+    }
+
+    @Transaction suspend fun insertScannedBatch(items: List<ScannedItem>, knownKeys: Set<String>, authority: String): ScannedBatchResult {
+        if (items.isEmpty()) return ScannedBatchResult(0, emptySet())
+        val root = items.first().sighting.rootUri
+        require(items.all { it.sighting.rootUri == root && it.directoryPath.isNotEmpty() && it.directoryPath.last() == it.sighting.parentDocumentId })
+        val blocked = rootExclusions(root).map { it.documentId }.toSet() +
+            getScanExclusions().filter { it.authority == authority }.map { it.documentId }
+        val allowed = items.filter { item ->
+            item.directoryPath.none { it in blocked } &&
+                !(item.sighting.isDirectory && item.sighting.documentId in blocked)
+        }
+        insertScanSightings(allowed.map { it.sighting })
+        val acceptedKeys = mutableSetOf<String>()
+        val origins = mutableListOf<ScanBookOrigin>()
+        for (item in allowed) {
+            val book = item.book ?: continue
+            val key = if (book.fileSize > 0L) "${book.fileName.lowercase()}|${book.fileSize}" else null
+            if (key != null && (key in knownKeys || key in acceptedKeys)) continue
+            // Reserve a name/size only after SQLite actually inserts this URI. An ignored
+            // conflicting URI may have changed its name/size since it was first indexed.
+            val id = insertIgnore(book)
+            if (id == -1L) continue
+            if (key != null) acceptedKeys.add(key)
+            val sighting = item.sighting
+            origins.add(ScanBookOrigin(id, sighting.rootUri, sighting.parentDocumentId, sighting.documentId))
+        }
+        if (origins.isNotEmpty()) insertScanBookOrigins(origins)
+        return ScannedBatchResult(origins.size, acceptedKeys)
+    }
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertIgnore(book: BookEntity): Long
     @Query("SELECT * FROM books WHERE uriString = :u LIMIT 1") suspend fun getByUri(u: String): BookEntity?
     @Query("SELECT * FROM books WHERE id = :id LIMIT 1") fun observeById(id: Long): Flow<BookEntity?>
@@ -219,7 +340,7 @@ interface BookDao {
     @Query("DELETE FROM books WHERE id = :id") suspend fun deleteById(id: Long)
 }
 
-@Database(entities = [BookEntity::class, BookFtsEntity::class, CustomShelf::class, CustomShelfBook::class, ConversionLink::class], version = 5, exportSchema = false)
+@Database(entities = [BookEntity::class, BookFtsEntity::class, CustomShelf::class, CustomShelfBook::class, ConversionLink::class, ScanBookOrigin::class, ScanSighting::class, ScanExclusion::class, ScanAllowedRoot::class, ScanRootExclusion::class], version = 8, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao
     companion object {
@@ -235,6 +356,17 @@ abstract class AppDatabase : RoomDatabase() {
             db.execSQL("DROP TABLE IF EXISTS books_fts")
             db.execSQL("CREATE VIRTUAL TABLE books_fts USING fts4(content=`books`, author, publisher, series, tags, title)")
         } }
+        internal val M56 = object : Migration(5, 6) { override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `scan_book_origins` (`bookId` INTEGER NOT NULL, `rootUri` TEXT NOT NULL, `parentDocumentId` TEXT NOT NULL, `documentId` TEXT NOT NULL, PRIMARY KEY(`bookId`), FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `scan_sightings` (`rootUri` TEXT NOT NULL, `parentDocumentId` TEXT NOT NULL, `documentId` TEXT NOT NULL, `isDirectory` INTEGER NOT NULL, PRIMARY KEY(`rootUri`, `parentDocumentId`, `documentId`))")
+        } }
+        internal val M67 = object : Migration(6, 7) { override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `scan_exclusions` (`authority` TEXT NOT NULL, `documentId` TEXT NOT NULL, PRIMARY KEY(`authority`, `documentId`))")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `scan_allowed_roots` (`uri` TEXT NOT NULL, PRIMARY KEY(`uri`))")
+        } }
+        internal val M78 = object : Migration(7, 8) { override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `scan_root_exclusions` (`rootUri` TEXT NOT NULL, `documentId` TEXT NOT NULL, PRIMARY KEY(`rootUri`, `documentId`))")
+        } }
         internal val M34 = object : Migration(3, 4) { override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("CREATE TABLE IF NOT EXISTS `custom_shelves` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT COLLATE NOCASE NOT NULL)")
             db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_custom_shelves_name` ON `custom_shelves` (`name`)")
@@ -245,7 +377,7 @@ abstract class AppDatabase : RoomDatabase() {
             db.execSQL("CREATE TABLE IF NOT EXISTS `conversion_links` (`sourceBookId` INTEGER NOT NULL, `outputBookId` INTEGER NOT NULL, PRIMARY KEY(`sourceBookId`), FOREIGN KEY(`sourceBookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE, FOREIGN KEY(`outputBookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)")
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_conversion_links_outputBookId` ON `conversion_links` (`outputBookId`)")
         } }
-        fun getInstance(context: Context): AppDatabase = INSTANCE ?: synchronized(this) { INSTANCE ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "my_ebook_library.db").addMigrations(M12, M23, M34, M45).build().also { INSTANCE = it } }
+        fun getInstance(context: Context): AppDatabase = INSTANCE ?: synchronized(this) { INSTANCE ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "my_ebook_library.db").addMigrations(M12, M23, M34, M45, M56, M67, M78).build().also { INSTANCE = it } }
     }
 }
 fun toFtsQuery(raw: String): String? {
