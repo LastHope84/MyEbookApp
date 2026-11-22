@@ -39,8 +39,13 @@ jobs:
         with:
           gradle-version: 8.13
 
-      - name: Build Debug APK
-        run: gradle assembleDebug
+      - name: Download and verify Foxlet test engine
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/foxlet.aar" https://github.com/yinvoke/foxlet-translate/releases/download/v0.5.0/foxlet-v0.5.0.aar
+          echo "5dbb384907d69c2aba129fd15dba30dda94ede0fa556dc6a167d041ee479ec0e  $RUNNER_TEMP/foxlet.aar" | sha256sum -c -
+
+      - name: Build experimental translation APK
+        run: gradle assembleDebug -PfoxletAar="$RUNNER_TEMP/foxlet.aar"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
