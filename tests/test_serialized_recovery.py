@@ -32,7 +32,7 @@ class RecoveryContracts(unittest.TestCase):
         self.assertIn('safety.markVerified(token)', SCAN)
         self.assertIn('safety.unverify()', SCAN)
         self.assertNotIn('uncertain = false\n', GATE.split('fun failedCommit()', 1)[1])
-        self.assertIn('if (safety.isUncertain()) return', SCAN.split('private fun reportStartFailure', 1)[1])
+        self.assertIn('!safety.isUncertain() && sessions.isDisarmed()', SCAN.split('private fun reportStartFailure', 1)[1])
 
     def test_stop_discards_roots_but_keeps_metadata_in_room(self):
         stop = SCAN.split('fun stopScan',1)[1].split('private fun startForeground',1)[0]
@@ -50,7 +50,7 @@ class RecoveryContracts(unittest.TestCase):
         self.assertIn('save(app, STOPPED, emptyList(), "stop")', restore)
         self.assertLess(restore.index('reconcileFolderConfig(app)'), restore.index('roots(app).isNotEmpty()'))
         self.assertNotIn('startForeground(', restore)
-        self.assertIn('prefs(context).getString("revision", "") != expectedRevision', SCAN)
+        self.assertIn('!sessions.isCurrent(request)', SCAN.split('private fun startForeground', 1)[1])
 
     def test_old_worker_cannot_unverify_new_generation_and_cancellation_is_rethrown(self):
         worker = SCAN.split('fun startWorker',1)[1].split('fun claimService',1)[0]
