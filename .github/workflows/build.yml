@@ -2,15 +2,25 @@ name: Build Diagnostic Folder Preview APK
 
 on:
   push:
-    branches: [ diagnostic/membership-removal-20261122 ]
+    branches: [ diagnostic/ownership-compile-20261122 ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Reconstruct and verify exact diagnostic snapshot
+        run: |
+          base64 -d ownership-patch.gz.b64 | gzip -d > "$RUNNER_TEMP/ownership.patch"
+          echo 'c379ff7c2430a4a5283cf6176481f3a4bacde8a8770823fed5b6f5f4b6ab51f8  '"$RUNNER_TEMP/ownership.patch" | sha256sum -c -
+          git apply --check "$RUNNER_TEMP/ownership.patch"
+          git apply "$RUNNER_TEMP/ownership.patch"
+          python3 verify_ownership_snapshot.py
 
       - name: Reject stale checkout payloads
         run: python3 tests/check_preview_checkout.py
@@ -18,7 +28,9 @@ jobs:
       # Both payloads are checked before writing; overlapping files must be identical.
       # The folder payload cannot overwrite the restore script, tests, or translation inputs.
       - name: Restore and verify preview sources
-        run: python3 tests/restore_preview_sources.py
+        run: |
+          python3 tests/restore_preview_sources.py
+          python3 verify_ownership_snapshot.py
 
       - name: Check final preview integration and translation inputs
         run: |
@@ -94,7 +106,7 @@ jobs:
             echo "Could not parse APK package name" >&2
             exit 1
           fi
-          if [[ "${BASH_REMATCH[1]}" != "com.example.myebookapp.foxlet.removaldiag20261122" ]]; then
+          if [[ "${BASH_REMATCH[1]}" != "com.example.myebookapp.foxlet.usableledgerdiag20261122" ]]; then
             echo "Unexpected APK package name: ${BASH_REMATCH[1]}" >&2
             exit 1
           fi
