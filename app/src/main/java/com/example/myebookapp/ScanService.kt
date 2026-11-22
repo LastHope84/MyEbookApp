@@ -28,6 +28,10 @@ class ScanService : Service() {
     private var promoted = false
     private val handler = Handler(Looper.getMainLooper())
     private var latestStartId = 0
+    private var latestDeliveredStartId = 0
+    private var request: String? = null
+    private var promotionError: String? = null
+    private var retiring = false
     private var wakeLock: PowerManager.WakeLock? = null
 
     private fun updateWakeLock(status: ScanStatus) {
@@ -39,7 +43,6 @@ class ScanService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        LibraryScanner.claimService(this)
         try {
             val manager = getSystemService(NotificationManager::class.java)
             if (Build.VERSION.SDK_INT >= 26) {
@@ -52,52 +55,83 @@ class ScanService : Service() {
             wakeLock = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:libraryScan").apply { setReferenceCounted(false) }
             serviceScope.launch {
                 LibraryScanner.status.collect {
-                    updateWakeLock(it)
-                    manager.notify(ID, notification(it))
+                    LibraryScanner.withServiceStatus(this@ScanService, request) { current ->
+                        updateWakeLock(current)
+                        manager.notify(ID, notification(current))
+                    }
                 }
             }
             serviceScope.launch {
                 while (isActive) {
                     delay(60_000L)
-                    val status = LibraryScanner.status.value
-                    if (status.isScanning && !status.isPaused) wakeLock?.let { if (it.isHeld) it.release() }
-                    updateWakeLock(status)
+                    LibraryScanner.withServiceStatus(this@ScanService, request) { current ->
+                        if (current.isScanning && !current.isPaused) wakeLock?.let { if (it.isHeld) it.release() }
+                        updateWakeLock(current)
+                    }
                 }
             }
         } catch (e: Exception) {
-            LibraryScanner.interruptFromService(applicationContext, this, e.localizedMessage ?: "Foreground service could not start", release = true)
-            stopSelf()
+            promotionError = e.localizedMessage ?: "Foreground service could not start"
+            promoted = false
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        latestDeliveredStartId = startId
+        val token = intent?.getStringExtra(EXTRA_SESSION)
+        if (retiring) {
+            LibraryScanner.retiringServiceDelivery(token)
+            return START_NOT_STICKY
+        }
+        // A stale/null/redelivered intent cannot claim, stop, or interrupt a newer request.
+        if (!LibraryScanner.bindService(this, token)) {
+            stopIfIdle(startId)
+            return START_NOT_STICKY
+        }
+        request = token
         latestStartId = startId
-        if (!promoted) { stopSelf(startId); return START_NOT_STICKY }
-        LibraryScanner.claimService(this)
-        ensureWorker()
+        if (!promoted) {
+            LibraryScanner.interruptFromService(applicationContext, this, token,
+                promotionError ?: "Foreground service could not start")
+            stopIfIdle(startId)
+            return START_NOT_STICKY
+        }
+        ensureWorker(requireNotNull(token), startId)
         return START_NOT_STICKY
     }
 
-    private fun ensureWorker() {
-        if (!promoted || !LibraryScanner.isServiceOwner(this)) return
-        val hasWorker = LibraryScanner.startWorker(applicationContext) {
+    private fun ensureWorker(token: String, startId: Int) {
+        if (!promoted || request != token || latestStartId != startId ||
+            !LibraryScanner.isServiceOwner(this, token)) return
+        val hasWorker = LibraryScanner.startWorker(applicationContext, this, token) {
             handler.post {
-                // A completion posted by an old service must not start work after destruction.
-                if (promoted) ensureWorker()
+                if (promoted && request == token && LibraryScanner.isServiceOwner(this, token))
+                    ensureWorker(token, latestStartId)
+                else stopIfIdle(latestDeliveredStartId)
             }
         }
-        if (!hasWorker) stopSelfResult(latestStartId)
+        if (!hasWorker) LibraryScanner.serviceWorkerExhausted(applicationContext, this, token) {
+            if (stopSelfResult(latestDeliveredStartId)) retiring = true
+        }
+    }
+
+    private fun stopIfIdle(startId: Int) {
+        LibraryScanner.stopServiceIfIdle { if (stopSelfResult(startId)) retiring = true }
     }
 
     override fun onTimeout(startId: Int, fgsType: Int) {
-        if (startId != latestStartId) return
-        LibraryScanner.interruptFromService(applicationContext, this, "Android's background scan time limit was reached. Resume when the app is visible.")
-        stopSelf()
+        if (startId != latestDeliveredStartId) return
+        val token = request
+        LibraryScanner.interruptFromService(applicationContext, this, token,
+            "Android's background scan time limit was reached. Resume when the app is visible.")
+        stopIfIdle(latestDeliveredStartId)
     }
 
     override fun onDestroy() {
         promoted = false
-        LibraryScanner.interruptFromService(applicationContext, this, "Background scan stopped. Resume when the app is visible.", release = true)
+        LibraryScanner.interruptFromService(applicationContext, this, request,
+            "Background scan stopped. Resume when the app is visible.")
+        request = null
         serviceScope.cancel()
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
@@ -127,6 +161,7 @@ class ScanService : Service() {
     }
 
     companion object {
+        const val EXTRA_SESSION = "com.example.myebookapp.SCAN_SESSION"
         private const val CHANNEL = "library_scan"
         private const val ID = 3104
     }
