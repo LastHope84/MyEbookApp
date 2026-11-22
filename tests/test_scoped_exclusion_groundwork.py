@@ -30,12 +30,12 @@ class ScopedExclusionGroundwork(unittest.TestCase):
         self.assertIn('insertScanSightings(allowed.map', DB)
         self.assertLess(DB.index('val allowed = items.filter'), DB.index('insertScanSightings(allowed.map'))
 
-    def test_scanner_does_not_require_worker_pause_or_disallow_new_roots(self):
+    def test_scanner_quiesces_before_scoped_exclusion(self):
         method = SCANNER.split('suspend fun excludeFolderFromScans', 1)[1].split('private suspend fun walkTree', 1)[0]
-        self.assertNotIn('processingMutex', method)
+        self.assertIn('withScannerQuiescent(app)', method)
         self.assertNotIn('Stop or pause', method)
         self.assertNotIn('getAllowedScanRoots()', SCANNER)
-        self.assertIn('dao.insertScannedBatch(batch, emptySet(), authority)', SCANNER)
+        self.assertIn('dao.insertScannedBatch(batch, emptySet(), authority, scanGeneration = scanGeneration)', SCANNER)
         self.assertIn('ScannedItem(sighting, book, path)', SCANNER)
         self.assertIn('return FolderRemovalResult(0,', CORE)
 
