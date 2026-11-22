@@ -16,6 +16,7 @@ android {
     val buildNum = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
     defaultConfig {
         applicationId = "com.example.myebookapp"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Keep the narrower experimental APK from replacing the standard app.
         if (foxletAar != null) applicationIdSuffix = ".foxlet"
         minSdk = if (foxletAar != null) 28 else 24; targetSdk = 35
@@ -46,6 +47,8 @@ dependencies {
         implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     }
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     implementation(platform("androidx.compose:compose-bom:2025.01.00"))
     implementation("androidx.compose.ui:ui"); implementation("androidx.compose.material3:material3")
