@@ -31,8 +31,9 @@ internal data class MembershipObservation(
     val routes: List<MembershipRoute>
 )
 
-/** Exclude every route through this directory identity within this grant, not other grants. */
-internal data class MembershipExclusion(val rootId: String, val directory: MembershipDocument)
+/** A selected observed path is root-qualified and compared component by component.
+ * A null path is the legacy identity-wide experiment; new visibility must supply a path. */
+internal data class MembershipExclusion(val rootId: String, val directory: MembershipDocument, val directoryPath: List<MembershipDocument>? = null)
 internal enum class IndependentMembership { PRESENT, ABSENT_VERIFIED, UNKNOWN }
 internal data class MembershipEvidence(
     val document: MembershipDocument?,
@@ -62,8 +63,12 @@ internal object BookMembershipDecision {
             path.all { valid(it) && it.authority == root.document.authority } &&
             path.toSet().size == path.size
 
-    private fun excluded(route: MembershipRoute, exclusion: MembershipExclusion): Boolean =
-        route.rootId == exclusion.rootId && exclusion.directory in route.directories
+    private fun excluded(route: MembershipRoute, exclusion: MembershipExclusion): Boolean {
+        if (route.rootId != exclusion.rootId) return false
+        val selectedPath = exclusion.directoryPath
+        return if (selectedPath == null) exclusion.directory in route.directories
+        else route.directories.size >= selectedPath.size && route.directories.take(selectedPath.size) == selectedPath
+    }
 
     // Reject route sets that omit paths implied by their own verified directory edges.
     // This checks internal consistency, not whether the provider supplied every edge.
@@ -95,6 +100,12 @@ internal object BookMembershipDecision {
             }
         }
         return observed == derived
+    }
+
+    /** Future path-based caller must explicitly establish all evidence; no such collector exists yet. */
+    fun decidePathQualified(evidence: MembershipEvidence): MembershipDecision {
+        if (evidence.exclusions.any { it.directoryPath == null }) return MembershipDecision.RETAIN_UNKNOWN
+        return decide(evidence)
     }
 
     fun decide(evidence: MembershipEvidence): MembershipDecision {
@@ -134,8 +145,10 @@ internal object BookMembershipDecision {
         }
         for (exclusion in evidence.exclusions) {
             val root = roots[exclusion.rootId] ?: return MembershipDecision.RETAIN_UNKNOWN
+            val path = exclusion.directoryPath
             if (!valid(exclusion.directory) || exclusion.directory.authority != root.document.authority ||
-                exclusion.directory == document
+                exclusion.directory == document ||
+                (path != null && (!validPath(path, root) || path.last() != exclusion.directory))
             ) return MembershipDecision.RETAIN_UNKNOWN
         }
         val affected = routes.filter { route -> evidence.exclusions.any { excluded(route, it) } }
