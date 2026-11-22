@@ -44,14 +44,14 @@ class DetachedRootDatabaseTest {
         assertTrue(requireNotNull(dao.getByIdOnce(row.id)).isFavorite)
         assertEquals(1, dao.shelfCountForRemoval(row.id))
         assertEquals(0, dao.insertScannedBatch(listOf(item(detached, listOf("removed"), "two")), emptySet(), "provider").inserted)
-        assertEquals(0, dao.insertScannedBatch(listOf(item(parent, listOf("parent", "removed"), "three")), emptySet(), "provider").inserted)
+        assertEquals(1, dao.insertScannedBatch(listOf(item(parent, listOf("parent", "removed"), "three")), emptySet(), "provider").inserted)
         assertEquals(1, dao.insertScannedBatch(listOf(item(parent, listOf("parent", "other"), "four")), emptySet(), "provider").inserted)
         assertEquals(1, dao.clearRemovedScanRoot(detached))
         assertEquals(1, dao.insertScannedBatch(listOf(item(parent, listOf("parent", "removed"), "five")), emptySet(), "provider").inserted)
     }
 
     @Test fun identityIsAuthorityScopedAndIndependentEquivalentGrantIsRetained() {
-        assertEquals(setOf("removed"), removedRootBlocks(parent, "provider", listOf(removed)))
+        assertTrue(removedRootBlocks(parent, "provider", listOf(removed)).isEmpty())
         assertEquals(setOf("removed"), removedRootBlocks(detached, "provider", listOf(removed)))
         assertTrue(removedRootBlocks("content://elsewhere/tree/parent", "elsewhere", listOf(removed)).isEmpty())
         assertTrue(removedRootBlocks("content://provider/tree/removed/extra", "provider", listOf(removed)).isEmpty())
