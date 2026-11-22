@@ -58,6 +58,7 @@ object LibraryScanner {
         while (true) {
             if (pausedFlow.value) pausedFlow.first { !it }
             val next = synchronized(queueLock) { if (pendingFolders.isNotEmpty()) pendingFolders.removeFirst() else null } ?: break
+            _status.update { if (it.isPaused) it else it.copy(phaseLabel = "Scanning folders…") }
             if (keys == null) keys = dao.getAllNameSizeKeys().toMutableSet()
             walked = true; walkTree(context, dao, next, keys!!)
         }
@@ -88,6 +89,7 @@ object LibraryScanner {
 
     private suspend fun processMetadataBatch(context: Context, dao: BookDao): Boolean {
         val pending = dao.getPendingEpubs(60); if (pending.isEmpty()) return false
+        _status.update { if (it.isPaused) it else it.copy(phaseLabel = "Reading book details and covers… ${it.metadataProcessed}") }
         val updates = Collections.synchronizedList(mutableListOf<ExtractedBookMeta>())
         coroutineScope {
             val ch = Channel<BookEntity>(Channel.UNLIMITED); pending.forEach { ch.trySend(it) }; ch.close()
@@ -96,7 +98,11 @@ object LibraryScanner {
                 val p = runCatching { EpubParser.parseEpub(context, Uri.parse(book.uriString), book.fileName) }.getOrNull()
                 val cover = p?.let { saveWebpThumbnail(context, book.uriString, it.coverBitmap) }
                 updates.add(ExtractedBookMeta(book.id, p?.title ?: book.title, p?.author ?: book.author, p?.publishingDate ?: "Unknown", p?.publisher ?: "Unknown", p?.language ?: "Unknown", cover, p?.series, p?.seriesIndex, p?.tags))
-                _status.update { it.copy(metadataProcessed = it.metadataProcessed + 1, metadataLeft = (it.metadataLeft - 1).coerceAtLeast(0)) }
+                _status.update {
+                    val processed = it.metadataProcessed + 1
+                    it.copy(metadataProcessed = processed, metadataLeft = (it.metadataLeft - 1).coerceAtLeast(0),
+                        phaseLabel = if (it.isPaused) it.phaseLabel else "Reading book details and covers… $processed")
+                }
             }}}
         }
         dao.updateExtractedMetadataBatch(updates.toList()); return true
