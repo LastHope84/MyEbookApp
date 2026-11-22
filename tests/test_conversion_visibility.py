@@ -12,6 +12,7 @@ MIGRATION = SOURCE.split('internal val M45 =', 1)[1].split('fun getInstance', 1)
 class VisibilityTests(unittest.TestCase):
     def setUp(self):
         self.db = sqlite3.connect(':memory:')
+        self.db.execute("CREATE TABLE hidden_scan_books(bookId INTEGER PRIMARY KEY, rootUri TEXT NOT NULL)")
         self.db.execute('PRAGMA foreign_keys = ON')
         self.db.executescript('''
           CREATE TABLE books(id INTEGER PRIMARY KEY, uriString TEXT, fileName TEXT,

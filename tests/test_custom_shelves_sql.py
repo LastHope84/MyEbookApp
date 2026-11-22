@@ -21,6 +21,7 @@ def query(method):
 class CustomShelvesSqlTests(unittest.TestCase):
     def setUp(self):
         self.db = sqlite3.connect(':memory:')
+        self.db.execute("CREATE TABLE hidden_scan_books(bookId INTEGER PRIMARY KEY, rootUri TEXT NOT NULL)")
         self.db.execute('PRAGMA foreign_keys=ON')
         self.db.execute('CREATE TABLE books (id INTEGER PRIMARY KEY, uriString TEXT UNIQUE, title TEXT, author TEXT, publisher TEXT, series TEXT, tags TEXT, isFavorite INTEGER, readingStatus TEXT, progressPercent REAL, lastLocatorJson TEXT)')
         self.db.execute('CREATE VIRTUAL TABLE books_fts USING fts4(content=`books`, author, publisher, series, tags, title)')
