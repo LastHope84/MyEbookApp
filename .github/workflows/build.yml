@@ -55,6 +55,7 @@ jobs:
 
       - name: Build compatible Foxlet engine from pinned source
         run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "cmake;3.31.6"
           git clone --branch v0.5.0 --depth 1 https://github.com/yinvoke/foxlet-translate.git "$RUNNER_TEMP/foxlet-source"
           test "$(git -C "$RUNNER_TEMP/foxlet-source" rev-parse HEAD)" = "0eff2a15032362115848a496ce1df8ed9fc68650"
           python3 - <<'PY'
