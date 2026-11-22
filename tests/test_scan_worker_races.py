@@ -40,8 +40,9 @@ class WorkerSourceContracts(unittest.TestCase):
         self.assertNotIn('previous?.join()', worker)
         self.assertLess(worker.index('processingMutex.withLock {'), worker.index('runScan(context, token)'))
         self.assertLess(worker.index('runScan(context, token)'), worker.index('} catch (e: CancellationException)'))
-        # Control functions never wait on the processing mutex while holding lock.
-        self.assertEqual(source.count('processingMutex.withLock'), 1)
+        # Workers share one processing mutex; the separate removal barrier may also acquire it.
+        self.assertEqual(worker.count('processingMutex.withLock'), 1)
+        self.assertEqual(source.count('private val processingMutex = Mutex()'), 1)
 
 
 class GenerationScheduleModel(unittest.IsolatedAsyncioTestCase):
