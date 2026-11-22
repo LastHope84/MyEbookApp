@@ -91,9 +91,10 @@ class ScannerConfigV3IntegrationTest {
                 .putString("revision", "stop2").putString("last_control", "stop").commit())
             assertTrue(ScannerConfigRecovery.replay(ctx, dao, Any()))
             assertEquals("stopped", scan.getString("mode", null)); assertEquals("[]", scan.getString("roots", null))
-            val stale = Any(); val current = Any(); LibraryScanner.claimService(stale); LibraryScanner.claimService(current)
-            LibraryScanner.interruptFromService(ctx, stale, "stale", release = true)
-            assertTrue(LibraryScanner.isServiceOwner(current)); assertEquals("stopped", scan.getString("mode", null))
+            val stale = Any()
+            assertFalse(LibraryScanner.bindService(stale, "old-session"))
+            LibraryScanner.interruptFromService(ctx, stale, "old-session", "stale")
+            assertFalse(LibraryScanner.isServiceOwner(stale, "old-session")); assertEquals("stopped", scan.getString("mode", null))
         } finally { db.close() }
     }
     @Test fun unknownQueueRevisionRetainsIntent() = runBlocking {
