@@ -2,7 +2,7 @@ name: Build Diagnostic Folder Preview APK
 
 on:
   push:
-    branches: [ diagnostic/recovery-corrected-20261122-2205-a ]
+    branches: [ diagnostic/service-races-build-20261122 ]
   workflow_dispatch:
 
 jobs:
@@ -28,6 +28,9 @@ jobs:
           python3 -m unittest discover -s tests -p 'test_final_preview_integration.py' -v
           python3 -m unittest discover -s tests -p 'test_ci_input_consistency.py' -v
           python3 -m unittest discover -s tests -p 'test_*.py'
+
+      - name: Verify hydrated experiment source hashes
+        run: python3 tests/verify_service_races_snapshot.py
 
       - name: Fetch libmobi v0.12
         run: |
@@ -78,6 +81,9 @@ jobs:
       - name: Build folder preview with Foxlet
         run: gradle clean assembleDebug assembleDebugAndroidTest -PfoxletAar="$RUNNER_TEMP/foxlet.aar"
 
+      - name: Run Kotlin unit tests
+        run: gradle testDebugUnitTest -PfoxletAar="$RUNNER_TEMP/foxlet.aar"
+
       - name: Verify preview APK identity and signature
         shell: bash
         run: |
@@ -97,7 +103,7 @@ jobs:
             echo "Could not parse APK package name" >&2
             exit 1
           fi
-          if [[ "${BASH_REMATCH[1]}" != "com.example.myebookapp.foxlet.serialized20261122" ]]; then
+          if [[ "${BASH_REMATCH[1]}" != "com.example.myebookapp.foxlet.serviceraces20261122" ]]; then
             echo "Unexpected APK package name: ${BASH_REMATCH[1]}" >&2
             exit 1
           fi
@@ -107,7 +113,7 @@ jobs:
         id: upload_preview
         uses: actions/upload-artifact@v4
         with:
-          name: MyEbookApp-Foxlet-Corrected-Recovery-Diagnostic-20261122-NOT-FOR-INSTALL
+          name: MyEbookApp-Foxlet-Service-Races-Diagnostic-20261122-NOT-FOR-INSTALL
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
