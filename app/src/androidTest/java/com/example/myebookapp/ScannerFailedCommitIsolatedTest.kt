@@ -58,7 +58,7 @@ class ScannerFailedCommitIsolatedTest {
         assertEquals("Could not confirm scan stopped", LibraryScanner.status.value.phaseLabel)
         assertTrue(LibraryScanner.status.value.error!!.contains("may not have been saved"))
         assertFalse(LibraryScanner.status.value.canResume)
-        assertFalse(LibraryScanner.startWorker(ctx) { fail("worker admitted") })
+        assertFalse(LibraryScanner.startWorker(ctx, Any(), "invalid-session") { fail("worker admitted") })
         val afterFailure = commits
         LibraryScanner.resumeScan(ctx)
         LibraryScanner.pauseScan(ctx)

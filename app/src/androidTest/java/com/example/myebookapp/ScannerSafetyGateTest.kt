@@ -81,6 +81,6 @@ class ScannerSafetyGateTest {
         LibraryScanner.stopScan(ctx) // repeated stop remains stopped with no queued roots
         assertEquals("[]", prefs.getString("roots", null))
         assertEquals("stop", prefs.getString("last_control", null))
-        assertFalse(LibraryScanner.startWorker(ctx) { fail("stopped worker must not start") })
+        assertFalse(LibraryScanner.startWorker(ctx, Any(), "invalid-session") { fail("stopped worker must not start") })
     }
 }
