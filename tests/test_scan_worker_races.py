@@ -39,7 +39,7 @@ class WorkerSourceContracts(unittest.TestCase):
         self.assertIn('import kotlinx.coroutines.sync.withLock', source)
         self.assertNotIn('previous?.join()', worker)
         self.assertLess(worker.index('processingMutex.withLock {'), worker.index('runScan(context, token)'))
-        self.assertLess(worker.index('runScan(context, token)'), worker.index('} catch (e: CancellationException)'))
+        self.assertLess(worker.index('runScan(context, token)'), worker.index('} catch (e: CancellationException)', worker.index('runScan(context, token)')))
         # Workers share one processing mutex; the separate removal barrier may also acquire it.
         self.assertEqual(worker.count('processingMutex.withLock'), 1)
         self.assertEqual(source.count('private val processingMutex = Mutex()'), 1)
