@@ -64,7 +64,11 @@ jobs:
           old = 'compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }'
           new = 'compilerOptions { jvmTarget.set(JvmTarget.JVM_17); languageVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_1); apiVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_1) }'
           assert text.count(old) == 1
-          p.write_text(text.replace(old, new))
+          text = text.replace(old, new)
+          old_ndk = 'ndkVersion = "29.0.13113456"'
+          new_ndk = 'ndkVersion = "26.1.10909125"'
+          assert text.count(old_ndk) == 1
+          p.write_text(text.replace(old_ndk, new_ndk))
           PY
           (cd "$RUNNER_TEMP/foxlet-source" && ./gradlew :foxlet:assembleRelease)
           cp "$RUNNER_TEMP/foxlet-source/foxlet/build/outputs/aar/foxlet-release.aar" "$RUNNER_TEMP/foxlet.aar"
