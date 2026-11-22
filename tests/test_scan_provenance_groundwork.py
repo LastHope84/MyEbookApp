@@ -84,7 +84,7 @@ class ProvenanceGroundwork(unittest.TestCase):
         raw = zlib.decompress(base64.b64decode(''.join((build / p).read_text() for p in entry['parts']), validate=True))
         self.assertEqual(hashlib.sha256(raw).hexdigest(), entry['sha256'])
         activity = raw.decode()
-        for marker in ('LaunchedEffect(Unit) { LibraryScanner.restore(ctx) }', 'pendingScanAction by rememberSaveable', 'Add Folder (temporarily disabled)', 'requestScan("rescan")', 'requestScan("resume")', 'LibraryScanner.pauseScan(ctx)', 'LibraryScanner.stopScan(ctx)', 'translatingBook?.let { book ->', 'WholeEpubTranslation.translate'):
+        for marker in ('LaunchedEffect(Unit) { LibraryScanner.restore(ctx) }', 'pendingScanAction by remember', 'Add Folder (temporarily disabled)', 'requestScan("rescan")', 'requestScan("resume")', 'LibraryScanner.pauseScan(ctx)', 'LibraryScanner.stopScan(ctx)', 'translatingBook?.let { book ->', 'WholeEpubTranslation.translate'):
             self.assertIn(marker, activity)
 
 if __name__ == '__main__':
