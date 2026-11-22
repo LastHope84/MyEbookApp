@@ -1,3 +1,5 @@
+> Historical baseline from the parent copy; package ID and Stop semantics below are superseded by `serialized-recovery-20261122.md`.
+
 # Scanner recovery integration: diagnostic only
 
 The isolated app ID is `com.example.myebookapp.recovery20261122` (Foxlet: `com.example.myebookapp.foxlet.recovery20261122`). It has not been built or installed. Existing installs and original ebook/provider files were not changed. Folder addition and all folder-removal/restore UI remain disabled. No boot receiver was added.
