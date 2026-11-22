@@ -6,9 +6,9 @@ from pathlib import Path, PurePosixPath
 import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
-OVERLAY_SHA256 = 'e30f5bef24ee1a902e706bc6b2bbf252acc067b6e9f431fa58b122cee53ee0ad'
-OVERLAY_PARTS = 15
-OVERLAY_FILES = 34
+OVERLAY_SHA256 = '2cc1e9ec3fa101c3373240185e27ba39824f1f67c5e25cf231d47ea90c4228cb'
+OVERLAY_PARTS = 18
+OVERLAY_FILES = 43
 TRANSLATION_FILES = {
     'app/src/main/java/com/example/myebookapp/MainActivity.kt',
     'app/src/main/java/com/example/myebookapp/ReaderActivity.kt',

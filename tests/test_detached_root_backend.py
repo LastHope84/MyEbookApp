@@ -42,7 +42,7 @@ class DetachedRootBackend(unittest.TestCase):
         gate = SCAN.split('private suspend fun <T> withScannerQuiescent', 1)[1].split('/** Provisional exclusion', 1)[0]
         batch = DB.split('@Transaction suspend fun insertScannedBatch', 1)[1].split('@Insert(onConflict', 1)[0]
         self.assertLess(detach.index('dao.detachWithInventory('), detach.index('putStringSet('))
-        self.assertIn('processingMutex.withLock { work() }', gate)
+        self.assertIn('processingMutex.withLock { reconcileFolderConfig(app); work() }', gate)
         self.assertIn('activeJob?.cancel()', gate)
         self.assertIn('removedRootBlocks(root, authority, removedScanRoots())', batch)
         self.assertIn('removedRootBlocks(treeUri.toString(), authority, dao.removedScanRoots())', SCAN)
