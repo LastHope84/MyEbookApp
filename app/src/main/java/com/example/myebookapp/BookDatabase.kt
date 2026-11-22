@@ -42,10 +42,13 @@ interface BookDao {
     @Query("UPDATE books SET readingStatus = :status WHERE id = :id AND :status IN ('NEW', 'TBR', 'READING', 'FINISHED')") suspend fun setReadingStatus(id: Long, status: String): Int
     @Query("SELECT * FROM books WHERE id IN (:ids)") suspend fun getByIds(ids: List<Long>): List<BookEntity>
     @Query("SELECT id FROM books") suspend fun getAllIds(): List<Long>
+    @Query("SELECT uriString FROM books") suspend fun getAllUris(): List<String>
     @Query("SELECT id, fileName, fileSize, lastOpenedAt, progressPercent, (coverPath IS NOT NULL) AS hasCover FROM books WHERE fileSize > 0") suspend fun getDuplicateCandidates(): List<BookDuplicateRow>
     @Query("SELECT LOWER(fileName) || '|' || fileSize FROM books WHERE fileSize > 0") suspend fun getAllNameSizeKeys(): List<String>
     @Query("SELECT COUNT(*) FROM books WHERE format = 'EPUB' AND metadataExtracted = 0") suspend fun countPendingEpubs(): Int
     @Query("SELECT * FROM books WHERE format = 'EPUB' AND metadataExtracted = 0 ORDER BY id ASC LIMIT :limit") suspend fun getPendingEpubs(limit: Int): List<BookEntity>
+    @Query("SELECT * FROM books WHERE format = 'EPUB' AND metadataExtracted = 0 AND id > :afterId ORDER BY id ASC LIMIT :limit") suspend fun getPendingEpubsAfter(afterId: Long, limit: Int): List<BookEntity>
+    @Query("UPDATE books SET metadataExtracted = 1 WHERE id = :id AND metadataExtracted = 0") suspend fun markMetadataFailed(id: Long): Int
     @Query("SELECT * FROM books WHERE lastOpenedAt > 0 ORDER BY lastOpenedAt DESC LIMIT 1") suspend fun getLastOpenedOnce(): BookEntity?
     @Query("SELECT COUNT(*) FROM books") fun observeTotalCount(): Flow<Int>
     @Query("SELECT COUNT(*) FROM books WHERE format = 'EPUB' AND metadataExtracted = 0") fun observePendingMetadataCount(): Flow<Int>

@@ -77,6 +77,7 @@ Toast.makeText(ctx, "Could not update shelf: ${e.localizedMessage ?: "unknown er
 var converting by remember { mutableStateOf(false) }
 var preparingKindle by remember { mutableStateOf(false) }
 val folders = LibraryScanner.getSavedFolders(ctx)
+LaunchedEffect(Unit) { LibraryScanner.restore(ctx) }
 
 fun sendToKindle(book: BookEntity) {
 if (preparingKindle) return
@@ -171,7 +172,43 @@ savingMetadata = false
 }
 }
 
-val folderP = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { u -> if (u != null) { runCatching { ctx.contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }; LibraryScanner.addFolder(ctx, u); LibraryScanner.scanFolders(ctx, listOf(u)) } }
+// Save values rather than closures so the permission result can survive recreation.
+var pendingScanAction by rememberSaveable { mutableStateOf<String?>(null) }
+var pendingScanFolder by rememberSaveable { mutableStateOf<String?>(null) }
+fun runScanAction(action: String, folder: String?) {
+    when (action) {
+        "folder" -> if (folder != null) LibraryScanner.scanFolders(ctx, listOf(Uri.parse(folder)))
+        "rescan" -> LibraryScanner.scanFolders(ctx, LibraryScanner.getSavedFolders(ctx).map { Uri.parse(it) })
+        "resume" -> LibraryScanner.resumeScan(ctx)
+    }
+}
+val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+    val action = pendingScanAction
+    val folder = pendingScanFolder
+    pendingScanAction = null
+    pendingScanFolder = null
+    if (action != null) runScanAction(action, folder)
+}
+fun requestScan(action: String, folder: String? = null) {
+    if (android.os.Build.VERSION.SDK_INT >= 33 &&
+        androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+    ) {
+        pendingScanAction = action
+        pendingScanFolder = folder
+        notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+    } else runScanAction(action, folder)
+}
+val folderP = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { u ->
+    if (u != null) {
+        try {
+            ctx.contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            LibraryScanner.addFolder(ctx, u)
+            requestScan("folder", u.toString())
+        } catch (e: Exception) {
+            Toast.makeText(ctx, "Could not save folder permission: ${e.localizedMessage ?: "unknown error"}", Toast.LENGTH_LONG).show()
+        }
+    }
+}
 if (showGuide) {
     UserGuideScreen(onClose = { showGuide = false })
     return
@@ -199,7 +236,7 @@ Spacer(Modifier.height(12.dp)); OutlinedTextField(value=qry, onValueChange={qry=
 Spacer(Modifier.height(12.dp)); LibraryTab.entries.forEach { t -> NavigationDrawerItem(label={Text(t.title + (if(t==LibraryTab.CONV) " ($toConv)" else ""))}, selected=tab==t, onClick={tab=t; scp.launch{drw.close()}}) }
 Spacer(Modifier.height(8.dp)); HorizontalDivider(); Spacer(Modifier.height(8.dp))
 NavigationDrawerItem(label={Text("Add Folder")}, selected=false, onClick={scp.launch{drw.close()}; folderP.launch(null)})
-if (folders.isNotEmpty()) NavigationDrawerItem(label={Text("Rescan Folders")}, selected=false, onClick={scp.launch{drw.close()}; LibraryScanner.scanFolders(ctx, folders.map{Uri.parse(it)})})
+if (folders.isNotEmpty()) NavigationDrawerItem(label={Text("Rescan Folders")}, selected=false, onClick={scp.launch{drw.close()}; requestScan("rescan")})
 NavigationDrawerItem(label={Text("Settings")}, selected=false, onClick={scp.launch{drw.close()}; showSet=true})
 NavigationDrawerItem(label={Text("User Guide")}, selected=false, onClick={scp.launch { drw.close(); showGuide=true }})
 }
@@ -207,7 +244,32 @@ NavigationDrawerItem(label={Text("User Guide")}, selected=false, onClick={scp.la
 }) {
 Scaffold(topBar={ TopAppBar(navigationIcon={ IconButton(onClick={scp.launch{drw.open()}}){HamburgerIcon()} }, title={ Text(if (selMode) "${selIds.size} selected" else tab.title) }) }) { p ->
 Column(Modifier.fillMaxSize().padding(p)) {
-if (scanS.isScanning) { Card(colors=CardDefaults.cardColors(MaterialTheme.colorScheme.secondaryContainer), modifier=Modifier.fillMaxWidth().padding(8.dp)) { Column(Modifier.padding(8.dp)) { Text(scanS.phaseLabel, style=MaterialTheme.typography.labelLarge); LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical=4.dp)) } } }
+if (scanS.isScanning || scanS.canResume || scanS.warning != null || scanS.error != null) {
+    Card(colors = CardDefaults.cardColors(MaterialTheme.colorScheme.secondaryContainer), modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+        Column(Modifier.padding(8.dp)) {
+            Text(scanS.phaseLabel, style = MaterialTheme.typography.labelLarge)
+            Text(
+                "${scanS.filesFoundInPass} books added • ${scanS.metadataProcessed} details read • ${scanS.metadataLeft} pending • ${scanS.queuedFolders} folders queued",
+                style = MaterialTheme.typography.bodySmall
+            )
+            if (scanS.isScanning && !scanS.isPaused) {
+                val progressTotal = scanS.metadataProcessed + scanS.metadataLeft
+                if (scanS.phaseLabel.startsWith("Reading") && progressTotal > 0) {
+                    LinearProgressIndicator(progress = { scanS.metadataProcessed.toFloat() / progressTotal }, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
+                } else {
+                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 4.dp))
+                }
+            }
+            scanS.warning?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            scanS.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            Row {
+                if (scanS.isScanning && !scanS.isPaused) TextButton(onClick = { LibraryScanner.pauseScan(ctx) }) { Text("Pause") }
+                if (scanS.canResume) TextButton(onClick = { requestScan("resume") }) { Text("Resume") }
+                TextButton(onClick = { LibraryScanner.stopScan(ctx) }) { Text("Stop") }
+            }
+        }
+    }
+}
 if (paged.loadState.refresh is LoadState.Loading && paged.itemCount == 0) {
 LinearProgressIndicator(Modifier.fillMaxWidth().padding(16.dp))
 } else if (paged.loadState.refresh is LoadState.Error && paged.itemCount == 0) {
