@@ -30,7 +30,7 @@ class FolderExclusionCore(unittest.TestCase):
         self.assertEqual(self.db.execute('SELECT * FROM scan_allowed_roots').fetchall(), [])
         self.assertEqual(self.db.execute('SELECT * FROM scan_root_exclusions').fetchall(), [])
         self.assertIn('ScanRootExclusion::class, ScanBookRoute::class, ScanUnresolvedRoute::class, RemovedScanRoot::class, ScanOwnedBook::class', DB)
-        self.assertIn('addMigrations(M12, M23, M34, M45, M56, M67, M78, M89, M910, M1011)', DB)
+        self.assertIn('addMigrations(M12, M23, M34, M45, M56, M67, M78, M89, M910, M1011, M1112, M1213)', DB)
 
     def test_exact_keys_and_transactional_rollback(self):
         self.db.executemany('INSERT INTO scan_exclusions VALUES(?,?)', [('provider','a'),('provider','a/b'),('other','a')])
@@ -50,8 +50,8 @@ class FolderExclusionCore(unittest.TestCase):
         batch = DB.split('@Transaction suspend fun insertScannedBatch', 1)[1].split('@Insert(onConflict', 1)[0]
         self.assertIn('dao.rootExclusions(treeUri.toString())', walk)
         self.assertIn('dao.getScanExclusions().filter { it.authority == authority }', walk)
-        self.assertIn('if (path.any { it in blocked }) {', walk)
-        self.assertIn('dao.insertScannedBatch(batch, emptySet(), authority)', walk)
+        self.assertIn('if (path.any { it in blocked } || scanPathBlocked(treeUri.toString(), path, pathBlocks)) {', walk)
+        self.assertIn('dao.insertScannedBatch(batch, emptySet(), authority, scanGeneration = scanGeneration)', walk)
         self.assertIn('rootExclusions(root)', batch)
         self.assertIn('getScanExclusions().filter { it.authority == authority }', batch)
         self.assertIn('item.directoryPath.none { it in blocked }', batch)
@@ -61,11 +61,11 @@ class FolderExclusionCore(unittest.TestCase):
 
     def test_unverified_provider_snapshot_never_deletes_books_or_files(self):
         body = CORE.split('suspend fun exclude(',1)[1]
-        self.assertIn('dao.commitRootExclusion(', body)
+        self.assertIn('dao.commitCheckedRootExclusion(', body)
         self.assertIn('FolderRemovalResult(0, dao.countAllBooks(), 0', body)
         self.assertNotIn('deleteById', body)
         self.assertNotIn('deleteDocument(', CORE + SCAN)
         self.assertNotIn('openOutputStream(', CORE + SCAN)
-        self.assertIn('NOT evidence of exclusive book ownership', body)
+        self.assertIn('does not establish ownership or authorize hiding existing rows', body)
 
 if __name__ == '__main__': unittest.main()
