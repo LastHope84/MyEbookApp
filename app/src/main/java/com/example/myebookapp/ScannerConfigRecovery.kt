@@ -4,8 +4,8 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** V3 replay. The service processing mutex serializes replays; scanLock serializes ALL queue
- * preference writes. V2 has no queue revision and must never enter this code. */
+/** Test-only V3 replay. Do not wire into production: scanLock does not span the suspending
+ * Room finish or serialize controls, and stopped queues can now retain work. V2 must not enter. */
 internal object ScannerConfigRecovery {
     private fun strings(a: JSONArray): List<String> {
         val values = (0 until a.length()).map { i ->
