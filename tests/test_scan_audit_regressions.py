@@ -50,7 +50,9 @@ class ScanSourceContracts(unittest.TestCase):
         activity = source('MainActivity.kt')
         self.assertIn('pendingScanAction by rememberSaveable', activity)
         self.assertIn('pendingScanFolder by rememberSaveable', activity)
-        self.assertIn('requestScan("folder", u.toString())', activity)
+        # Folder onboarding is deliberately blocked in the recovery-guard snapshot.
+        self.assertNotIn('folderP.launch(', activity)
+        self.assertIn('Add Folder (temporarily disabled)', activity)
         self.assertIn('requestScan("rescan")', activity)
         self.assertIn('requestScan("resume")', activity)
         self.assertIn('if (action != null) runScanAction(action, folder)', activity)
