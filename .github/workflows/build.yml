@@ -14,6 +14,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Restore large test source files
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, pathlib, zlib
+          root = pathlib.Path('.translation-build-input')
+          for entry in json.loads((root / 'manifest.json').read_text()):
+              encoded = ''.join((root / name).read_text() for name in entry['parts'])
+              data = zlib.decompress(base64.b64decode(encoded, validate=True))
+              assert hashlib.sha256(data).hexdigest() == entry['sha256']
+              path = pathlib.Path(entry['path'])
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_bytes(data)
+          PY
+
       - name: Fetch libmobi v0.12
         run: |
           rm -rf app/src/main/cpp/libmobi
