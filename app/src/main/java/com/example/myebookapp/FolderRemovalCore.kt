@@ -43,8 +43,9 @@ internal object FolderRemovalCore {
                 complete()
                 while (c.moveToNext()) {
                     currentCoroutineContext().ensureActive()
-                    val childId = c.getString(0) ?: error("Provider returned a child without an ID")
-                    val kind = if (c.getString(1) == DocumentsContract.Document.MIME_TYPE_DIR) SafKind.DIRECTORY else SafKind.FILE
+                    val childId = c.getString(0)?.takeIf { it.isNotEmpty() } ?: error("Provider returned a child without an ID")
+                    val mime = c.getString(1)?.takeIf { it.isNotBlank() } ?: error("Provider returned a child without a MIME type")
+                    val kind = if (mime == DocumentsContract.Document.MIME_TYPE_DIR) SafKind.DIRECTORY else SafKind.FILE
                     children.add(SafChild(SafDocumentKey(authority, childId), kind))
                     if (kind == SafKind.DIRECTORY) todo.add(childId) else {
                         val name = c.getString(2) ?: error("Provider returned a file without a name")
@@ -136,15 +137,20 @@ internal object FolderRemovalCore {
         require(selectedTree.toString() in rootUris) { "Selection must use a configured root's grant" }
         require(directoryId.isNotEmpty())
         val dao = AppDatabase.getInstance(context).bookDao()
-        // Until cleanup is implemented, one traversal is sufficient only to validate the
-        // target under this grant; it is NOT evidence of exclusive book ownership.
+        check(dao.configState() != null && dao.configuredScanRoots().toSet() == rootUris.toSet()) { "Root configuration requires reconciliation" }
+        val generation = dao.inventoryState()?.generation ?: 0L
+        // A traversal only verifies that the chosen ID was observed under this grant.
+        // It does not establish ownership or authorize hiding existing rows.
         val grantRoot = collect(context, selectedTree, DocumentsContract.getTreeDocumentId(selectedTree))
         val authority = requireNotNull(selectedTree.authority)
+        FolderRemovalEvidence.preview(grantRoot, listOf(grantRoot), emptyList())
         check(SafDocumentKey(authority, directoryId) in grantRoot.directories) {
             "Selected directory is not inside the chosen scan root"
         }
         currentCoroutineContext().ensureActive()
-        dao.commitRootExclusion(ScanRootExclusion(selectedTree.toString(), directoryId))
+        withContext(NonCancellable) {
+            dao.commitCheckedRootExclusion(ScanRootExclusion(selectedTree.toString(), directoryId), rootUris, generation)
+        }
         return FolderRemovalResult(0, dao.countAllBooks(), 0, authority, directoryId)
     }
 }
