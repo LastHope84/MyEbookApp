@@ -21,7 +21,8 @@ fun BookDetailsBottomSheet(
     b: BookEntity, hasK: Boolean, onD: ()->Unit, onR: ()->Unit, onE: ()->Unit,
     onS: ()->Unit, onK: ()->Unit, onC: ()->Unit, onDel: ()->Unit,
     onFavoriteChange: (Boolean) -> Unit, onStatusChange: (String) -> Unit, onCustomShelves: () -> Unit,
-    statusChangeEnabled: Boolean
+    statusChangeEnabled: Boolean, translationEnabled: Boolean = false,
+    onTranslate: () -> Unit = {}
 ) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val sheetS = rememberModalBottomSheetState(true)
@@ -49,6 +50,7 @@ fun BookDetailsBottomSheet(
                 OutlinedButton(onClick = onS, Modifier.weight(1f)) { Text("Share") }
             }
             if (b.format == "EPUB") {
+                if (translationEnabled) OutlinedButton(onClick = onTranslate, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("Translate EPUB offline…") }
                 OutlinedButton(onClick = onK, enabled = hasK, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                     Text("Send to Kindle")
                 }
