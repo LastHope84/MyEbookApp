@@ -37,6 +37,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
+import org.readium.r2.navigator.epub.css.Color as ReadiumColor
+import org.readium.r2.navigator.epub.css.RsProperties
 import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.preferences.ReadingProgression
@@ -568,6 +570,11 @@ class ReaderActivity : FragmentActivity() {
                     initialPreferences = settings.toEpubPreferences(),
                     paginationListener = paginationListener,
                     configuration = EpubNavigatorFragment.Configuration(
+                        readiumCssRsProperties = RsProperties(
+                            // Translucent so the page's own text colour stays readable
+                            // on light, sepia and dark reader themes alike.
+                            selectionBackgroundColor = ReadiumColor.Int(0x663B82F6)
+                        ),
                         selectionActionModeCallback = selectionCallback
                     )
                 )
