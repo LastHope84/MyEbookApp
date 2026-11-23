@@ -403,13 +403,15 @@ object LibraryScanner {
         val batch = ArrayList<BookEntity>(BATCH_SIZE)
         // A document ID identifies the file even when the same file is reachable through
         // another selected root. Name and size alone do not: two different books can share them.
-        val knownIdentities = dao.getAllUris().mapNotNull { stored ->
+        val storedUriByIdentity = HashMap<String, String>()
+        for (stored in dao.getAllUris()) {
             runCatching {
                 val uri = Uri.parse(stored)
-                val authority = uri.authority ?: return@runCatching null
-                "$authority|${DocumentsContract.getDocumentId(uri)}"
-            }.getOrNull()
-        }.toMutableSet()
+                val authority = uri.authority ?: return@runCatching
+                storedUriByIdentity["$authority|${DocumentsContract.getDocumentId(uri)}"] = stored
+            }
+        }
+        val knownIdentities = storedUriByIdentity.keys.toMutableSet()
 
         suspend fun flush() {
             if (batch.isEmpty()) return
@@ -457,7 +459,15 @@ object LibraryScanner {
                         if (!name.startsWith(".") && documentId !in seen) queue.addLast(documentId)
                         continue
                     }
-                    if (!knownIdentities.add("${treeUri.authority}|$documentId")) continue
+                    val identity = "${treeUri.authority}|$documentId"
+                    if (!knownIdentities.add(identity)) {
+                        // Already in the library. A rescan still records which root and
+                        // folder it came from so subfolder removal can find it later.
+                        storedUriByIdentity[identity]?.let { stored ->
+                            dao.updateScanProvenance(stored, treeUri.toString(), parentId)
+                        }
+                        continue
+                    }
                     val format = when (name.substringAfterLast('.', "").lowercase()) {
                         "epub" -> "EPUB"
                         "mobi" -> "MOBI"
