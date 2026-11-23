@@ -394,10 +394,10 @@ Scaffold(topBar={ TopAppBar(navigationIcon={ IconButton(enabled=!bulkSaving, onC
     }) { Text("Actions") }
 } else {
     Box {
-        val sortLabel = when (sortMode) { "author" -> "Author"; "recent" -> "Newest"; else -> "Title" }
+        val sortLabel = when (sortMode) { "author" -> "Author"; "recent" -> "Recent"; else -> "Title" }
         TextButton(onClick = { showSortMenu = true }) { Text(sortLabel) }
         DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
-            listOf("title" to "Title", "author" to "Author", "recent" to "Newest").forEach { (key, label) ->
+            listOf("title" to "Title", "author" to "Author", "recent" to "Recently opened").forEach { (key, label) ->
                 DropdownMenuItem(text = { Text(label) }, onClick = {
                     sortMode = key
                     ThemePrefs.saveSort(ctx, key)
