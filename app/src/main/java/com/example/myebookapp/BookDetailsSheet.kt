@@ -1,11 +1,19 @@
 package com.example.myebookapp
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.*
@@ -61,11 +69,11 @@ fun BookDetailsBottomSheet(
                 Text("Convert to EPUB before sending to Kindle.", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 8.dp))
             }
             Spacer(Modifier.height(12.dp)); HorizontalDivider(); Spacer(Modifier.height(12.dp))
-            OutlinedButton(
-                onClick = { onFavoriteChange(!b.isFavorite) },
+            FavoriteHeart(
+                isFavorite = b.isFavorite,
                 enabled = statusChangeEnabled,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text(if (b.isFavorite) "Remove from Favorites" else "Add to Favorites") }
+                onToggle = { onFavoriteChange(!b.isFavorite) }
+            )
             OutlinedButton(onClick = onCustomShelves, modifier = Modifier.fillMaxWidth()) { Text("Custom shelves…") }
             Text("Reading shelf", modifier = Modifier.fillMaxWidth().padding(top = 8.dp), style = MaterialTheme.typography.labelLarge)
             Text("Choose a shelf if you like. Your reading progress stays unchanged.", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodySmall)
@@ -114,5 +122,32 @@ fun MetadataRow(label: String, value: String) {
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
         Text(value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun FavoriteHeart(isFavorite: Boolean, enabled: Boolean, onToggle: () -> Unit) {
+    val scale by animateFloatAsState(
+        targetValue = if (isFavorite) 1f else 0.85f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label = "favorite-heart"
+    )
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        IconButton(onClick = onToggle, enabled = enabled) {
+            Icon(
+                imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                contentDescription = if (isFavorite) "Remove from Favorites" else "Add to Favorites",
+                tint = if (isFavorite) Color(0xFFE11D48) else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(34.dp).scale(scale)
+            )
+        }
+        Text(
+            if (isFavorite) "In favorites" else "Add to favorites",
+            style = MaterialTheme.typography.labelSmall,
+            color = if (isFavorite) Color(0xFFE11D48) else MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
