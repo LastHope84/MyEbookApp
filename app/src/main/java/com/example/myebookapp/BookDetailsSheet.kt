@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -42,10 +43,18 @@ fun BookDetailsBottomSheet(
             modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (!b.coverPath.isNullOrBlank()) {
-                AsyncImage(ImageRequest.Builder(ctx).data(File(b.coverPath)).crossfade(true).build(), null, Modifier.height(200.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Fit)
-            } else {
-                Box(Modifier.size(120.dp, 180.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)), Alignment.Center) { Text(b.format) }
+            Box(contentAlignment = Alignment.Center) {
+                if (!b.coverPath.isNullOrBlank()) {
+                    AsyncImage(ImageRequest.Builder(ctx).data(File(b.coverPath)).crossfade(true).build(), null, Modifier.height(200.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Fit)
+                } else {
+                    Box(Modifier.size(120.dp, 180.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)), Alignment.Center) { Text(b.format) }
+                }
+                FavoriteHeart(
+                    isFavorite = b.isFavorite,
+                    enabled = statusChangeEnabled,
+                    onToggle = { onFavoriteChange(!b.isFavorite) },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
+                )
             }
             Spacer(Modifier.height(16.dp))
             if (b.format == "EPUB") {
@@ -69,11 +78,6 @@ fun BookDetailsBottomSheet(
                 Text("Convert to EPUB before sending to Kindle.", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 8.dp))
             }
             Spacer(Modifier.height(12.dp)); HorizontalDivider(); Spacer(Modifier.height(12.dp))
-            FavoriteHeart(
-                isFavorite = b.isFavorite,
-                enabled = statusChangeEnabled,
-                onToggle = { onFavoriteChange(!b.isFavorite) }
-            )
             OutlinedButton(onClick = onCustomShelves, modifier = Modifier.fillMaxWidth()) { Text("Custom shelves…") }
             Text("Reading shelf", modifier = Modifier.fillMaxWidth().padding(top = 8.dp), style = MaterialTheme.typography.labelLarge)
             Text("Choose a shelf if you like. Your reading progress stays unchanged.", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodySmall)
@@ -126,28 +130,29 @@ fun MetadataRow(label: String, value: String) {
 }
 
 @Composable
-private fun FavoriteHeart(isFavorite: Boolean, enabled: Boolean, onToggle: () -> Unit) {
+private fun FavoriteHeart(
+    isFavorite: Boolean,
+    enabled: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     val scale by animateFloatAsState(
         targetValue = if (isFavorite) 1f else 0.85f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
         label = "favorite-heart"
     )
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally
+    IconButton(
+        onClick = onToggle,
+        enabled = enabled,
+        modifier = modifier
+            .size(40.dp)
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f), CircleShape)
     ) {
-        IconButton(onClick = onToggle, enabled = enabled) {
-            Icon(
-                imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                contentDescription = if (isFavorite) "Remove from Favorites" else "Add to Favorites",
-                tint = if (isFavorite) Color(0xFFE11D48) else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(34.dp).scale(scale)
-            )
-        }
-        Text(
-            if (isFavorite) "In favorites" else "Add to favorites",
-            style = MaterialTheme.typography.labelSmall,
-            color = if (isFavorite) Color(0xFFE11D48) else MaterialTheme.colorScheme.onSurfaceVariant
+        Icon(
+            imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+            contentDescription = if (isFavorite) "Remove from Favorites" else "Add to Favorites",
+            tint = if (isFavorite) Color(0xFFE11D48) else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(24.dp).scale(scale)
         )
     }
 }
