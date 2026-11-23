@@ -31,6 +31,7 @@ fun BookDetailsBottomSheet(
     onS: ()->Unit, onK: ()->Unit, onC: ()->Unit, onDel: ()->Unit,
     onFavoriteChange: (Boolean) -> Unit, onStatusChange: (String) -> Unit, onCustomShelves: () -> Unit,
     statusChangeEnabled: Boolean, translationEnabled: Boolean = false,
+    hasCustomShelves: Boolean = true,
     onTranslate: () -> Unit = {}
 ) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -78,7 +79,9 @@ fun BookDetailsBottomSheet(
                 Text("Convert to EPUB before sending to Kindle.", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 8.dp))
             }
             Spacer(Modifier.height(12.dp)); HorizontalDivider(); Spacer(Modifier.height(12.dp))
-            OutlinedButton(onClick = onCustomShelves, modifier = Modifier.fillMaxWidth()) { Text("Custom shelves…") }
+            if (hasCustomShelves) {
+                OutlinedButton(onClick = onCustomShelves, modifier = Modifier.fillMaxWidth()) { Text("Custom shelves…") }
+            }
             Text("Reading shelf", modifier = Modifier.fillMaxWidth().padding(top = 8.dp), style = MaterialTheme.typography.labelLarge)
             Text("Choose a shelf if you like. Your reading progress stays unchanged.", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodySmall)
             listOf(

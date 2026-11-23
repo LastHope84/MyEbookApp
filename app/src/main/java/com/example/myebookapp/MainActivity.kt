@@ -478,6 +478,7 @@ onFavoriteChange = { updateShelf(b.id, favorite = it) },
 onStatusChange = { updateShelf(b.id, status = it) },
 onCustomShelves = { membershipBook = b },
 statusChangeEnabled = !shelfSaving,
+hasCustomShelves = customShelves.isNotEmpty(),
 translationEnabled = ThemePrefs.isOfflineTranslationEnabled(ctx) && translationJob == null,
 onTranslate = { translatingSource = ""; translatingTarget = ""; translatingBook = b }
 )
@@ -553,7 +554,7 @@ shelfToDelete?.let { shelf ->
 showBulkActions.let { if (it) {
     AlertDialog(onDismissRequest={showBulkActions=false}, title={Text("${selIds.size} selected")}, text={ Column {
         TextButton(onClick={showBulkActions=false; showBulkMove=true}, modifier=Modifier.fillMaxWidth()) { Text("Move to reading shelf") }
-        TextButton(onClick={showBulkActions=false; showBulkShelves=true}, modifier=Modifier.fillMaxWidth()) { Text("Manage custom shelves") }
+        if (customShelves.isNotEmpty()) TextButton(onClick={showBulkActions=false; showBulkShelves=true}, modifier=Modifier.fillMaxWidth()) { Text("Manage custom shelves") }
         val favCount = selectedFavoriteCount
         when {
             favCount == null -> TextButton(enabled=false, onClick={}, modifier=Modifier.fillMaxWidth()) { Text("Checking favorites…") }
