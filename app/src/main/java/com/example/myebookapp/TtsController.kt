@@ -17,7 +17,6 @@ import kotlinx.coroutines.withContext
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
-import org.readium.r2.shared.util.resource.readOrElse
 import kotlin.math.abs
 
 enum class TtsState { IDLE, PLAYING, PAUSED }
@@ -127,7 +126,7 @@ class TtsController(
             val link = publication.readingOrder[index]
             val resource = publication.get(link)
             val bytes = if (resource != null) {
-                withContext(Dispatchers.IO) { resource.readOrElse { ByteArray(0) } }
+                withContext(Dispatchers.IO) { resource.read().getOrNull() ?: ByteArray(0) }
             } else ByteArray(0)
             if (bytes.isEmpty()) {
                 skipChapter(index)
@@ -143,7 +142,7 @@ class TtsController(
             text = plain
             chunks = split(plain)
             base = base?.copy(
-                href = link.href,
+                href = link.href.resolve(),
                 title = link.title,
                 locations = Locator.Locations(progression = startProgression)
             )
