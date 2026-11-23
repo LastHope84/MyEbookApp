@@ -66,7 +66,7 @@ var showBulkActions by remember { mutableStateOf(false) }
 var showScanLog by remember { mutableStateOf(false) }
 var showBulkMove by remember { mutableStateOf(false) }
 var showBulkShelves by remember { mutableStateOf(false) }
-var showBulkFavorites by remember { mutableStateOf(false) }
+var bulkFavoriteAction by remember { mutableStateOf<Boolean?>(null) }
 var showBulkShareConfirm by remember { mutableStateOf(false) }
 var preparingBulkShare by remember { mutableStateOf(false) }
 var bulkSaving by remember { mutableStateOf(false) }
@@ -147,7 +147,7 @@ if (converting || books.isEmpty()) return
 // A conversion can hide an original; never leave an invisible book selected.
 cancelSelectAll(); selIds = emptySet(); selMode = false
 showBulkActions = false; showBulkMove = false; showBulkShelves = false
-showBulkFavorites = false; showBulkShareConfirm = false
+bulkFavoriteAction = null; showBulkShareConfirm = false
 converting = true
 if (showConverted) selB = null
 Toast.makeText(ctx, if (showConverted) "Converting ${books.first().fileName}..." else "Converting ${books.size} book${if (books.size == 1) "" else "s"}...", Toast.LENGTH_SHORT).show()
@@ -546,7 +546,8 @@ showBulkActions.let { if (it) {
     AlertDialog(onDismissRequest={showBulkActions=false}, title={Text("${selIds.size} selected")}, text={ Column {
         TextButton(onClick={showBulkActions=false; showBulkMove=true}, modifier=Modifier.fillMaxWidth()) { Text("Move to reading shelf") }
         TextButton(onClick={showBulkActions=false; showBulkShelves=true}, modifier=Modifier.fillMaxWidth()) { Text("Manage custom shelves") }
-        TextButton(onClick={showBulkActions=false; showBulkFavorites=true}, modifier=Modifier.fillMaxWidth()) { Text("Switch favorite status") }
+        TextButton(onClick={showBulkActions=false; bulkFavoriteAction=true}, modifier=Modifier.fillMaxWidth()) { Text("Add to favorites") }
+        TextButton(onClick={showBulkActions=false; bulkFavoriteAction=false}, modifier=Modifier.fillMaxWidth()) { Text("Remove from favorites") }
         TextButton(onClick={showBulkActions=false; showBulkShareConfirm=true}, modifier=Modifier.fillMaxWidth()) { Text("Share selected files") }
         TextButton(enabled=!converting,onClick={
             val ids=selIds.toList(); showBulkActions=false; bulkSaving=true
@@ -586,11 +587,15 @@ showBulkShelves.let { if (it) {
         }
     }, confirmButton={ TextButton(enabled=!bulkSaving,onClick={showBulkShelves=false}){Text("Done")} })
 } }
-showBulkFavorites.let { if (it) {
-    AlertDialog(onDismissRequest={ if (!bulkSaving) showBulkFavorites=false }, title={Text("Switch favorite status")}, text={Text("For each of the ${selIds.size} selected books: add it to Favorites if it isn't there, or remove it if it is.")}, confirmButton={
-        TextButton(enabled=!bulkSaving,onClick={ val ids=selIds.toList(); bulkSaving=true; scp.launch { try { withContext(Dispatchers.IO){dao.toggleFavorites(ids)}; showBulkFavorites=false; selIds=emptySet(); selMode=false } catch (e: CancellationException) { throw e } catch (e: Exception) { Toast.makeText(ctx,"Could not update favorites.",Toast.LENGTH_LONG).show() } finally { bulkSaving=false } } }) {Text("Switch")}
-    }, dismissButton={ TextButton(enabled=!bulkSaving,onClick={showBulkFavorites=false}) {Text("Cancel")} })
-} }
+bulkFavoriteAction?.let { add ->
+    AlertDialog(onDismissRequest={ if (!bulkSaving) bulkFavoriteAction=null },
+        title={Text(if (add) "Add to favorites" else "Remove from favorites")},
+        text={Text(if (add) "Add all ${selIds.size} selected books to Favorites?" else "Remove all ${selIds.size} selected books from Favorites?")},
+        confirmButton={
+            TextButton(enabled=!bulkSaving,onClick={ val ids=selIds.toList(); bulkSaving=true; scp.launch { try { withContext(Dispatchers.IO){dao.setFavoriteForIds(ids, add)}; bulkFavoriteAction=null; selIds=emptySet(); selMode=false } catch (e: CancellationException) { throw e } catch (e: Exception) { Toast.makeText(ctx,"Could not update favorites.",Toast.LENGTH_LONG).show() } finally { bulkSaving=false } } }) {Text(if (add) "Add" else "Remove")}
+        },
+        dismissButton={ TextButton(enabled=!bulkSaving,onClick={bulkFavoriteAction=null}) {Text("Cancel")} })
+}
 if (bulkConversionFailures.isNotEmpty()) {
     AlertDialog(onDismissRequest={ if (!converting) bulkConversionFailures=emptyList() },
         title={Text("${bulkConversionFailures.size} conversion${if (bulkConversionFailures.size == 1) "" else "s"} failed")},

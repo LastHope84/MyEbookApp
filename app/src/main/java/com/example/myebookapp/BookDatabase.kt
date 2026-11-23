@@ -124,14 +124,6 @@ interface BookDao {
         check(count == unique.size) { "Some selected books are no longer in the library." }
         return count
     }
-    @Query("UPDATE books SET isFavorite = CASE WHEN isFavorite = 1 THEN 0 ELSE 1 END WHERE id IN (:ids)") suspend fun toggleFavoritesChunk(ids: List<Long>): Int
-    @Transaction suspend fun toggleFavorites(ids: List<Long>): Int {
-        val unique = ids.distinct()
-        var count = 0
-        for (chunk in unique.chunked(BULK_ID_CHUNK_SIZE)) count += toggleFavoritesChunk(chunk)
-        check(count == unique.size) { "Some selected books are no longer in the library." }
-        return count
-    }
     @Query("UPDATE books SET readingStatus = :status WHERE id = :id AND :status IN ('NEW', 'TBR', 'READING', 'FINISHED')") suspend fun setReadingStatus(id: Long, status: String): Int
 
     // Automatic transitions change only the shelf, never the ebook or other metadata.
