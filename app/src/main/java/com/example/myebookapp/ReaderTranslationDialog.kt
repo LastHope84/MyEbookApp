@@ -1,9 +1,7 @@
 package com.example.myebookapp
 
-import android.app.Dialog
-import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
-import android.view.WindowManager
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -14,6 +12,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -33,7 +33,7 @@ internal class ReaderTranslationDialog(private val activity: FragmentActivity) :
         data class Message(val title: String, val body: String) : Phase
     }
 
-    private var dialog: Dialog? = null
+    private var hostView: ComposeView? = null
     private var job: Job? = null
     private var phase by mutableStateOf<Phase>(Phase.Choose)
     private var source by mutableStateOf("")
@@ -52,32 +52,38 @@ internal class ReaderTranslationDialog(private val activity: FragmentActivity) :
 
     private fun present(initial: Phase, text: String = "") {
         phase = initial
-        val host = Dialog(activity)
+        val root = activity.findViewById<ViewGroup>(android.R.id.content) ?: return
         val view = ComposeView(activity).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
             setContent {
                 MyEbookTheme(mode = ThemePrefs.getMode(activity)) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.extraLarge,
-                        color = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 6.dp
+                    Dialog(
+                        onDismissRequest = { close() },
+                        properties = DialogProperties(usePlatformDefaultWidth = false)
                     ) {
-                        when (val current = phase) {
-                            is Phase.Choose -> ChooseContent(text)
-                            is Phase.Progress -> ProgressContent()
-                            is Phase.Message -> MessageContent(current)
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp),
+                            shape = MaterialTheme.shapes.extraLarge,
+                            color = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 6.dp
+                        ) {
+                            when (val current = phase) {
+                                is Phase.Choose -> ChooseContent(text)
+                                is Phase.Progress -> ProgressContent()
+                                is Phase.Message -> MessageContent(current)
+                            }
                         }
                     }
                 }
             }
         }
-        host.setContentView(view)
-        host.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        host.setOnDismissListener { if (dialog === host) close() }
-        host.show()
-        val width = (activity.resources.displayMetrics.widthPixels * 0.92f).toInt()
-        host.window?.setLayout(width, WindowManager.LayoutParams.WRAP_CONTENT)
-        dialog = host
+        root.addView(view)
+        hostView = view
     }
 
     @Composable
@@ -207,10 +213,10 @@ internal class ReaderTranslationDialog(private val activity: FragmentActivity) :
     private fun close() {
         job?.cancel()
         job = null
-        val current = dialog
-        dialog = null
-        current?.setOnDismissListener(null)
-        current?.dismiss()
+        hostView?.let { view ->
+            (view.parent as? ViewGroup)?.removeView(view)
+        }
+        hostView = null
         activity.lifecycle.removeObserver(this)
     }
 
