@@ -15,7 +15,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -205,14 +208,14 @@ fun ReaderMinimalTopBar(
                         )
                     }
                 }
-                TextButton(onClick = onOpenSearch, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                    Text("Find")
+                IconButton(onClick = onOpenSearch, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Filled.Search, contentDescription = "Find", modifier = Modifier.size(22.dp))
                 }
-                TextButton(onClick = onOpenToc, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                    Text("TOC")
+                IconButton(onClick = onOpenToc, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Filled.List, contentDescription = "Table of contents", modifier = Modifier.size(22.dp))
                 }
-                TextButton(onClick = onToggleOrientation, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                    Text("Rotate")
+                IconButton(onClick = onToggleOrientation, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "Rotate", modifier = Modifier.size(22.dp))
                 }
                 IconButton(onClick = onToggleTts, modifier = Modifier.size(36.dp)) {
                     if (ttsState == TtsState.PLAYING) {
