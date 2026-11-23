@@ -22,7 +22,7 @@ Type in Search in the menu, then choose a shelf. Search applies to that shelf an
 ## Shelves and book details
 
 ### Choose shelves
-Tap a book, then tap the heart on its details page to add it to Favorites or remove it. Under Reading shelf, choose Unclassified, To Read, Reading or Finished. Select the matching shelf from the library menu. Favorites is independent of the one reading status.
+Tap a book, then tap the heart on its details page to add it to Favorites or remove it. Favorite books show a small heart on their cover in the library. Under Reading shelf, choose Unclassified, To Read, Reading or Finished. Select the matching shelf from the library menu. Favorites is independent of the one reading status.
 
 ### Reading status
 You can change the reading shelf yourself without changing saved progress. When an EPUB opens successfully, an Unclassified or To Read book moves to Reading; a Finished book stays Finished when reopened. The reader attempts to mark a Reading book Finished at the end of its final reading-order section, including back matter. End detection is conservative and may miss some layouts, so change the status manually if needed.
