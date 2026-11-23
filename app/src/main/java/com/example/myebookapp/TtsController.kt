@@ -188,7 +188,7 @@ class TtsController(
         }
         val chunk = chunks[chunkIndex]
         currentUtterance = "tts_${++utteranceSeq}"
-        instance.speak(chunk.text, TextToSpeech.QUEUE_FLUSH, null, currentUtterance)
+        instance.speak(chunk.text, TextToSpeech.QUEUE_ADD, null, currentUtterance)
         setState(TtsState.PLAYING)
         reportProgress(chunk.start)
     }
@@ -198,6 +198,9 @@ class TtsController(
 
         override fun onDone(utteranceId: String?) {
             if (utteranceId != currentUtterance) return
+            // Consume it before the async work: engines occasionally deliver onDone twice,
+            // and a duplicate must not advance the text a second time.
+            currentUtterance = ""
             scope.launch(Dispatchers.Main) {
                 if (state != TtsState.PLAYING) return@launch
                 chunkIndex++
@@ -232,7 +235,7 @@ class TtsController(
         val total = (linkIndex + progression) / publication.readingOrder.size.coerceAtLeast(1)
         onNavigate(
             locator.copy(
-                locations = locator.locations.copy(progression = progression, totalProgression = total)
+                locations = Locator.Locations(progression = progression, totalProgression = total)
             )
         )
     }
