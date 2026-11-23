@@ -14,6 +14,9 @@ import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import java.io.File
 import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 data class ScanStatus(
     val isScanning: Boolean = false,
@@ -62,6 +65,21 @@ object LibraryScanner {
         }
     }
 
+    private fun log(context: Context, message: String) {
+        runCatching {
+            val file = File(context.filesDir, "scan.log")
+            if (file.length() > 256 * 1024) file.writeText("")
+            val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
+            file.appendText("$stamp  $message\n")
+        }
+    }
+
+    fun readLog(context: Context, maxLines: Int = 400): String = runCatching {
+        val file = File(context.filesDir, "scan.log")
+        if (!file.exists()) "No scan log yet."
+        else file.readLines().takeLast(maxLines).joinToString("\n")
+    }.getOrElse { "Could not read the scan log: ${it.localizedMessage}" }
+
     fun getSavedFolders(context: Context): Set<String> =
         context.getSharedPreferences("my_ebook_folders", Context.MODE_PRIVATE).getStringSet("folder_uris", emptySet())?.toSet() ?: emptySet()
 
@@ -99,6 +117,7 @@ object LibraryScanner {
                 // Adding a folder must not silently undo an explicit pause.
                 val next = if (old == PAUSED) PAUSED else RUNNING
                 save(app, next, queue)
+                log(app, "Scan requested: ${queue.size} folder(s), mode=$next")
                 _status.update {
                     it.copy(
                         isScanning = next == RUNNING || it.isScanning,
@@ -213,6 +232,7 @@ object LibraryScanner {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                log(context, "Scan failed: ${e.stackTraceToString()}")
                 synchronized(lock) {
                     if (generation == token) {
                         try { if (mode(context) == RUNNING) save(context, INTERRUPTED, roots(context)) } catch (_: Exception) { }
@@ -245,12 +265,15 @@ object LibraryScanner {
                 generation++
                 activeJob?.cancel()
                 paused.value = false
+                val existingError = _status.value.error
                 _status.update {
                     it.copy(
                         isScanning = false,
                         canResume = true,
                         phaseLabel = "Scan interrupted",
-                        error = reason
+                        // Keep the worker's specific folder error instead of replacing it
+                        // with the service's generic shutdown message.
+                        error = existingError ?: reason
                     )
                 }
             } else if (mode(context) == PAUSED) {
@@ -277,6 +300,7 @@ object LibraryScanner {
             checkpoint()
             val next = synchronized(lock) { roots(context).firstOrNull() }
             if (next != null) {
+                log(context, "Scanning folder: $next")
                 _status.update { if (it.isPaused) it else it.copy(phaseLabel = "Scanning folders…") }
                 walkTree(context, dao, Uri.parse(next))
                 checkpoint()
@@ -285,6 +309,7 @@ object LibraryScanner {
                     val queue = roots(context)
                     queue.remove(next)
                     save(context, mode(context), queue)
+                    log(context, "Folder complete: $next (${queue.size} left)")
                     _status.update { it.copy(queuedFolders = queue.size) }
                 }
                 continue
@@ -331,20 +356,32 @@ object LibraryScanner {
             if (!seen.add(parentId)) continue
             val children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId)
             val cursor = context.contentResolver.query(children, projection, null, null, null)
-                ?: throw IllegalStateException("Folder access was lost. Add the folder again, or restore its permission.")
+                ?: run {
+                    log(context, "Folder access lost: $children")
+                    throw IllegalStateException("Folder access was lost. Add the folder again, or restore its permission.")
+                }
             cursor.use { c ->
                 fun requireCompleteResults() {
-                    val extras = c.extras
-                    check(!extras.getBoolean(DocumentsContract.EXTRA_LOADING, false) && !extras.containsKey(DocumentsContract.EXTRA_ERROR)) {
-                        "The folder provider returned an incomplete list. Resume to retry."
+                    val extras = runCatching { c.extras }.getOrNull()
+                    val providerError = extras?.getString(DocumentsContract.EXTRA_ERROR)
+                    if (extras?.containsKey(DocumentsContract.EXTRA_ERROR) == true) {
+                        log(context, "Provider error for $children: ${providerError ?: "unknown"}")
+                        throw IllegalStateException(
+                            "The folder provider reported an error${if (providerError.isNullOrBlank()) "" else ": $providerError"}. Resume to retry."
+                        )
                     }
+                    // EXTRA_LOADING means the provider is still filling the cursor, not
+                    // that the entries already returned are wrong. Keep scanning them.
                 }
                 requireCompleteResults()
                 while (c.moveToNext()) {
                     checkpoint()
                     val name = c.getString(1) ?: continue
                     val documentId = c.getString(0)?.takeIf { it.isNotEmpty() }
-                        ?: throw IllegalStateException("The folder provider returned a file without an ID. Resume to retry.")
+                        ?: run {
+                            log(context, "Folder entry without an ID under $parentId")
+                            throw IllegalStateException("The folder provider returned a file without an ID. Resume to retry.")
+                        }
                     if (c.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR) {
                         if (!name.startsWith(".") && documentId !in seen) queue.addLast(documentId)
                         continue

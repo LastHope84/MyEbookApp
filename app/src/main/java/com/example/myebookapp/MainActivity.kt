@@ -63,6 +63,7 @@ var tab by remember { mutableStateOf(LibraryTab.ALL) }; var qry by remember { mu
 var selB by remember { mutableStateOf<BookEntity?>(null) }; var edtB by remember { mutableStateOf<BookEntity?>(null) }
 var showSet by remember { mutableStateOf(false) }; var showVisibility by remember { mutableStateOf(false) }; var showGuide by rememberSaveable { mutableStateOf(false) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
 var showBulkActions by remember { mutableStateOf(false) }
+var showScanLog by remember { mutableStateOf(false) }
 var showBulkMove by remember { mutableStateOf(false) }
 var showBulkShelves by remember { mutableStateOf(false) }
 var showBulkFavorites by remember { mutableStateOf(false) }
@@ -376,9 +377,25 @@ if (scanS.isScanning || scanS.canResume || scanS.warning != null || scanS.error 
                 if (scanS.isScanning && !scanS.isPaused) TextButton(onClick = { LibraryScanner.pauseScan(ctx) }) { Text("Pause") }
                 if (scanS.canResume) TextButton(onClick = { requestScan("resume") }) { Text("Resume") }
                 TextButton(onClick = { LibraryScanner.stopScan(ctx) }) { Text("Stop") }
+                if (scanS.error != null || scanS.warning != null) {
+                    TextButton(onClick = { showScanLog = true }) { Text("Scan details") }
+                }
             }
         }
     }
+}
+if (showScanLog) {
+    val logText = remember(showScanLog) { LibraryScanner.readLog(ctx) }
+    AlertDialog(
+        onDismissRequest = { showScanLog = false },
+        title = { Text("Scan details") },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                Text(logText, style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = { TextButton(onClick = { showScanLog = false }) { Text("Close") } }
+    )
 }
 if (paged.loadState.refresh is LoadState.Loading && paged.itemCount == 0) {
 LinearProgressIndicator(Modifier.fillMaxWidth().padding(16.dp))
