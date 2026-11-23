@@ -240,6 +240,16 @@ fun AppSettingsBottomSheet(
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(msg, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+            val versionName = runCatching {
+                context.packageManager.getPackageInfo(context.packageName, 0).versionName
+            }.getOrNull()
+            Text(
+                "Version $versionName",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
