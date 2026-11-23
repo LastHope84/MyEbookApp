@@ -175,7 +175,10 @@ object LibraryScanner {
     }
 
     /** The foreground service is the only worker owner. */
-    fun startWorker(context: Context, finished: () -> Unit): Boolean = synchronized(lock) {
+    fun startWorker(context: Context, resumeInterrupted: Boolean = false, finished: () -> Unit): Boolean = synchronized(lock) {
+        // Android can restart the service after killing it. Resume only a scan the
+        // system interrupted; never override an explicit pause or stop.
+        if (resumeInterrupted && mode(context) == INTERRUPTED) save(context, RUNNING, roots(context))
         if (mode(context) != RUNNING || activeJob?.isActive == true) return@synchronized activeJob?.isActive == true
         val token = ++generation
         val job = scope.launch(start = CoroutineStart.LAZY) {

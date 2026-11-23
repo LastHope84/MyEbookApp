@@ -49,7 +49,8 @@
         <service
             android:name=".ScanService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="false" />
         <activity
             android:name=".ReaderActivity"
             android:exported="false"

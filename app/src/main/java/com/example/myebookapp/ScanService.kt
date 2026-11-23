@@ -74,12 +74,15 @@ class ScanService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         latestStartId = startId
         if (!promoted) { stopSelf(startId); return START_NOT_STICKY }
-        ensureWorker()
-        return START_NOT_STICKY
+        // A null intent means Android restarted the service after killing it. In that
+        // case it is safe to resume a scan the system interrupted, but never a scan
+        // the user explicitly paused or stopped.
+        ensureWorker(resumeInterrupted = intent == null)
+        return START_STICKY
     }
 
-    private fun ensureWorker() {
-        val hasWorker = LibraryScanner.startWorker(applicationContext) {
+    private fun ensureWorker(resumeInterrupted: Boolean = false) {
+        val hasWorker = LibraryScanner.startWorker(applicationContext, resumeInterrupted) {
             handler.post {
                 // A completion posted by an old service must not start work after destruction.
                 if (promoted) ensureWorker()
@@ -95,7 +98,7 @@ class ScanService : Service() {
 
     override fun onDestroy() {
         promoted = false
-        LibraryScanner.interrupt(applicationContext, "Background scan stopped. Resume when the app is visible.")
+        LibraryScanner.interrupt(applicationContext, "Android stopped the background scan. Allow notifications and remove battery restrictions for MyEbookApp, then Resume.")
         serviceScope.cancel()
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
@@ -117,8 +120,15 @@ class ScanService : Service() {
             .setContentText(details)
             .setStyle(NotificationCompat.BigTextStyle().bigText(details))
             .setContentIntent(launch)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setShowWhen(false)
             .setOnlyAlertOnce(true)
             .setOngoing(true)
+        if (Build.VERSION.SDK_INT >= 31) {
+            builder.setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+        }
         if (status.isScanning && !status.isPaused) {
             val total = status.metadataProcessed + status.metadataLeft
             if (status.phaseLabel.startsWith("Reading") && total > 0) builder.setProgress(total, status.metadataProcessed, false)

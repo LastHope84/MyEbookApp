@@ -264,7 +264,14 @@ fun runScanAction(action: String, folder: String?) {
         "resume" -> LibraryScanner.resumeScan(ctx)
     }
 }
-val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+    if (!granted) {
+        Toast.makeText(
+            ctx,
+            "Allow notifications for MyEbookApp, or Android may stop the scan in the background.",
+            Toast.LENGTH_LONG
+        ).show()
+    }
     val action = pendingScanAction
     val folder = pendingScanFolder
     pendingScanAction = null
