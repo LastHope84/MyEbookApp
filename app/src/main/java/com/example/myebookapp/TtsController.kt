@@ -34,6 +34,7 @@ class TtsController(
     private val onStateChanged: (TtsState) -> Unit,
     private val onNavigate: (Locator) -> Unit,
     private val onChapterChanged: (Link) -> Unit,
+    private val onHighlight: (Locator?) -> Unit,
     private val onError: (String) -> Unit
 ) {
     private data class Chunk(val text: String, val start: Int, val end: Int)
@@ -75,6 +76,7 @@ class TtsController(
         engine?.stop()
         currentUtterance = ""
         lastSpeakKey = ""
+        onHighlight(null)
         abandonFocus()
         setState(TtsState.PAUSED)
     }
@@ -93,6 +95,7 @@ class TtsController(
         engine?.stop()
         currentUtterance = ""
         lastSpeakKey = ""
+        onHighlight(null)
         abandonFocus()
         setState(TtsState.IDLE)
     }
@@ -211,6 +214,7 @@ class TtsController(
         }
         lastSpeakKey = key
         lastSpeakAt = now
+        highlight(chunk)
         currentUtterance = "tts_${++utteranceSeq}"
         LibraryScanner.logTts(context, "speak $key ${chunk.text.take(60)}")
         instance.speak(chunk.text, TextToSpeech.QUEUE_ADD, null, currentUtterance)
@@ -252,6 +256,19 @@ class TtsController(
             onError("Speech stopped unexpectedly for this passage.")
             stop()
         }
+    }
+
+    private fun highlight(chunk: Chunk) {
+        val locator = base ?: return
+        if (text.isEmpty()) return
+        val before = text.substring(maxOf(0, chunk.start - 40), chunk.start)
+        val after = text.substring(chunk.end.coerceAtMost(text.length), minOf(text.length, chunk.end + 40))
+        onHighlight(
+            locator.copy(
+                locations = Locator.Locations(progression = chunk.start.toDouble() / text.length),
+                text = Locator.Text(before = before, highlight = chunk.text, after = after)
+            )
+        )
     }
 
     private fun reportProgress(offset: Int) {
@@ -320,6 +337,10 @@ class TtsController(
 
     private fun htmlToText(html: String): String {
         val cleaned = html
+            // The document head (including <title>) is not visible content, but
+            // Html.fromHtml would happily read it out a second time.
+            .replace(Regex("(?is)<head[^>]*>.*?</head>"), " ")
+            .replace(Regex("(?is)<title[^>]*>.*?</title>"), " ")
             .replace(Regex("(?is)<(script|style)[^>]*>.*?</\\1>"), " ")
             .replace(Regex("(?i)<(br|/p|/div|/h[1-6]|/li|/tr|/section|/article)[^>]*>"), "\n")
         val plain = Html.fromHtml(cleaned, Html.FROM_HTML_MODE_LEGACY).toString()
@@ -355,6 +376,8 @@ class TtsController(
         if (lead < 0) return
         val trimmed = piece.trim()
         if (trimmed.isEmpty()) return
+        // Some books repeat a heading in hidden markup; never read the same line twice in a row.
+        if (out.lastOrNull()?.text == trimmed) return
         out.add(Chunk(trimmed, from + lead, to))
     }
 }

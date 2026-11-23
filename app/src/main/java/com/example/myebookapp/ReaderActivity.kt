@@ -862,6 +862,20 @@ class ReaderActivity : FragmentActivity() {
             },
             onNavigate = { locator -> nav.go(locator, animated = false) },
             onChapterChanged = { link -> nav.go(link, animated = false) },
+            onHighlight = { locator ->
+                val decorations = locator?.let {
+                    listOf(
+                        org.readium.r2.navigator.Decoration(
+                            "tts-highlight",
+                            it,
+                            org.readium.r2.navigator.Decoration.Style.Highlight(tint = 0x55FFC107)
+                        )
+                    )
+                } ?: emptyList()
+                lifecycleScope.launch {
+                    runCatching { nav.applyDecorations(decorations, "tts") }
+                }
+            },
             onError = { message ->
                 ttsState = TtsState.IDLE
                 TtsPlayback.state = TtsState.IDLE
