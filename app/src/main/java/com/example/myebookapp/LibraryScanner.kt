@@ -35,6 +35,7 @@ data class ScanStatus(
  * inserts are IGNORE by URI, and the root is removed only after its walk commits. */
 object LibraryScanner {
     private const val PREF = "scan_session_v1"
+    private const val IGNORED_PREF = "scan_ignored_folders_v1"
     private const val RUNNING = "running"
     private const val PAUSED = "paused"
     private const val INTERRUPTED = "interrupted"
@@ -88,6 +89,29 @@ object LibraryScanner {
         check(context.getSharedPreferences("my_ebook_folders", Context.MODE_PRIVATE).edit().putStringSet("folder_uris", updated).commit()) {
             "Could not save the folder"
         }
+    }
+
+    /** Subfolders the user removed and asked to skip in future scans, keyed by scan root. */
+    fun ignoredFolders(context: Context, rootUri: Uri): Set<String> =
+        context.getSharedPreferences(IGNORED_PREF, Context.MODE_PRIVATE)
+            .getStringSet(rootUri.toString(), emptySet())?.toSet() ?: emptySet()
+
+    fun ignoreFolder(context: Context, rootUri: Uri, directoryId: String) {
+        val prefs = context.getSharedPreferences(IGNORED_PREF, Context.MODE_PRIVATE)
+        val current = prefs.getStringSet(rootUri.toString(), emptySet())?.toMutableSet() ?: mutableSetOf()
+        current.add(directoryId)
+        prefs.edit().putStringSet(rootUri.toString(), current).apply()
+    }
+
+    fun unignoreFolder(context: Context, rootUri: Uri, directoryId: String) {
+        val prefs = context.getSharedPreferences(IGNORED_PREF, Context.MODE_PRIVATE)
+        val current = prefs.getStringSet(rootUri.toString(), emptySet())?.toMutableSet() ?: return
+        if (current.remove(directoryId)) prefs.edit().putStringSet(rootUri.toString(), current).apply()
+    }
+
+    private fun clearIgnoredFolders(context: Context, rootUri: Uri) {
+        context.getSharedPreferences(IGNORED_PREF, Context.MODE_PRIVATE)
+            .edit().remove(rootUri.toString()).apply()
     }
 
     /** Called from visible UI only; never starts work automatically on process launch. */
@@ -194,6 +218,7 @@ object LibraryScanner {
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
         }
+        clearIgnoredFolders(app, treeUri)
         log(app, "Removed folder $treeUri: $deleted library entries")
         deleted
     }
@@ -206,7 +231,8 @@ object LibraryScanner {
         val dao = AppDatabase.getInstance(app).bookDao()
         var deleted = 0
         for (chunk in ids.chunked(500)) deleted += dao.deleteByScanFolders(rootUri.toString(), chunk)
-        log(app, "Removed subfolder $directoryId under $rootUri: $deleted library entries")
+        ignoreFolder(app, rootUri, directoryId)
+        log(app, "Removed subfolder $directoryId under $rootUri: $deleted library entries; skipped in future scans")
         deleted
     }
 
@@ -391,6 +417,7 @@ object LibraryScanner {
 
     private suspend fun walkTree(context: Context, dao: BookDao, treeUri: Uri) {
         val rootId = DocumentsContract.getTreeDocumentId(treeUri).also { require(it.isNotEmpty()) }
+        val ignored = ignoredFolders(context, treeUri)
         val queue = ArrayDeque<String>().apply { addLast(rootId) }
         val seen = mutableSetOf<String>()
         val projection = arrayOf(
@@ -456,7 +483,7 @@ object LibraryScanner {
                             throw IllegalStateException("The folder provider returned a file without an ID. Resume to retry.")
                         }
                     if (c.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR) {
-                        if (!name.startsWith(".") && documentId !in seen) queue.addLast(documentId)
+                        if (!name.startsWith(".") && documentId !in seen && documentId !in ignored) queue.addLast(documentId)
                         continue
                     }
                     val identity = "${treeUri.authority}|$documentId"

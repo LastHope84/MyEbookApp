@@ -25,6 +25,9 @@ import kotlinx.coroutines.withContext
 
 private data class FolderEntry(val id: String, val name: String)
 
+private fun folderIdLabel(id: String): String =
+    Uri.decode(id.substringAfterLast(':').substringAfterLast('/').ifBlank { id })
+
 private fun folderLabel(uri: Uri): String = runCatching {
     val id = DocumentsContract.getTreeDocumentId(uri)
     val name = id.substringAfterLast(':').substringAfterLast('/').ifBlank { id }
@@ -162,6 +165,7 @@ private fun SubfolderRemovalScreen(rootUri: Uri, onClose: () -> Unit) {
     var message by remember { mutableStateOf<String?>(null) }
     var confirmRemove by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    var ignored by remember(rootUri) { mutableStateOf(LibraryScanner.ignoredFolders(ctx, rootUri)) }
 
     val current = path.last()
 
@@ -224,6 +228,32 @@ private fun SubfolderRemovalScreen(rootUri: Uri, onClose: () -> Unit) {
                     }
                 }
             }
+            if (path.size == 1 && ignored.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Skipped in scans",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                ignored.sorted().forEach { id ->
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            folderIdLabel(id),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1
+                        )
+                        TextButton(onClick = {
+                            LibraryScanner.unignoreFolder(ctx, rootUri, id)
+                            ignored = LibraryScanner.ignoredFolders(ctx, rootUri)
+                            message = "Included again. Run Rescan Folders to add its books back."
+                        }) { Text("Include again") }
+                    }
+                }
+            }
             message?.let {
                 Spacer(Modifier.height(8.dp))
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
@@ -243,7 +273,7 @@ private fun SubfolderRemovalScreen(rootUri: Uri, onClose: () -> Unit) {
             title = { Text("Remove “${current.name}”?") },
             text = {
                 Text(
-                    "This removes the library entries for this folder and all its subfolders. The original ebook files stay where they are. Reading progress, edits, notes and shelf membership for those entries will be lost."
+                    "This removes the library entries for this folder and all its subfolders. The original ebook files stay where they are. The folder is also skipped in future scans so it does not come back; you can include it again from this screen. Reading progress, edits, notes and shelf membership for those entries will be lost."
                 )
             },
             confirmButton = {
@@ -253,10 +283,11 @@ private fun SubfolderRemovalScreen(rootUri: Uri, onClose: () -> Unit) {
                     scope.launch {
                         try {
                             val removed = LibraryScanner.removeSubfolder(ctx, rootUri, current.id)
+                            ignored = LibraryScanner.ignoredFolders(ctx, rootUri)
                             if (removed == 0) {
-                                message = "No library entries matched this folder. If it was scanned before this update, run Rescan Folders once, then try again."
+                                message = "No library entries matched this folder. It will still be skipped in future scans."
                             } else {
-                                message = "$removed library entr${if (removed == 1) "y" else "ies"} removed. The ebook files are still there."
+                                message = "$removed library entr${if (removed == 1) "y" else "ies"} removed. This folder will be skipped in future scans; the ebook files are still there."
                                 onClose()
                             }
                         } catch (e: CancellationException) {
