@@ -220,6 +220,17 @@ class ReaderActivity : FragmentActivity() {
                                 interactionTick++
                                 showToc = true
                             },
+                            onToggleOrientation = {
+                                val next = if (settings.orientation == ReaderOrientationMode.LANDSCAPE) {
+                                    ReaderOrientationMode.PORTRAIT
+                                } else {
+                                    ReaderOrientationMode.LANDSCAPE
+                                }
+                                val updated = settings.copy(orientation = next)
+                                settings = updated
+                                ReaderSettingsStore.save(this@ReaderActivity, updated)
+                                applyAllSettings()
+                            },
                             onOpenAppearance = {
                                 interactionTick++
                                 showAppearance = true

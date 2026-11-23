@@ -13,6 +13,9 @@ The folder scanner finds EPUB, MOBI, AZW, AZW3 and PRC files. EPUBs can be read 
 ### Add more or rescan
 Use Add Folder again for another folder. After adding files to a saved folder, open the menu and tap Rescan Folders. The app stores access to selected folders; if a folder is moved or access expires, choose it again.
 
+### Manage folders
+Open the menu and tap Manage folders to see saved folders, add more, remove a folder, or open its subfolders. Adding a parent folder includes all its subfolders. Removing a folder removes its library entries, not the ebook files; reading progress and edits for those entries are lost. After updating the app, run Rescan Folders once before removing a subfolder so older books can be matched.
+
 ### Search the library
 Type in Search in the menu, then choose a shelf. Search applies to that shelf and matches indexed title, author, publisher, series and tags. Clear the search to see the full shelf. Tap a cover for its details and actions.
 
@@ -45,7 +48,7 @@ Long-press a cover to enter selection mode; tap covers to select or deselect the
 Tap a book, then Read Book or Continue. The reader stores your position and progress for a library book; Continue returns to the saved position when available. EPUB layout and navigation depend on the book.
 
 ### Reader controls
-Tap the reading area to show or hide the controls. They also hide automatically after a few seconds. The top bar has Back, Find, TOC and Aa. The bottom bar has previous/next arrows, a position slider, page/position and percentage. Drag the slider to jump when the book supplies positions.
+Tap the reading area to show or hide the controls. They also hide automatically after a few seconds. The top bar has Back, Find, TOC, Rotate and Aa. Rotate switches quickly between portrait and landscape. The bottom bar has previous/next arrows, a position slider, page/position and percentage. Drag the slider to jump when the book supplies positions.
 
 ### Chapters and search
 Tap TOC and choose an entry to jump there. If the book has no table of contents, the app offers reading-order sections instead. Tap Find, enter a word or name, tap Find and select a result. Results depend on the book's searchable text.
@@ -62,7 +65,7 @@ While reading, tap the page to show controls, then tap Aa. Swipe the sheet to se
 Choose Light, Sepia, Dark, AMOLED or E-Ink. Choose a typeface, including Dyslexic and Accessible, then adjust font size, line spacing and margins. Horizontal rows can be scrolled to reveal more choices; results may vary with the EPUB.
 
 ### Screen
-Set orientation to Auto, Portrait or Landscape. Adjust brightness or use Reset to Auto to return to system brightness. Adjust the warm filter. Fullscreen hides system bars while reading; swipe from the screen edge to temporarily reveal them.
+Set orientation to Auto, Portrait or Landscape, or use the Rotate button in the reader top bar for a quick switch. Adjust brightness or use Reset to Auto to return to system brightness. Adjust the warm filter. Fullscreen hides system bars while reading; swipe from the screen edge to temporarily reveal them.
 
 ### Behaviour
 Switch volume-key page turning, vertical scroll, keeping the screen awake and the mini footer on or off. With volume-key turning enabled, volume down goes forward and volume up goes back. The footer shows chapter and progress when controls are hidden.
@@ -117,7 +120,10 @@ The app keeps library records, metadata edits, favorites, reading statuses, prog
 Clearing app data or uninstalling can remove library records, preferences, app-only metadata and EPUBs in private app storage. Copy important converted EPUBs out using Share before doing so. Original files in separately chosen folders are not removed by the library's Remove action.
 
 ### Missing or inaccessible books
-Check that the file is in a selected folder and still accessible, then use Rescan Folders or add the folder again. The scanner can skip files with the same filename and size as a library entry, even if they are in different folders. Clear any active library search and check All Books. Scans may take time.
+Check that the file is in a selected folder and still accessible, then use Rescan Folders or add the folder again. If Android reports that folder access was lost, add the folder again and allow access. Clear any active library search and check All Books. Scans may take time.
+
+### Scan details
+If a scan stops, open the scan banner and tap Scan details. The log shows which folder failed and why; include it when asking for help. Background scans may also be stopped by aggressive phone battery settings, so allow notifications and remove battery restrictions for the app.
 
 ### Book or conversion fails
 Check that the source file is accessible and intact. The reader opens EPUBs; use Convert for supported non-EPUB entries. Not every source can be converted or read successfully. Keep the source and try another copy or app if needed.

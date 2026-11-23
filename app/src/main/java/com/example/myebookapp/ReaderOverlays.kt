@@ -169,6 +169,7 @@ fun ReaderMinimalTopBar(
     onBack: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenToc: () -> Unit,
+    onToggleOrientation: () -> Unit,
     onOpenAppearance: () -> Unit
 ) {
     Surface(tonalElevation = 6.dp, shadowElevation = 6.dp) {
@@ -205,6 +206,9 @@ fun ReaderMinimalTopBar(
                 }
                 TextButton(onClick = onOpenToc, contentPadding = PaddingValues(horizontal = 8.dp)) {
                     Text("TOC")
+                }
+                TextButton(onClick = onToggleOrientation, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                    Text("Rotate")
                 }
                 FilledTonalButton(
                     onClick = onOpenAppearance,

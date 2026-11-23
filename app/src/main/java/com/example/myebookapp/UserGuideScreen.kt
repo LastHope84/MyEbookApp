@@ -15,12 +15,29 @@ import androidx.compose.ui.unit.dp
 
 private data class GuideTopic(val id: String, val title: String, val summary: String, val sections: List<Pair<String, String>>)
 
+private fun GuideTopic.searchText(): String = buildString {
+    append(title).append(' ').append(summary).append(' ')
+    sections.forEach { append(it.first).append(' ').append(it.second).append(' ') }
+}.lowercase()
+
+private fun GuideTopic.matches(query: String): Boolean {
+    val haystack = searchText()
+    return query.split(Regex("\\s+")).filter { it.isNotEmpty() }.all { haystack.contains(it) }
+}
+
+private fun GuideTopic.matchingSections(query: String): List<String> =
+    sections.filter { (title, body) ->
+        val haystack = "$title $body".lowercase()
+        query.split(Regex("\\s+")).filter { it.isNotEmpty() }.all { haystack.contains(it) }
+    }.map { it.first }
+
 // Describes the controls actually wired up in this version, rather than planned features.
 private val guideTopics = listOf(
     GuideTopic("start", "Getting started", "Add folders and find your books", listOf(
         "Add a folder" to "Open the library menu (the three lines), tap Add Folder, choose a folder in Android's file picker and grant access. The app scans its subfolders, excluding hidden folders. Scanning can take time; a progress banner appears in the library, and a notification keeps the scan running while the app is in the background. You can pause, resume or stop from the banner. An unreadable book is kept with basic details instead of blocking the rest of the scan.",
         "Supported files" to "The folder scanner finds EPUB, MOBI, AZW, AZW3 and PRC files. EPUBs can be read in the app; the other listed formats appear in To Convert. Other formats are not added by this scanner.",
         "Add more or rescan" to "Use Add Folder again for another folder. After adding files to a saved folder, open the menu and tap Rescan Folders. The app stores access to selected folders; if a folder is moved or access expires, choose it again.",
+        "Manage folders" to "Open the menu and tap Manage folders to see saved folders, add more, remove a folder, or open its subfolders. Adding a parent folder includes all its subfolders. Removing a folder removes its library entries, not the ebook files; reading progress and edits for those entries are lost. After updating the app, run Rescan Folders once before removing a subfolder so older books can be matched.",
         "Search the library" to "Type in Search in the menu, then choose a shelf. Search applies to that shelf and matches indexed title, author, publisher, series and tags. Clear the search to see the full shelf. Tap a cover for its details and actions."
     )),
     GuideTopic("shelves", "Shelves and book details", "Favorites, reading status and removal", listOf(
@@ -34,14 +51,14 @@ private val guideTopics = listOf(
     )),
     GuideTopic("reading", "Reading an EPUB", "Open, navigate and find text", listOf(
         "Open and continue" to "Tap a book, then Read Book or Continue. The reader stores your position and progress for a library book; Continue returns to the saved position when available. EPUB layout and navigation depend on the book.",
-        "Reader controls" to "Tap the reading area to show or hide the controls. They also hide automatically after a few seconds. The top bar has Back, Find, TOC and Aa. The bottom bar has previous/next arrows, a position slider, page/position and percentage. Drag the slider to jump when the book supplies positions.",
+        "Reader controls" to "Tap the reading area to show or hide the controls. They also hide automatically after a few seconds. The top bar has Back, Find, TOC, Rotate and Aa. Rotate switches quickly between portrait and landscape. The bottom bar has previous/next arrows, a position slider, page/position and percentage. Drag the slider to jump when the book supplies positions.",
         "Chapters and search" to "Tap TOC and choose an entry to jump there. If the book has no table of contents, the app offers reading-order sections instead. Tap Find, enter a word or name, tap Find and select a result. Results depend on the book's searchable text.",
         "Dictionary" to "Select a word in the book and choose Define in the selection menu. The app looks it up online, preferring Italian or English according to the book language. Search / Translate in Browser opens Wiktionary. Availability and definitions depend on the online sources."
     )),
     GuideTopic("reader_settings", "Reading appearance", "Fonts, themes and reading behaviour", listOf(
         "Open Aa" to "While reading, tap the page to show controls, then tap Aa. Swipe the sheet to see all options. Changes are saved as reader preferences and apply to the reader, not the library theme.",
         "Page and type" to "Choose Light, Sepia, Dark, AMOLED or E-Ink. Choose a typeface, including Dyslexic and Accessible, then adjust font size, line spacing and margins. Horizontal rows can be scrolled to reveal more choices; results may vary with the EPUB.",
-        "Screen" to "Set orientation to Auto, Portrait or Landscape. Adjust brightness or use Reset to Auto to return to system brightness. Adjust the warm filter. Fullscreen hides system bars while reading; swipe from the screen edge to temporarily reveal them.",
+        "Screen" to "Set orientation to Auto, Portrait or Landscape, or use the Rotate button in the reader top bar for a quick switch. Adjust brightness or use Reset to Auto to return to system brightness. Adjust the warm filter. Fullscreen hides system bars while reading; swipe from the screen edge to temporarily reveal them.",
         "Behaviour" to "Switch volume-key page turning, vertical scroll, keeping the screen awake and the mini footer on or off. With volume-key turning enabled, volume down goes forward and volume up goes back. The footer shows chapter and progress when controls are hidden."
     )),
     GuideTopic("metadata", "Edit book information", "Manual edits and online matching", listOf(
@@ -67,6 +84,7 @@ private val guideTopics = listOf(
         "What is stored" to "The app keeps library records, metadata edits, favorites, reading statuses, progress and preferences on this device. Folder books remain in their original locations; access depends on Android's folder permission. Back up your original files separately. The app has no visible export for its library edits or shelves.",
         "Uninstall or clear app data" to "Clearing app data or uninstalling can remove library records, preferences, app-only metadata and EPUBs in private app storage. Copy important converted EPUBs out using Share before doing so. Original files in separately chosen folders are not removed by the library's Remove action.",
         "Missing or inaccessible books" to "Check that the file is in a selected folder and still accessible, then use Rescan Folders or add the folder again. If Android reports that folder access was lost, add the folder again and allow access. Clear any active library search and check All Books. Scans may take time.",
+        "Scan details" to "If a scan stops, open the scan banner and tap Scan details. The log shows which folder failed and why; include it when asking for help. Background scans may also be stopped by aggressive phone battery settings, so allow notifications and remove battery restrictions for the app.",
         "Book or conversion fails" to "Check that the source file is accessible and intact. The reader opens EPUBs; use Convert for supported non-EPUB entries. Not every source can be converted or read successfully. Keep the source and try another copy or app if needed.",
         "Online search or dictionary fails" to "Check your connection and try again. For metadata, try a shorter title or author and check the edition before saving. No results can also mean the catalogues are unavailable. For dictionary lookup, try a single word or the browser option.",
         "Kindle or sharing fails" to "Check that the file is still accessible and a suitable sharing or email app is installed. For Kindle, save the correct Kindle address, check the attachment and recipient in your mail app, send the message, and review Amazon's sender and delivery requirements."
@@ -77,7 +95,10 @@ private val guideTopics = listOf(
 @Composable
 fun UserGuideScreen(onClose: () -> Unit) {
     var topicId by rememberSaveable { mutableStateOf<String?>(null) }
+    var query by rememberSaveable { mutableStateOf("") }
     val topic = guideTopics.firstOrNull { it.id == topicId }
+    val normalizedQuery = query.trim().lowercase()
+    val visibleTopics = if (normalizedQuery.isEmpty()) guideTopics else guideTopics.filter { it.matches(normalizedQuery) }
     fun goBack() { if (topicId != null) topicId = null else onClose() }
     BackHandler { goBack() }
 
@@ -94,15 +115,37 @@ fun UserGuideScreen(onClose: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (topic == null) {
-                    Text("Choose a topic", style = MaterialTheme.typography.titleLarge,
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        singleLine = true,
+                        label = { Text("Search the guide") },
+                        placeholder = { Text("e.g. folders, Kindle, rotate") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(if (normalizedQuery.isEmpty()) "Choose a topic" else "Search results",
+                        style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.semantics { heading() })
-                    Text("This guide describes the controls available in this version. Use Back to return to the library.", style = MaterialTheme.typography.bodyMedium)
-                    guideTopics.forEach { item ->
+                    if (normalizedQuery.isEmpty()) {
+                        Text("This guide describes the controls available in this version. Use Back to return to the library.", style = MaterialTheme.typography.bodyMedium)
+                    } else {
+                        Text("${visibleTopics.size} topic${if (visibleTopics.size == 1) "" else "s"} match “$query”.", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    if (visibleTopics.isEmpty()) {
+                        Text("No topics match that search. Try a shorter word, such as “folder”, “Kindle” or “rotate”.", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    visibleTopics.forEach { item ->
+                        val matches = if (normalizedQuery.isEmpty()) emptyList() else item.matchingSections(normalizedQuery)
                         OutlinedButton(onClick = { topicId = item.id }, modifier = Modifier.fillMaxWidth(),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {
                             Column(Modifier.fillMaxWidth()) {
                                 Text(item.title, style = MaterialTheme.typography.titleMedium)
                                 Text(item.summary, style = MaterialTheme.typography.bodyMedium)
+                                if (matches.isNotEmpty()) {
+                                    Text("Matches: " + matches.take(3).joinToString(", "),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary)
+                                }
                             }
                         }
                     }
