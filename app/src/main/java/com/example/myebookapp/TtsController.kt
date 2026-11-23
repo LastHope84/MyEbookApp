@@ -259,10 +259,11 @@ class TtsController(
         val progression = (offset.toDouble() / text.length).coerceIn(0.0, 1.0)
         if (lastProgress >= 0 && abs(progression - lastProgress) < 0.04) return
         lastProgress = progression
-        val total = (linkIndex + progression) / publication.readingOrder.size.coerceAtLeast(1)
+        // Only the in-chapter position: a guessed book-wide percentage can make
+        // Readium jump far ahead of the voice.
         onNavigate(
             locator.copy(
-                locations = Locator.Locations(progression = progression, totalProgression = total)
+                locations = Locator.Locations(progression = progression)
             )
         )
     }
