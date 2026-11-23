@@ -53,6 +53,9 @@ object ThemePrefs {
     private const val KEY_AMOLED = "app_amoled_dark"
     private const val KEY_AUTO_RESUME = "open_last_book_on_launch"
     private const val KEY_OFFLINE_TRANSLATION = "offline_translation_enabled"
+    private const val KEY_SORT = "library_sort"
+    private const val KEY_AUTO_SCAN = "auto_scan_on_open"
+    private const val KEY_LAST_AUTO_SCAN = "last_auto_scan"
     private const val KEY_KINDLE_EMAIL = "kindle_email"
     private const val KEY_CONVERT_OUT_URI = "converted_output_tree_uri"
 
@@ -86,6 +89,30 @@ object ThemePrefs {
     fun saveAmoled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_AMOLED, enabled).apply()
+    }
+
+    fun getSort(context: Context): String =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_SORT, "title") ?: "title"
+
+    fun saveSort(context: Context, sort: String) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putString(KEY_SORT, sort).apply()
+    }
+
+    fun isAutoScanOnOpen(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY_AUTO_SCAN, false)
+
+    fun saveAutoScanOnOpen(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_AUTO_SCAN, enabled).apply()
+    }
+
+    fun lastAutoScan(context: Context): Long =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getLong(KEY_LAST_AUTO_SCAN, 0L)
+
+    fun saveLastAutoScan(context: Context, time: Long) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putLong(KEY_LAST_AUTO_SCAN, time).apply()
     }
 
     fun isAutoOpenLastBook(context: Context): Boolean =

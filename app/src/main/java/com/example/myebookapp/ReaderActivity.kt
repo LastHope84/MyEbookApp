@@ -17,7 +17,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.ComposeView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -124,6 +129,7 @@ class ReaderActivity : FragmentActivity() {
     private var publication: Publication? = null
     private var ttsState by mutableStateOf(TtsState.IDLE)
     private var ttsController: TtsController? = null
+    private var showFinishedCard by mutableStateOf(false)
     private var allPositions: List<Locator> = emptyList()
     private var containerId: Int = View.NO_ID
     private var currentBookUriString: String? = null
@@ -351,6 +357,27 @@ class ReaderActivity : FragmentActivity() {
                     mode = if (forceDark) AppThemeMode.DARK else AppThemeMode.LIGHT,
                     forceDark = forceDark
                 ) {
+                    if (showFinishedCard) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text(
+                                    "You finished this book",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(onClick = { finish() }) { Text("Back to library") }
+                                    TextButton(onClick = { showFinishedCard = false }) { Text("Keep reading") }
+                                }
+                            }
+                        }
+                    }
                     if (showControls && !isLoading && errorMessage == null) {
                         ReaderBottomScrubberBar(
                             currentPosition = currentPosition,
@@ -532,6 +559,7 @@ class ReaderActivity : FragmentActivity() {
                 fun finishOnce() {
                     if (finishedHere) return
                     finishedHere = true
+                    showFinishedCard = true
                     lifecycleScope.launch(Dispatchers.IO) {
                         AppDatabase.getInstance(this@ReaderActivity).bookDao().markFinished(bookUri.toString())
                     }

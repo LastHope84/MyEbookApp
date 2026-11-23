@@ -70,6 +70,8 @@ var bulkFavoriteAction by remember { mutableStateOf<Boolean?>(null) }
 var selectedFavoriteCount by remember { mutableStateOf<Int?>(null) }
 var showBulkShareConfirm by remember { mutableStateOf(false) }
 var preparingBulkShare by remember { mutableStateOf(false) }
+var sortMode by remember { mutableStateOf(ThemePrefs.getSort(ctx)) }
+var showSortMenu by remember { mutableStateOf(false) }
 var bulkSaving by remember { mutableStateOf(false) }
 var selectingAll by remember { mutableStateOf(false) }
 var selectAllJob by remember { mutableStateOf<Job?>(null) }
@@ -117,7 +119,17 @@ var converting by remember { mutableStateOf(false) }
 var bulkConversionFailures by remember { mutableStateOf<List<ConversionFailure>>(emptyList()) }
 var preparingKindle by remember { mutableStateOf(false) }
 val folders = LibraryScanner.getSavedFolders(ctx)
-LaunchedEffect(Unit) { LibraryScanner.restore(ctx) }
+LaunchedEffect(Unit) {
+    LibraryScanner.restore(ctx)
+    if (ThemePrefs.isAutoScanOnOpen(ctx)) {
+        val folders = LibraryScanner.getSavedFolders(ctx)
+        val now = System.currentTimeMillis()
+        if (folders.isNotEmpty() && now - ThemePrefs.lastAutoScan(ctx) > 24L * 60L * 60L * 1000L) {
+            ThemePrefs.saveLastAutoScan(ctx, now)
+            LibraryScanner.scanFolders(ctx, folders.map(Uri::parse))
+        }
+    }
+}
 
 fun sendToKindle(book: BookEntity) {
 if (preparingKindle) return
@@ -325,18 +337,18 @@ BackHandler(drw.isOpen || selMode) { if (!bulkSaving) { if (drw.isOpen) scp.laun
 LaunchedEffect(qry) { delay(250); if (dbQry != qry) { cancelSelectAll(); dbQry = qry } }
 
 val customId = selectedCustomId
-val paged = remember(dbQry, tab, customId, showConvertedOriginals, scp) { Pager(PagingConfig(60, 180, true)) {
+val paged = remember(dbQry, tab, customId, showConvertedOriginals, sortMode, scp) { Pager(PagingConfig(60, 180, true)) {
 val f = toFtsQuery(dbQry)
 if (customId != null) {
-if (f == null) dao.customShelfPaged(customId, showConvertedOriginals) else dao.searchCustomShelfPaged(customId, f, showConvertedOriginals)
+if (f == null) dao.customShelfPaged(customId, showConvertedOriginals, sortMode) else dao.searchCustomShelfPaged(customId, f, showConvertedOriginals, sortMode)
 } else when (tab) {
-LibraryTab.ALL -> if (f == null) dao.allPaged(showConvertedOriginals) else dao.searchAllPaged(f, showConvertedOriginals)
+LibraryTab.ALL -> if (f == null) dao.allPaged(showConvertedOriginals, sortMode) else dao.searchAllPaged(f, showConvertedOriginals, sortMode)
 LibraryTab.RECENT -> if (f == null) dao.recentlyAddedPaged(showConvertedOriginals) else dao.searchRecentlyAddedPaged(f, showConvertedOriginals)
-LibraryTab.FAV -> if (f == null) dao.favoritePaged(showConvertedOriginals) else dao.searchFavoritePaged(f, showConvertedOriginals)
-LibraryTab.READING -> if (f == null) dao.statusPaged("READING", showConvertedOriginals) else dao.searchStatusPaged("READING", f, showConvertedOriginals)
-LibraryTab.TBR -> if (f == null) dao.statusPaged("TBR", showConvertedOriginals) else dao.searchStatusPaged("TBR", f, showConvertedOriginals)
-LibraryTab.DONE -> if (f == null) dao.statusPaged("FINISHED", showConvertedOriginals) else dao.searchStatusPaged("FINISHED", f, showConvertedOriginals)
-LibraryTab.CONV -> if (f == null) dao.toConvertPaged(showConvertedOriginals) else dao.searchToConvertPaged(f, showConvertedOriginals)
+LibraryTab.FAV -> if (f == null) dao.favoritePaged(showConvertedOriginals, sortMode) else dao.searchFavoritePaged(f, showConvertedOriginals, sortMode)
+LibraryTab.READING -> if (f == null) dao.statusPaged("READING", showConvertedOriginals, sortMode) else dao.searchStatusPaged("READING", f, showConvertedOriginals, sortMode)
+LibraryTab.TBR -> if (f == null) dao.statusPaged("TBR", showConvertedOriginals, sortMode) else dao.searchStatusPaged("TBR", f, showConvertedOriginals, sortMode)
+LibraryTab.DONE -> if (f == null) dao.statusPaged("FINISHED", showConvertedOriginals, sortMode) else dao.searchStatusPaged("FINISHED", f, showConvertedOriginals, sortMode)
+LibraryTab.CONV -> if (f == null) dao.toConvertPaged(showConvertedOriginals, sortMode) else dao.searchToConvertPaged(f, showConvertedOriginals, sortMode)
 }
 }.flow.cachedIn(scp) }.collectAsLazyPagingItems()
 
@@ -380,6 +392,20 @@ Scaffold(topBar={ TopAppBar(navigationIcon={ IconButton(enabled=!bulkSaving, onC
             selectedFavoriteCount = withContext(Dispatchers.IO) { dao.getByIds(ids).count { it.isFavorite } }
         }
     }) { Text("Actions") }
+} else {
+    Box {
+        val sortLabel = when (sortMode) { "author" -> "Author"; "recent" -> "Newest"; else -> "Title" }
+        TextButton(onClick = { showSortMenu = true }) { Text(sortLabel) }
+        DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
+            listOf("title" to "Title", "author" to "Author", "recent" to "Newest").forEach { (key, label) ->
+                DropdownMenuItem(text = { Text(label) }, onClick = {
+                    sortMode = key
+                    ThemePrefs.saveSort(ctx, key)
+                    showSortMenu = false
+                })
+            }
+        }
+    }
 } }) }) { p ->
 Column(Modifier.fillMaxSize().padding(p)) {
 if (scanS.isScanning || scanS.canResume || scanS.warning != null || scanS.error != null) {

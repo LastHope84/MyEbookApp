@@ -50,6 +50,7 @@ fun AppSettingsBottomSheet(
     var storageSummary by remember { mutableStateOf("Calculating storage...") }
     var cacheClearedMsg by remember { mutableStateOf<String?>(null) }
     var translationEnabled by remember { mutableStateOf(ThemePrefs.isOfflineTranslationEnabled(context)) }
+    var autoScan by remember { mutableStateOf(ThemePrefs.isAutoScanOnOpen(context)) }
 
     LaunchedEffect(Unit) {
         storageSummary = withContext(Dispatchers.IO) { computeStorageSummary(context) }
@@ -144,6 +145,29 @@ fun AppSettingsBottomSheet(
                     Text("Wake straight into your current book like a Kindle", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Switch(checked = autoOpenLastBook, onCheckedChange = onAutoOpenChange)
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Check for new books on open", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "At most once a day",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = autoScan,
+                    onCheckedChange = {
+                        ThemePrefs.saveAutoScanOnOpen(context, it)
+                        autoScan = it
+                    }
+                )
             }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
