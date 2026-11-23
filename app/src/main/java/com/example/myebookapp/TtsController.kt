@@ -215,7 +215,6 @@ class TtsController(
         LibraryScanner.logTts(context, "speak $key ${chunk.text.take(60)}")
         instance.speak(chunk.text, TextToSpeech.QUEUE_ADD, null, currentUtterance)
         setState(TtsState.PLAYING)
-        reportProgress(chunk.start)
     }
 
     private val progressListener = object : UtteranceProgressListener() {
@@ -229,6 +228,9 @@ class TtsController(
             currentUtterance = ""
             scope.launch(Dispatchers.Main) {
                 if (state != TtsState.PLAYING) return@launch
+                // Turn the page only after this sentence has been pronounced, using
+                // the end of the sentence so the next page never starts too early.
+                chunks.getOrNull(chunkIndex)?.let { reportProgress(it.end) }
                 chunkIndex++
                 if (chunkIndex >= chunks.size) advanceChapter() else speakCurrent()
             }
