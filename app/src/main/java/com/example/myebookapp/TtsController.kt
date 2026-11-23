@@ -274,8 +274,11 @@ class TtsController(
     private fun reportProgress(offset: Int) {
         val locator = base ?: return
         if (text.isEmpty()) return
-        val progression = (offset.toDouble() / text.length).coerceIn(0.0, 1.0)
-        if (lastProgress >= 0 && abs(progression - lastProgress) < 0.02) return
+        // Aim about a sentence behind the voice: our plain-text offsets run
+        // slightly ahead of Readium's page layout.
+        val lagged = (offset - 250).coerceAtLeast(0)
+        val progression = (lagged.toDouble() / text.length).coerceIn(0.0, 1.0)
+        if (lastProgress >= 0 && abs(progression - lastProgress) < 0.01) return
         lastProgress = progression
         // Only the in-chapter position: a guessed book-wide percentage can make
         // Readium jump far ahead of the voice.
