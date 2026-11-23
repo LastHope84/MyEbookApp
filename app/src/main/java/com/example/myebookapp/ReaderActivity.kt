@@ -855,14 +855,23 @@ class ReaderActivity : FragmentActivity() {
             context = this,
             publication = pub,
             scope = lifecycleScope,
-            onStateChanged = { ttsState = it },
+            onStateChanged = { state ->
+                ttsState = state
+                TtsPlayback.state = state
+                syncTtsService(state)
+            },
             onNavigate = { locator -> nav.go(locator, animated = false) },
             onChapterChanged = { link -> nav.go(link, animated = false) },
             onError = { message ->
                 ttsState = TtsState.IDLE
+                TtsPlayback.state = TtsState.IDLE
+                syncTtsService(TtsState.IDLE)
                 android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()
             }
         ).also { ttsController = it }
+        TtsPlayback.controller = controller
+        TtsPlayback.title = bookTitle
+        TtsPlayback.bookUri = currentBookUriString
         when (controller.currentState) {
             TtsState.PLAYING -> controller.pause()
             TtsState.PAUSED -> controller.resume()
@@ -870,8 +879,21 @@ class ReaderActivity : FragmentActivity() {
         }
     }
 
+    private fun syncTtsService(state: TtsState) {
+        if (state == TtsState.IDLE) {
+            if (TtsPlayback.serviceRunning) TtsService.stop(this)
+        } else if (TtsPlayback.serviceRunning) {
+            startService(Intent(this, TtsService::class.java).setAction(TtsService.ACTION_UPDATE))
+        } else {
+            TtsService.start(this)
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        TtsPlayback.controller = null
+        TtsPlayback.state = TtsState.IDLE
+        if (TtsPlayback.serviceRunning) TtsService.stop(this)
         ttsController?.release()
         ttsController = null
         publication?.close()

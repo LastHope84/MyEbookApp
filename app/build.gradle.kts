@@ -17,7 +17,7 @@ android {
     defaultConfig {
         applicationId = "com.example.myebookapp"
         minSdk = if (foxletAar != null) 28 else 24; targetSdk = 35
-        versionCode = buildNum; versionName = "1.2.0"
+        versionCode = buildNum; versionName = "1.2.1"
         ndk { abiFilters += if (foxletAar != null) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a") }
     }
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt") } }
@@ -54,4 +54,5 @@ dependencies {
     val rm = "2.7.2"
     implementation("androidx.room:room-runtime:$rm"); implementation("androidx.room:room-ktx:$rm"); implementation("androidx.room:room-paging:$rm"); ksp("androidx.room:room-compiler:$rm")
     implementation("androidx.paging:paging-compose:3.3.5"); implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("androidx.media:media:1.7.0")
 }

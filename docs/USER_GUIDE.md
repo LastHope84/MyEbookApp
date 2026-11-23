@@ -57,7 +57,7 @@ Tap TOC and choose an entry to jump there. If the book has no table of contents,
 Select a word in the book and choose Define in the selection menu. The app looks it up online, preferring Italian or English according to the book language. Search / Translate in Browser opens Wiktionary. Availability and definitions depend on the online sources.
 
 ### Listen (TTS)
-Tap the play icon in the reader top bar to hear the book read aloud from your position. Tap it again to pause; tap once more to resume. Choose a voice and language in Settings, under Read Aloud (TTS). Voices marked "needs internet" require a connection. Playback stops when you close the book.
+Tap the play icon in the reader top bar to hear the book read aloud from your position. Tap it again to pause; tap once more to resume. Choose a voice and language in Settings, under Read Aloud (TTS). Voices marked "needs internet" require a connection. While it reads, a notification and the phone's media controls offer Play, Pause and Stop. Reading continues if you switch apps; closing the book stops it.
 
 ## Reading appearance
 
