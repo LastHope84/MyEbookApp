@@ -67,6 +67,7 @@ var showScanLog by remember { mutableStateOf(false) }
 var showBulkMove by remember { mutableStateOf(false) }
 var showBulkShelves by remember { mutableStateOf(false) }
 var bulkFavoriteAction by remember { mutableStateOf<Boolean?>(null) }
+var selectedFavoriteCount by remember { mutableStateOf<Int?>(null) }
 var showBulkShareConfirm by remember { mutableStateOf(false) }
 var preparingBulkShare by remember { mutableStateOf(false) }
 var bulkSaving by remember { mutableStateOf(false) }
@@ -370,7 +371,14 @@ NavigationDrawerItem(label={Text("User Guide")}, selected=false, onClick={scp.la
 }) {
 Scaffold(topBar={ TopAppBar(navigationIcon={ IconButton(enabled=!bulkSaving, onClick={ if (selMode) { cancelSelectAll(); selIds=emptySet(); selMode=false } else scp.launch{drw.open()} }) { if (selMode) Text("×", style=MaterialTheme.typography.headlineSmall) else HamburgerIcon() } }, title={ Text(if (selMode) "${selIds.size} selected" else customShelves.firstOrNull { it.id == selectedCustomId }?.name ?: tab.title) }, actions={ if (selMode) {
     TextButton(enabled=!bulkSaving && !selectingAll, onClick={ selectAllOnShelf() }) { Text(if (selectingAll) "Selecting…" else "All") }
-    TextButton(enabled=!bulkSaving && !selectingAll && selIds.isNotEmpty(), onClick={ showBulkActions=true }) { Text("Actions") }
+    TextButton(enabled=!bulkSaving && !selectingAll && selIds.isNotEmpty(), onClick={
+        showBulkActions=true
+        selectedFavoriteCount=null
+        val ids = selIds.toList()
+        scp.launch {
+            selectedFavoriteCount = withContext(Dispatchers.IO) { dao.getByIds(ids).count { it.isFavorite } }
+        }
+    }) { Text("Actions") }
 } }) }) { p ->
 Column(Modifier.fillMaxSize().padding(p)) {
 if (scanS.isScanning || scanS.canResume || scanS.warning != null || scanS.error != null) {
@@ -546,8 +554,16 @@ showBulkActions.let { if (it) {
     AlertDialog(onDismissRequest={showBulkActions=false}, title={Text("${selIds.size} selected")}, text={ Column {
         TextButton(onClick={showBulkActions=false; showBulkMove=true}, modifier=Modifier.fillMaxWidth()) { Text("Move to reading shelf") }
         TextButton(onClick={showBulkActions=false; showBulkShelves=true}, modifier=Modifier.fillMaxWidth()) { Text("Manage custom shelves") }
-        TextButton(onClick={showBulkActions=false; bulkFavoriteAction=true}, modifier=Modifier.fillMaxWidth()) { Text("Add to favorites") }
-        TextButton(onClick={showBulkActions=false; bulkFavoriteAction=false}, modifier=Modifier.fillMaxWidth()) { Text("Remove from favorites") }
+        val favCount = selectedFavoriteCount
+        when {
+            favCount == null -> TextButton(enabled=false, onClick={}, modifier=Modifier.fillMaxWidth()) { Text("Checking favorites…") }
+            favCount == 0 -> TextButton(onClick={showBulkActions=false; bulkFavoriteAction=true}, modifier=Modifier.fillMaxWidth()) { Text("Add to favorites") }
+            favCount == selIds.size -> TextButton(onClick={showBulkActions=false; bulkFavoriteAction=false}, modifier=Modifier.fillMaxWidth()) { Text("Remove from favorites") }
+            else -> {
+                TextButton(onClick={showBulkActions=false; bulkFavoriteAction=true}, modifier=Modifier.fillMaxWidth()) { Text("Add all to favorites") }
+                TextButton(onClick={showBulkActions=false; bulkFavoriteAction=false}, modifier=Modifier.fillMaxWidth()) { Text("Remove all from favorites") }
+            }
+        }
         TextButton(onClick={showBulkActions=false; showBulkShareConfirm=true}, modifier=Modifier.fillMaxWidth()) { Text("Share selected files") }
         TextButton(enabled=!converting,onClick={
             val ids=selIds.toList(); showBulkActions=false; bulkSaving=true
