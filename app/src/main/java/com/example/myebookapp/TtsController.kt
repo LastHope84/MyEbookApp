@@ -18,7 +18,6 @@ import kotlinx.coroutines.withContext
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
-import kotlin.math.abs
 
 enum class TtsState { IDLE, PLAYING, PAUSED }
 
@@ -32,7 +31,8 @@ class TtsController(
     private val publication: Publication,
     private val scope: CoroutineScope,
     private val onStateChanged: (TtsState) -> Unit,
-    private val onNavigate: (Locator) -> Unit,
+    private val onTurnPage: () -> Unit,
+    private val onBottomText: suspend () -> String?,
     private val onChapterChanged: (Link) -> Unit,
     private val onHighlight: (Locator?) -> Unit,
     private val onError: (String) -> Unit
@@ -48,7 +48,9 @@ class TtsController(
     private var chunks: List<Chunk> = emptyList()
     private var chunkIndex = 0
     private var base: Locator? = null
-    private var lastProgress = 0.0
+    private var pageEndOffset: Int? = null
+    private var normalized = ""
+    private var normMap = IntArray(0)
     private var state = TtsState.IDLE
     private var currentUtterance = ""
     private var utteranceSeq = 0
@@ -62,6 +64,7 @@ class TtsController(
 
     fun start(from: Locator) {
         loadedLinkIndex = -1
+        pageEndOffset = null
         requestFocus()
         base = from
         val order = publication.readingOrder
@@ -92,6 +95,7 @@ class TtsController(
         job?.cancel()
         job = null
         loadedLinkIndex = -1
+        pageEndOffset = null
         engine?.stop()
         currentUtterance = ""
         lastSpeakKey = ""
@@ -169,7 +173,12 @@ class TtsController(
             )
             val startOffset = (startProgression * plain.length).toInt().coerceIn(0, plain.length)
             chunkIndex = chunks.indexOfFirst { it.end > startOffset }.let { if (it < 0) chunks.lastIndex else it }
-            lastProgress = -1.0
+            buildNormalized()
+            scope.launch {
+                // Let the page finish laying out before asking where its bottom is.
+                kotlinx.coroutines.delay(700)
+                refreshPageBoundary()
+            }
             speakCurrent()
         }
     }
@@ -232,9 +241,21 @@ class TtsController(
             currentUtterance = ""
             scope.launch(Dispatchers.Main) {
                 if (state != TtsState.PLAYING) return@launch
-                // Turn the page only after this sentence has been pronounced, using
-                // the end of the sentence so the next page never starts too early.
-                chunks.getOrNull(chunkIndex)?.let { reportProgress(it.end) }
+                // Turn only when the voice reaches the line the page itself reports
+                // at its bottom edge.
+                val finished = chunks.getOrNull(chunkIndex)
+                val boundary = pageEndOffset
+                if (finished != null && boundary != null &&
+                    finished.end >= boundary - 20 && chunkIndex < chunks.lastIndex
+                ) {
+                    LibraryScanner.logTts(context, "turn page at ${finished.end} (edge $boundary)")
+                    pageEndOffset = null
+                    onTurnPage()
+                    scope.launch {
+                        kotlinx.coroutines.delay(450)
+                        refreshPageBoundary()
+                    }
+                }
                 chunkIndex++
                 if (chunkIndex >= chunks.size) advanceChapter() else speakCurrent()
             }
@@ -271,22 +292,63 @@ class TtsController(
         )
     }
 
-    private fun reportProgress(offset: Int) {
-        val locator = base ?: return
-        if (text.isEmpty()) return
-        // Aim about a sentence behind the voice: our plain-text offsets run
-        // slightly ahead of Readium's page layout.
-        val lagged = (offset - 250).coerceAtLeast(0)
-        val progression = (lagged.toDouble() / text.length).coerceIn(0.0, 1.0)
-        if (lastProgress >= 0 && abs(progression - lastProgress) < 0.01) return
-        lastProgress = progression
-        // Only the in-chapter position: a guessed book-wide percentage can make
-        // Readium jump far ahead of the voice.
-        onNavigate(
-            locator.copy(
-                locations = Locator.Locations(progression = progression)
+    private fun buildNormalized() {
+        val sb = StringBuilder(text.length)
+        val map = IntArray(text.length)
+        var size = 0
+        var lastSpace = false
+        for (i in text.indices) {
+            val c = text[i]
+            if (c.isWhitespace()) {
+                if (!lastSpace) {
+                    sb.append(' ')
+                    map[size++] = i
+                    lastSpace = true
+                }
+            } else {
+                sb.append(c)
+                map[size++] = i
+                lastSpace = false
+            }
+        }
+        normalized = sb.toString()
+        normMap = map.copyOf(size)
+    }
+
+    private fun normalize(value: String): String =
+        value.replace(Regex("\\s+"), " ").trim()
+
+    /** Asks the page for the text at its bottom edge and finds it in our text. */
+    private fun refreshPageBoundary() {
+        scope.launch {
+            val snippet = runCatching { onBottomText() }.getOrNull()?.trim().orEmpty()
+            val target = normalize(snippet)
+            if (target.length < 10 || normalized.isEmpty()) {
+                pageEndOffset = null
+                return@launch
+            }
+            val minOriginal = ((chunks.getOrNull(chunkIndex)?.start ?: 0) - 600).coerceAtLeast(0)
+            var from = 0
+            var found = -1
+            while (true) {
+                val i = normalized.indexOf(target, from)
+                if (i < 0) break
+                if (i < normMap.size && normMap[i] >= minOriginal) {
+                    found = i
+                    break
+                }
+                from = i + 1
+            }
+            pageEndOffset = if (found >= 0) {
+                val last = (found + target.length - 1).coerceAtMost(normMap.lastIndex)
+                normMap[last] + 1
+            } else null
+            LibraryScanner.logTts(
+                context,
+                if (pageEndOffset != null) "page edge ${pageEndOffset} for ${snippet.take(30)}"
+                else "page edge not found for ${snippet.take(30)}"
             )
-        )
+        }
     }
 
     private fun setState(newState: TtsState) {

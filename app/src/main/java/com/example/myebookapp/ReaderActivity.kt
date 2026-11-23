@@ -97,6 +97,28 @@ class ReaderActivity : FragmentActivity() {
                     Math.ceil(e.scrollTop + e.clientHeight) >= e.scrollHeight;
             })()
         """
+        // Returns the text ending at the bottom edge of the visible page, so read-aloud
+        // can turn exactly when the voice reaches that line.
+        private const val BOTTOM_TEXT_SCRIPT = """
+            (() => {
+                try {
+                    const x = Math.floor(window.innerWidth / 2);
+                    const ys = [window.innerHeight - 20, window.innerHeight - 60,
+                                Math.floor(window.innerHeight * 0.85)];
+                    for (const y of ys) {
+                        if (!document.caretRangeFromPoint) continue;
+                        const r = document.caretRangeFromPoint(x, y);
+                        if (!r || !r.startContainer || !r.startContainer.textContent) continue;
+                        const t = r.startContainer.textContent;
+                        const end = r.startOffset;
+                        const start = Math.max(0, end - 80);
+                        const snippet = t.substring(start, end);
+                        if (snippet.trim().length > 10) return encodeURIComponent(snippet);
+                    }
+                    return '';
+                } catch (e) { return ''; }
+            })()
+        """
     }
 
     private var publication: Publication? = null
@@ -860,7 +882,13 @@ class ReaderActivity : FragmentActivity() {
                 TtsPlayback.state = state
                 syncTtsService(state)
             },
-            onNavigate = { locator -> nav.go(locator, animated = false) },
+            onTurnPage = { nav.goForward(animated = false) },
+            onBottomText = {
+                runCatching {
+                    val raw = nav.evaluateJavascript(BOTTOM_TEXT_SCRIPT).orEmpty().trim().trim('"')
+                    if (raw.isEmpty()) null else java.net.URLDecoder.decode(raw, "UTF-8")
+                }.getOrNull()
+            },
             onChapterChanged = { link -> nav.go(link, animated = false) },
             onHighlight = { locator ->
                 val decorations = locator?.let {
