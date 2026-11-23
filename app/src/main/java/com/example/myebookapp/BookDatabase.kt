@@ -15,6 +15,8 @@ data class BookEntity(
     val language: String, val coverPath: String?, val lastLocatorJson: String?,
     val progressPercent: Double, val lastOpenedAt: Long, val metadataExtracted: Boolean,
     val series: String? = null, val seriesIndex: Double? = null, val tags: String? = null,
+    // Set when the user saved corrections in the app; sharing then exports a rewritten EPUB.
+    val metadataEdited: Boolean = false,
     val isFavorite: Boolean = false,
     val readingStatus: String = "NEW",
     // Filled by the scanner so a subfolder can be removed without guessing from its name.
@@ -202,7 +204,7 @@ interface BookDao {
     @Query("UPDATE books SET title=:t, author=:a, publishingDate=:d, publisher=:p, language=:l, coverPath=COALESCE(:c, coverPath), series=:s, seriesIndex=:si, tags=:tags, metadataExtracted=1 WHERE id=:id AND metadataExtracted=0")
     suspend fun updatePendingMetadata(id: Long, t: String, a: String, d: String, p: String, l: String, c: String?, s: String?, si: Double?, tags: String?): Int
     @Transaction suspend fun updateExtractedMetadataBatch(items: List<ExtractedBookMeta>) { for (i in items) updatePendingMetadata(i.id, i.title, i.author, i.publishingDate, i.publisher, i.language, i.coverPath, i.series, i.seriesIndex, i.tags) }
-    @Query("UPDATE books SET title=:t, author=:a, publishingDate=:d, publisher=:p, language=:l, coverPath=CASE WHEN :changeCover THEN :c ELSE coverPath END, series=:s, seriesIndex=:si, tags=:tags, metadataExtracted=1 WHERE id=:id")
+    @Query("UPDATE books SET title=:t, author=:a, publishingDate=:d, publisher=:p, language=:l, coverPath=CASE WHEN :changeCover THEN :c ELSE coverPath END, series=:s, seriesIndex=:si, tags=:tags, metadataExtracted=1, metadataEdited=1 WHERE id=:id")
     suspend fun saveEditedMetadata(id: Long, t: String, a: String, d: String, p: String, l: String, changeCover: Boolean, c: String?, s: String?, si: Double?, tags: String?): Int
     @Query("UPDATE books SET lastLocatorJson=:l, progressPercent=:p, lastOpenedAt=:o WHERE uriString=:u") suspend fun updateReadingPosition(u: String, l: String, p: Double, o: Long)
     @Query("UPDATE books SET lastOpenedAt=:o WHERE uriString=:u") suspend fun touchOpened(u: String, o: Long)
@@ -236,7 +238,7 @@ interface BookDao {
     @Query("DELETE FROM books WHERE id = :id") suspend fun deleteById(id: Long)
 }
 
-@Database(entities = [BookEntity::class, BookFtsEntity::class, CustomShelf::class, CustomShelfBook::class, ConversionLink::class], version = 6, exportSchema = false)
+@Database(entities = [BookEntity::class, BookFtsEntity::class, CustomShelf::class, CustomShelfBook::class, ConversionLink::class], version = 7, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao
     companion object {
@@ -268,7 +270,10 @@ abstract class AppDatabase : RoomDatabase() {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_books_scanRootUri` ON `books` (`scanRootUri`)")
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_books_scanParentId` ON `books` (`scanParentId`)")
         } }
-        fun getInstance(context: Context): AppDatabase = INSTANCE ?: synchronized(this) { INSTANCE ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "my_ebook_library.db").addMigrations(M12, M23, M34, M45, M56).build().also { INSTANCE = it } }
+        internal val M67 = object : Migration(6, 7) { override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE books ADD COLUMN metadataEdited INTEGER NOT NULL DEFAULT 0")
+        } }
+        fun getInstance(context: Context): AppDatabase = INSTANCE ?: synchronized(this) { INSTANCE ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "my_ebook_library.db").addMigrations(M12, M23, M34, M45, M56, M67).build().also { INSTANCE = it } }
     }
 }
 fun toFtsQuery(raw: String): String? {

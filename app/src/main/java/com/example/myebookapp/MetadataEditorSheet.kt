@@ -140,7 +140,7 @@ fun MetadataEditorBottomSheet(b: BookEntity, onD: () -> Unit, onSave: (EpubEditR
             Text("Search sends the title and author to online book catalogues. Review a match before applying it.", style = MaterialTheme.typography.bodySmall)
             if (searching || downloadingCover || decodingCover) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp))
             fetchNotice?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 6.dp)) }
-            Text("Changes are saved in this app only. The original book file is not changed.", modifier = Modifier.padding(vertical = 10.dp), style = MaterialTheme.typography.bodySmall)
+            Text("Changes are saved in this app. The original book file is not changed; sharing or sending to Kindle uses a copy that includes these corrections.", modifier = Modifier.padding(vertical = 10.dp), style = MaterialTheme.typography.bodySmall)
 
             Row(Modifier.fillMaxWidth().padding(top = 10.dp), Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(onClick = onD, Modifier.weight(1f)) { Text("Cancel") }

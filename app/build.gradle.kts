@@ -17,7 +17,7 @@ android {
     defaultConfig {
         applicationId = "com.example.myebookapp"
         minSdk = if (foxletAar != null) 28 else 24; targetSdk = 35
-        versionCode = buildNum; versionName = "1.0.2"
+        versionCode = buildNum; versionName = "1.1.0"
         ndk { abiFilters += if (foxletAar != null) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a") }
     }
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt") } }

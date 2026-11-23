@@ -64,7 +64,7 @@ private val guideTopics = listOf(
     GuideTopic("metadata", "Edit book information", "Manual edits and online matching", listOf(
         "Edit locally" to "Tap a book, then Edit. If an EPUB is still being scanned, wait for its metadata scan to finish. Edit title, author, series and book number, tags (separate with semicolons), date, publisher and language. Use Change Cover to choose an image, or Remove to remove the app's cover. Tap Save or Cancel.",
         "Search online" to "In Edit, enter a title or author and tap Auto-Fetch Metadata & Cover. The title and author are sent to online catalogues. Choose a match, review its edition and select which available fields to apply. Apply to draft, then tap Save. A selected cover must finish downloading first. Unchecked fields stay unchanged.",
-        "Original file" to "Edits and cover changes are saved in this app's library only; the original ebook is not rewritten. Sharing, Kindle and other apps receive the original file, not these app-only metadata edits."
+        "Original file" to "Edits and cover changes are saved in this app's library. The original ebook is not rewritten. When you share an edited EPUB or send it to Kindle, the app prepares a copy that includes the corrected title, author, series, tags, publisher, date, language and cover."
     )),
     GuideTopic("convert", "Convert to EPUB", "MOBI and Kindle-format files", listOf(
         "Conversion" to "Choose To Convert in the menu, tap a non-EPUB book and tap Convert to EPUB. The app attempts to create a separate EPUB, adds it to the library and opens its details. Once a MOBI or AZW3 is successfully converted and linked, its original library entry is hidden by default, not deleted. Conversion can fail or produce imperfect results depending on the source; check the output. Failed conversions remain visible and the source file is kept.",
@@ -72,7 +72,7 @@ private val guideTopics = listOf(
         "Where it goes" to "By default, converted EPUBs are in the app's private storage. Share the converted book to save a copy elsewhere. App storage can be lost if the app is uninstalled or its data is cleared. Although Settings displays Pick SD / Folder and Reset, those controls are not connected in this version; do not rely on them to change the destination."
     )),
     GuideTopic("share", "Share and Send to Kindle", "Send a book using another app", listOf(
-        "Share" to "Tap a book, then Share, and choose an app from Android's share sheet. The app prepares the book file as an attachment; you finish the action in the chosen app. App-only metadata and cover edits are not written into the attachment.",
+        "Share" to "Tap a book, then Share, and choose an app from Android's share sheet. The app prepares the book file as an attachment; you finish the action in the chosen app. If you edited the book's details or cover in the app, the attachment is a copy that includes those corrections; the original file is untouched.",
         "Kindle" to "In the library menu, open Settings, enter your Send to Kindle email and tap Save. Open an EPUB's details and tap Send to Kindle; choose an email app in the chooser, check the prepared message and send it yourself. A non-EPUB must first be converted for this button. Delivery depends on your mail app and Amazon's current requirements, including approved sender settings."
     )),
     GuideTopic("settings", "Library settings", "Appearance, maintenance and known limitations", listOf(

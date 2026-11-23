@@ -105,7 +105,24 @@ object FileOpener {
                 else null
             } else null
 
-            val shareUri = directUri ?: run {
+            // Books edited in the app are shared with their corrections baked in.
+            val exported = if (book.format == "EPUB" && book.metadataEdited) {
+                val base = book.title.ifBlank { book.fileName.substringBeforeLast('.') }
+                    .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+                    .ifBlank { "book" }
+                var finalName = "$base.epub"
+                var idx = 2
+                while (!usedNames.add(finalName.lowercase())) {
+                    finalName = "${base}_$idx.epub"
+                    idx++
+                }
+                val dest = File(sharedDir, finalName)
+                if (EpubExporter.export(context, book, dest)) {
+                    runCatching { FileProvider.getUriForFile(context, authority, dest) }.getOrNull()
+                } else null
+            } else null
+
+            val shareUri = exported ?: directUri ?: run {
                 val cleanName = book.fileName
                     .replace(Regex("[\\\\/:*?\"<>|]"), "_")
                     .ifBlank { "book.${book.format.lowercase()}" }

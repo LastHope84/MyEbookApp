@@ -79,7 +79,7 @@ Tap a book, then Edit. If an EPUB is still being scanned, wait for its metadata 
 In Edit, enter a title or author and tap Auto-Fetch Metadata & Cover. The title and author are sent to online catalogues. Choose a match, review its edition and select which available fields to apply. Apply to draft, then tap Save. A selected cover must finish downloading first. Unchecked fields stay unchanged.
 
 ### Original file
-Edits and cover changes are saved in this app's library only; the original ebook is not rewritten. Sharing, Kindle and other apps receive the original file, not these app-only metadata edits.
+Edits and cover changes are saved in this app's library. The original ebook is not rewritten. When you share an edited EPUB or send it to Kindle, the app prepares a copy that includes the corrected title, author, series, tags, publisher, date, language and cover.
 
 ## Convert to EPUB
 
@@ -95,7 +95,7 @@ By default, converted EPUBs are in the app's private storage. Share the converte
 ## Share and Send to Kindle
 
 ### Share
-Tap a book, then Share, and choose an app from Android's share sheet. The app prepares the book file as an attachment; you finish the action in the chosen app. App-only metadata and cover edits are not written into the attachment.
+Tap a book, then Share, and choose an app from Android's share sheet. The app prepares the book file as an attachment; you finish the action in the chosen app. If you edited the book's details or cover in the app, the attachment is a copy that includes those corrections; the original file is untouched.
 
 ### Kindle
 In the library menu, open Settings, enter your Send to Kindle email and tap Save. Open an EPUB's details and tap Send to Kindle; choose an email app in the chooser, check the prepared message and send it yourself. A non-EPUB must first be converted for this button. Delivery depends on your mail app and Amazon's current requirements, including approved sender settings.
