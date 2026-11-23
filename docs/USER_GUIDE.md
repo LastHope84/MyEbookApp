@@ -126,7 +126,7 @@ Clearing app data or uninstalling can remove library records, preferences, app-o
 Check that the file is in a selected folder and still accessible, then use Rescan Folders or add the folder again. If Android reports that folder access was lost, add the folder again and allow access. Clear any active library search and check All Books. Scans may take time.
 
 ### Scan details
-If a scan stops, open the scan banner and tap Scan details. The log shows which folder failed and why; include it when asking for help. Background scans may also be stopped by aggressive phone battery settings, so allow notifications and remove battery restrictions for the app.
+If a scan stops, open the scan banner and tap Scan details, or open the menu and tap Activity log. The log shows which folder failed and why, and also records read-aloud events; include it when asking for help. Background scans may also be stopped by aggressive phone battery settings, so allow notifications and remove battery restrictions for the app.
 
 ### Book or conversion fails
 Check that the source file is accessible and intact. The reader opens EPUBs; use Convert for supported non-EPUB entries. Not every source can be converted or read successfully. Keep the source and try another copy or app if needed.
