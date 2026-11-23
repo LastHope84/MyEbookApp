@@ -100,6 +100,8 @@ class ReaderActivity : FragmentActivity() {
     }
 
     private var publication: Publication? = null
+    private var ttsState by mutableStateOf(TtsState.IDLE)
+    private var ttsController: TtsController? = null
     private var allPositions: List<Locator> = emptyList()
     private var containerId: Int = View.NO_ID
     private var currentBookUriString: String? = null
@@ -237,7 +239,9 @@ class ReaderActivity : FragmentActivity() {
                             onOpenAppearance = {
                                 interactionTick++
                                 showAppearance = true
-                            }
+                            },
+                            ttsState = ttsState,
+                            onToggleTts = { toggleTts() }
                         )
                     }
 
@@ -844,8 +848,32 @@ class ReaderActivity : FragmentActivity() {
         }
     }
 
+    private fun toggleTts() {
+        val nav = supportFragmentManager.findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment ?: return
+        val pub = publication ?: return
+        val controller = ttsController ?: TtsController(
+            context = this,
+            publication = pub,
+            scope = lifecycleScope,
+            onStateChanged = { ttsState = it },
+            onNavigate = { locator -> nav.go(locator, animated = false) },
+            onChapterChanged = { link -> nav.go(link, animated = false) },
+            onError = { message ->
+                ttsState = TtsState.IDLE
+                android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()
+            }
+        ).also { ttsController = it }
+        when (controller.currentState) {
+            TtsState.PLAYING -> controller.pause()
+            TtsState.PAUSED -> controller.resume()
+            TtsState.IDLE -> controller.start(nav.currentLocator.value)
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        ttsController?.release()
+        ttsController = null
         publication?.close()
     }
 }

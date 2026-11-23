@@ -48,13 +48,16 @@ Long-press a cover to enter selection mode; tap covers to select or deselect the
 Tap a book, then Read Book or Continue. The reader stores your position and progress for a library book; Continue returns to the saved position when available. EPUB layout and navigation depend on the book.
 
 ### Reader controls
-Tap the reading area to show or hide the controls. They also hide automatically after a few seconds. The top bar has Back, Find, TOC, Rotate and Aa. Rotate switches quickly between portrait and landscape. The bottom bar has previous/next arrows, a position slider, page/position and percentage. Drag the slider to jump when the book supplies positions.
+Tap the reading area to show or hide the controls. They also hide automatically after a few seconds. The top bar has Back, Find, TOC, Rotate, the read-aloud button and Aa. Rotate switches quickly between portrait and landscape. The bottom bar has previous/next arrows, a position slider, page/position and percentage. Drag the slider to jump when the book supplies positions.
 
 ### Chapters and search
 Tap TOC and choose an entry to jump there. If the book has no table of contents, the app offers reading-order sections instead. Tap Find, enter a word or name, tap Find and select a result. Results depend on the book's searchable text.
 
 ### Dictionary
 Select a word in the book and choose Define in the selection menu. The app looks it up online, preferring Italian or English according to the book language. Search / Translate in Browser opens Wiktionary. Availability and definitions depend on the online sources.
+
+### Listen (TTS)
+Tap the play icon in the reader top bar to hear the book read aloud from your position. Tap it again to pause; tap once more to resume. Choose a voice and language in Settings, under Read Aloud (TTS). Voices marked "needs internet" require a connection. Playback stops when you close the book.
 
 ## Reading appearance
 

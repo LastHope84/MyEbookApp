@@ -147,6 +147,10 @@ fun AppSettingsBottomSheet(
             }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+            SectionLabel("Read Aloud (TTS)")
+            TtsSettingsSection()
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
             SectionLabel("Offline Translation")
             Row(
                 modifier = Modifier.fillMaxWidth(),

@@ -14,6 +14,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -170,7 +172,9 @@ fun ReaderMinimalTopBar(
     onOpenSearch: () -> Unit,
     onOpenToc: () -> Unit,
     onToggleOrientation: () -> Unit,
-    onOpenAppearance: () -> Unit
+    onOpenAppearance: () -> Unit,
+    ttsState: TtsState = TtsState.IDLE,
+    onToggleTts: () -> Unit = {}
 ) {
     Surface(tonalElevation = 6.dp, shadowElevation = 6.dp) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -209,6 +213,23 @@ fun ReaderMinimalTopBar(
                 }
                 TextButton(onClick = onToggleOrientation, contentPadding = PaddingValues(horizontal = 8.dp)) {
                     Text("Rotate")
+                }
+                IconButton(onClick = onToggleTts, modifier = Modifier.size(36.dp)) {
+                    if (ttsState == TtsState.PLAYING) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(Modifier.size(4.dp, 16.dp).background(LocalContentColor.current, RoundedCornerShape(1.dp)))
+                            Box(Modifier.size(4.dp, 16.dp).background(LocalContentColor.current, RoundedCornerShape(1.dp)))
+                        }
+                    } else {
+                        Icon(
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = "Read aloud",
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
                 FilledTonalButton(
                     onClick = onOpenAppearance,
