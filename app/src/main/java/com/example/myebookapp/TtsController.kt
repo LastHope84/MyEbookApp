@@ -61,6 +61,7 @@ class TtsController(
 
     fun start(from: Locator) {
         loadedLinkIndex = -1
+        requestFocus()
         base = from
         val order = publication.readingOrder
         linkIndex = order.indexOfFirst { it.href.toString() == from.href.toString() }.let { if (it < 0) 0 else it }
@@ -81,6 +82,7 @@ class TtsController(
     fun resume() {
         if (state != TtsState.PAUSED) return
         LibraryScanner.logTts(context, "resume")
+        requestFocus()
         speakCurrent()
     }
 
@@ -198,11 +200,8 @@ class TtsController(
             advanceChapter()
             return
         }
-        if (!requestFocus()) {
-            onError("Another app is using audio. Close it and try again.")
-            stop()
-            return
-        }
+        // Audio focus is requested once when playback starts; being denied it
+        // must not block speech, so it is not checked here.
         val chunk = chunks[chunkIndex]
         val key = "$linkIndex:$chunkIndex"
         val now = SystemClock.elapsedRealtime()
@@ -257,7 +256,7 @@ class TtsController(
         val locator = base ?: return
         if (text.isEmpty()) return
         val progression = (offset.toDouble() / text.length).coerceIn(0.0, 1.0)
-        if (lastProgress >= 0 && abs(progression - lastProgress) < 0.04) return
+        if (lastProgress >= 0 && abs(progression - lastProgress) < 0.02) return
         lastProgress = progression
         // Only the in-chapter position: a guessed book-wide percentage can make
         // Readium jump far ahead of the voice.
@@ -275,6 +274,7 @@ class TtsController(
     }
 
     private fun requestFocus(): Boolean {
+        if (focusRequest != null) return true
         val audio = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return true
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val attributes = AudioAttributes.Builder()
