@@ -39,8 +39,29 @@ jobs:
         with:
           gradle-version: 8.13
 
+      - name: Build compatible Foxlet engine from pinned source
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "cmake;3.31.6"
+          git clone --branch v0.5.0 --depth 1 https://github.com/yinvoke/foxlet-translate.git "$RUNNER_TEMP/foxlet-source"
+          test "$(git -C "$RUNNER_TEMP/foxlet-source" rev-parse HEAD)" = "0eff2a15032362115848a496ce1df8ed9fc68650"
+          python3 - <<'PY'
+          import os, pathlib
+          p = pathlib.Path(os.environ['RUNNER_TEMP']) / 'foxlet-source/foxlet/build.gradle.kts'
+          text = p.read_text()
+          old = 'compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }'
+          new = 'compilerOptions { jvmTarget.set(JvmTarget.JVM_17); languageVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_1); apiVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_1) }'
+          assert text.count(old) == 1
+          text = text.replace(old, new)
+          old_ndk = 'ndkVersion = "29.0.13113456"'
+          new_ndk = 'ndkVersion = "26.1.10909125"'
+          assert text.count(old_ndk) == 1
+          p.write_text(text.replace(old_ndk, new_ndk))
+          PY
+          (cd "$RUNNER_TEMP/foxlet-source" && ./gradlew :foxlet:assembleRelease)
+          cp "$RUNNER_TEMP/foxlet-source/foxlet/build/outputs/aar/foxlet-release.aar" "$RUNNER_TEMP/foxlet.aar"
+
       - name: Build Debug APK
-        run: gradle assembleDebug
+        run: gradle assembleDebug -PfoxletAar="$RUNNER_TEMP/foxlet.aar"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

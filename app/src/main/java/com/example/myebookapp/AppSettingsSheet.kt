@@ -49,6 +49,7 @@ fun AppSettingsBottomSheet(
     var emailDraft by remember(kindleEmail) { mutableStateOf(kindleEmail) }
     var storageSummary by remember { mutableStateOf("Calculating storage...") }
     var cacheClearedMsg by remember { mutableStateOf<String?>(null) }
+    var translationEnabled by remember { mutableStateOf(ThemePrefs.isOfflineTranslationEnabled(context)) }
 
     LaunchedEffect(Unit) {
         storageSummary = withContext(Dispatchers.IO) { computeStorageSummary(context) }
@@ -144,6 +145,35 @@ fun AppSettingsBottomSheet(
                 }
                 Switch(checked = autoOpenLastBook, onCheckedChange = onAutoOpenChange)
             }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+            SectionLabel("Offline Translation")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Enable offline translation", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        if (TranslationAvailability.isAvailable)
+                            "Experimental, on-device. Models download only when requested."
+                        else "Not available yet in this build.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = translationEnabled,
+                    onCheckedChange = { enabled ->
+                        ThemePrefs.saveOfflineTranslationEnabled(context, enabled)
+                        translationEnabled = ThemePrefs.isOfflineTranslationEnabled(context)
+                    },
+                    enabled = TranslationAvailability.isAvailable
+                )
+            }
+
+            if (TranslationAvailability.isAvailable) TranslationPackSettings(enabled = translationEnabled)
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
             SectionLabel("Converted EPUBs Output Folder (SD Card)")

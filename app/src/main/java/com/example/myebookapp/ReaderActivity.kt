@@ -72,6 +72,7 @@ class ReaderActivity : FragmentActivity() {
         private const val NAV_TAG = "epub_navigator"
         private const val AUTO_HIDE_MS = 4000L
         private const val MENU_DEFINE_ID = 9001
+        private const val MENU_TRANSLATE_ID = 9002
 
         // Readium calls pagination after the resource is ready, but images/fonts can
         // still change its layout. An uncertain rendering must not finish the book.
@@ -452,15 +453,30 @@ class ReaderActivity : FragmentActivity() {
                 val selectionCallback = object : ActionMode.Callback {
                     override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
                         menu.add(0, MENU_DEFINE_ID, 0, "Define")
+                        if (ThemePrefs.isOfflineTranslationEnabled(this@ReaderActivity) && TranslationRuntime.isAvailable()) {
+                            menu.add(0, MENU_TRANSLATE_ID, 1, "Translate offline")
+                        }
                         return true
                     }
 
-                    override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean = false
+                    override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean {
+                        menu.findItem(MENU_TRANSLATE_ID)?.isVisible =
+                            ThemePrefs.isOfflineTranslationEnabled(this@ReaderActivity) && TranslationRuntime.isAvailable()
+                        return true
+                    }
 
                     override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
                         if (item.itemId == MENU_DEFINE_ID) {
                             lookupSelectedWord()
                             mode.finish()
+                            return true
+                        }
+                        if (item.itemId == MENU_TRANSLATE_ID) {
+                            if (ThemePrefs.isOfflineTranslationEnabled(this@ReaderActivity) && TranslationRuntime.isAvailable()) {
+                                translateSelection(mode)
+                            } else {
+                                mode.finish()
+                            }
                             return true
                         }
                         return false
@@ -658,6 +674,28 @@ class ReaderActivity : FragmentActivity() {
             }
             isSearchingBook = false
             searchResults = found
+        }
+    }
+
+    private fun translateSelection(mode: ActionMode) {
+        lifecycleScope.launch {
+            val nav = supportFragmentManager.findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment
+            val selected = try {
+                nav?.currentSelection()?.locator?.text?.highlight?.trim()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            } finally {
+                mode.finish()
+            }
+            if (selected.isNullOrBlank()) {
+                android.widget.Toast.makeText(this@ReaderActivity, "Could not read the selected text.", android.widget.Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            nav?.clearSelection()
+            if (!ThemePrefs.isOfflineTranslationEnabled(this@ReaderActivity) || !TranslationRuntime.isAvailable()) return@launch
+            ReaderTranslationDialog(this@ReaderActivity).show(selected)
         }
     }
 

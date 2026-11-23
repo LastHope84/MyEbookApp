@@ -52,6 +52,7 @@ object ThemePrefs {
     private const val KEY_ACCENT = "app_accent"
     private const val KEY_AMOLED = "app_amoled_dark"
     private const val KEY_AUTO_RESUME = "open_last_book_on_launch"
+    private const val KEY_OFFLINE_TRANSLATION = "offline_translation_enabled"
     private const val KEY_KINDLE_EMAIL = "kindle_email"
     private const val KEY_CONVERT_OUT_URI = "converted_output_tree_uri"
 
@@ -93,6 +94,17 @@ object ThemePrefs {
     fun saveAutoOpenLastBook(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_AUTO_RESUME, enabled).apply()
+    }
+
+    // Retain a previously stored preference, but never enable an unavailable feature.
+    fun isOfflineTranslationEnabled(context: Context): Boolean =
+        TranslationAvailability.isAvailable && context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_OFFLINE_TRANSLATION, false)
+
+    fun saveOfflineTranslationEnabled(context: Context, enabled: Boolean) {
+        if (enabled && !TranslationAvailability.isAvailable) return
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_OFFLINE_TRANSLATION, enabled).apply()
     }
 
     fun getKindleEmail(context: Context): String =
