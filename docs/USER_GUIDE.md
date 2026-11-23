@@ -31,7 +31,7 @@ You can change the reading shelf yourself without changing saved progress. When 
 In the library menu, tap + Create shelf and give it a name. Open a book and tap Custom shelves to add or remove it; the button appears once at least one shelf exists. A book can belong to multiple custom shelves as well as a reading shelf. Delete beside a custom shelf removes the shelf, not its books or reading progress.
 
 ### All Books, Recent and To Convert
-All Books shows visible library entries. Recent shows up to 50 most recently added visible entries, including newly converted EPUBs, in library insertion order; older imports follow their original scan order. To Convert lists visible non-EPUB entries. Counts in the menu exclude hidden originals and are independent of search.
+All Books shows visible library entries. Recent shows the books you opened most recently, newest first, including finished books and newly converted EPUBs. To Convert lists visible non-EPUB entries. Counts in the menu exclude hidden originals and are independent of search.
 
 ### Details and path
 Book details show available metadata and a Path. Tap the path to try opening its folder in a file manager. If that is not possible, the app copies a readable path instead.

@@ -343,7 +343,7 @@ if (customId != null) {
 if (f == null) dao.customShelfPaged(customId, showConvertedOriginals, sortMode) else dao.searchCustomShelfPaged(customId, f, showConvertedOriginals, sortMode)
 } else when (tab) {
 LibraryTab.ALL -> if (f == null) dao.allPaged(showConvertedOriginals, sortMode) else dao.searchAllPaged(f, showConvertedOriginals, sortMode)
-LibraryTab.RECENT -> if (f == null) dao.recentlyAddedPaged(showConvertedOriginals) else dao.searchRecentlyAddedPaged(f, showConvertedOriginals)
+LibraryTab.RECENT -> if (f == null) dao.recentPaged(showConvertedOriginals) else dao.searchRecentPaged(f, showConvertedOriginals)
 LibraryTab.FAV -> if (f == null) dao.favoritePaged(showConvertedOriginals, sortMode) else dao.searchFavoritePaged(f, showConvertedOriginals, sortMode)
 LibraryTab.READING -> if (f == null) dao.statusPaged("READING", showConvertedOriginals, sortMode) else dao.searchStatusPaged("READING", f, showConvertedOriginals, sortMode)
 LibraryTab.TBR -> if (f == null) dao.statusPaged("TBR", showConvertedOriginals, sortMode) else dao.searchStatusPaged("TBR", f, showConvertedOriginals, sortMode)
