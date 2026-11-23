@@ -6,7 +6,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
-@Entity(tableName = "books", indices = [Index("uriString", unique = true), Index("title"), Index("series"), Index("lastOpenedAt"), Index("format"), Index("metadataExtracted")])
+@Entity(tableName = "books", indices = [Index("uriString", unique = true), Index("title"), Index("series"), Index("lastOpenedAt"), Index("format"), Index("metadataExtracted"), Index("scanRootUri"), Index("scanParentId")])
 data class BookEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val uriString: String, val fileName: String, val format: String,
@@ -16,7 +16,10 @@ data class BookEntity(
     val progressPercent: Double, val lastOpenedAt: Long, val metadataExtracted: Boolean,
     val series: String? = null, val seriesIndex: Double? = null, val tags: String? = null,
     val isFavorite: Boolean = false,
-    val readingStatus: String = "NEW"
+    val readingStatus: String = "NEW",
+    // Filled by the scanner so a subfolder can be removed without guessing from its name.
+    val scanRootUri: String? = null,
+    val scanParentId: String? = null
 )
 
 @Fts4(contentEntity = BookEntity::class)
@@ -143,6 +146,19 @@ interface BookDao {
     }
     @Query("SELECT id FROM books WHERE (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun getAllIds(showConvertedOriginals: Boolean = false): List<Long>
     @Query("SELECT uriString FROM books") suspend fun getAllUris(): List<String>
+    @Query("UPDATE books SET scanRootUri=:root, scanParentId=:parent WHERE uriString=:uri AND (scanRootUri IS NULL OR scanParentId IS NULL)")
+    suspend fun updateScanProvenance(uri: String, root: String, parent: String): Int
+    @Transaction suspend fun updateScanProvenanceBatch(items: List<BookEntity>) {
+        for (book in items) {
+            val root = book.scanRootUri ?: continue
+            val parent = book.scanParentId ?: continue
+            updateScanProvenance(book.uriString, root, parent)
+        }
+    }
+    @Query("SELECT COUNT(*) FROM books WHERE substr(uriString, 1, length(:prefix)) = :prefix") suspend fun countByUriPrefix(prefix: String): Int
+    @Query("DELETE FROM books WHERE substr(uriString, 1, length(:prefix)) = :prefix") suspend fun deleteByUriPrefix(prefix: String): Int
+    @Query("SELECT COUNT(*) FROM books WHERE scanRootUri = :root AND scanParentId IN (:parentIds)") suspend fun countByScanFolders(root: String, parentIds: List<String>): Int
+    @Query("DELETE FROM books WHERE scanRootUri = :root AND scanParentId IN (:parentIds)") suspend fun deleteByScanFolders(root: String, parentIds: List<String>): Int
     @Query("SELECT id FROM books WHERE isFavorite = 1 AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun getFavoriteIds(showConvertedOriginals: Boolean = false): List<Long>
     @Query("SELECT id FROM books WHERE readingStatus = :status AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun getStatusIds(status: String, showConvertedOriginals: Boolean = false): List<Long>
     @Query("SELECT books.id FROM books JOIN custom_shelf_books ON books.id = custom_shelf_books.bookId WHERE custom_shelf_books.shelfId = :shelfId AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun getCustomShelfBookIds(shelfId: Long, showConvertedOriginals: Boolean = false): List<Long>
@@ -220,7 +236,7 @@ interface BookDao {
     @Query("DELETE FROM books WHERE id = :id") suspend fun deleteById(id: Long)
 }
 
-@Database(entities = [BookEntity::class, BookFtsEntity::class, CustomShelf::class, CustomShelfBook::class, ConversionLink::class], version = 5, exportSchema = false)
+@Database(entities = [BookEntity::class, BookFtsEntity::class, CustomShelf::class, CustomShelfBook::class, ConversionLink::class], version = 6, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao
     companion object {
@@ -246,7 +262,13 @@ abstract class AppDatabase : RoomDatabase() {
             db.execSQL("CREATE TABLE IF NOT EXISTS `conversion_links` (`sourceBookId` INTEGER NOT NULL, `outputBookId` INTEGER NOT NULL, PRIMARY KEY(`sourceBookId`), FOREIGN KEY(`sourceBookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE, FOREIGN KEY(`outputBookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)")
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_conversion_links_outputBookId` ON `conversion_links` (`outputBookId`)")
         } }
-        fun getInstance(context: Context): AppDatabase = INSTANCE ?: synchronized(this) { INSTANCE ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "my_ebook_library.db").addMigrations(M12, M23, M34, M45).build().also { INSTANCE = it } }
+        internal val M56 = object : Migration(5, 6) { override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE books ADD COLUMN scanRootUri TEXT")
+            db.execSQL("ALTER TABLE books ADD COLUMN scanParentId TEXT")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_books_scanRootUri` ON `books` (`scanRootUri`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_books_scanParentId` ON `books` (`scanParentId`)")
+        } }
+        fun getInstance(context: Context): AppDatabase = INSTANCE ?: synchronized(this) { INSTANCE ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "my_ebook_library.db").addMigrations(M12, M23, M34, M45, M56).build().also { INSTANCE = it } }
     }
 }
 fun toFtsQuery(raw: String): String? {

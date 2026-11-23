@@ -61,7 +61,7 @@ val toReadCount by remember(showConvertedOriginals) { dao.observeStatusCount("TB
 val finishedCount by remember(showConvertedOriginals) { dao.observeStatusCount("FINISHED", showConvertedOriginals) }.collectAsState(0)
 var tab by remember { mutableStateOf(LibraryTab.ALL) }; var qry by remember { mutableStateOf("") }; var dbQry by remember { mutableStateOf("") }
 var selB by remember { mutableStateOf<BookEntity?>(null) }; var edtB by remember { mutableStateOf<BookEntity?>(null) }
-var showSet by remember { mutableStateOf(false) }; var showVisibility by remember { mutableStateOf(false) }; var showGuide by rememberSaveable { mutableStateOf(false) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+var showSet by remember { mutableStateOf(false) }; var showVisibility by remember { mutableStateOf(false) }; var showFolders by remember { mutableStateOf(false) }; var showGuide by rememberSaveable { mutableStateOf(false) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
 var showBulkActions by remember { mutableStateOf(false) }
 var showScanLog by remember { mutableStateOf(false) }
 var showBulkMove by remember { mutableStateOf(false) }
@@ -299,6 +299,10 @@ val folderP = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocu
         }
     }
 }
+if (showFolders) {
+    FolderManagementScreen(onClose = { showFolders = false })
+    return
+}
 if (showGuide) {
     UserGuideScreen(onClose = { showGuide = false })
     return
@@ -343,6 +347,7 @@ customShelvesWithCounts.forEach { shelf ->
 TextButton(onClick={showCreateShelf=true}) { Text("+ Create shelf") }
 Spacer(Modifier.height(8.dp)); HorizontalDivider(); Spacer(Modifier.height(8.dp))
 NavigationDrawerItem(label={Text("Add Folder")}, selected=false, onClick={scp.launch{drw.close()}; folderP.launch(null)})
+NavigationDrawerItem(label={Text("Manage folders")}, selected=false, onClick={scp.launch{drw.close()}; showFolders=true})
 if (folders.isNotEmpty()) NavigationDrawerItem(label={Text("Rescan Folders")}, selected=false, onClick={scp.launch{drw.close()}; requestScan("rescan")})
 NavigationDrawerItem(label={Text("Settings")}, selected=false, onClick={scp.launch{drw.close()}; showSet=true})
 NavigationDrawerItem(label={Text("Converted original visibility")}, selected=false, onClick={scp.launch{drw.close()}; showVisibility=true})

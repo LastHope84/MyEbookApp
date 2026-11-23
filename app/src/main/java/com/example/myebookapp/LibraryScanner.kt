@@ -173,6 +173,75 @@ object LibraryScanner {
         } catch (e: Exception) { reportStartFailure(app, e) }
     }
 
+    /** Removes a saved root and its library entries. Source ebook files are never touched. */
+    suspend fun removeFolder(context: Context, treeUri: Uri): Int = withContext(Dispatchers.IO) {
+        val app = context.applicationContext
+        synchronized(lock) {
+            check(activeJob?.isActive != true) { "Stop the current scan before removing a folder." }
+            val saved = getSavedFolders(app) - treeUri.toString()
+            check(app.getSharedPreferences("my_ebook_folders", Context.MODE_PRIVATE).edit()
+                .putStringSet("folder_uris", saved).commit()) { "Could not save the folder list." }
+            val queue = roots(app).filterNot { it == treeUri.toString() }
+            val nextMode = if (queue.isEmpty() && mode(app) == RUNNING) STOPPED else mode(app)
+            save(app, nextMode, queue)
+            _status.update { it.copy(queuedFolders = queue.size) }
+        }
+        val prefix = treeUri.toString().trimEnd('/') + "/document/"
+        val deleted = AppDatabase.getInstance(app).bookDao().deleteByUriPrefix(prefix)
+        runCatching {
+            app.contentResolver.releasePersistableUriPermission(
+                treeUri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        }
+        log(app, "Removed folder $treeUri: $deleted library entries")
+        deleted
+    }
+
+    /** Removes the selected subfolder and its descendants from the library. Files are untouched. */
+    suspend fun removeSubfolder(context: Context, rootUri: Uri, directoryId: String): Int = withContext(Dispatchers.IO) {
+        val app = context.applicationContext
+        synchronized(lock) { check(activeJob?.isActive != true) { "Stop the current scan before removing a folder." } }
+        val ids = collectDirectoryIds(app, rootUri, directoryId)
+        val dao = AppDatabase.getInstance(app).bookDao()
+        var deleted = 0
+        for (chunk in ids.chunked(500)) deleted += dao.deleteByScanFolders(rootUri.toString(), chunk)
+        log(app, "Removed subfolder $directoryId under $rootUri: $deleted library entries")
+        deleted
+    }
+
+    private fun collectDirectoryIds(context: Context, rootUri: Uri, startId: String): List<String> {
+        val out = mutableListOf<String>()
+        val queue = ArrayDeque<String>().apply { addLast(startId) }
+        val seen = mutableSetOf<String>()
+        val projection = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_MIME_TYPE
+        )
+        while (queue.isNotEmpty()) {
+            val id = queue.removeFirst()
+            if (!seen.add(id)) continue
+            out.add(id)
+            if (out.size > 5000) throw IllegalStateException("This folder has too many subfolders to remove safely. Remove its parent folder instead.")
+            val children = DocumentsContract.buildChildDocumentsUriUsingTree(rootUri, id)
+            val cursor = context.contentResolver.query(children, projection, null, null, null)
+                ?: throw IllegalStateException("Folder access was lost. Add the folder again, or restore its permission.")
+            cursor.use { c ->
+                val extras = runCatching { c.extras }.getOrNull()
+                if (extras?.containsKey(DocumentsContract.EXTRA_ERROR) == true) {
+                    throw IllegalStateException("The folder provider reported an error while listing this folder. Nothing was removed.")
+                }
+                while (c.moveToNext()) {
+                    val childId = c.getString(0) ?: continue
+                    val name = c.getString(1) ?: ""
+                    if (c.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR && !name.startsWith(".")) queue.addLast(childId)
+                }
+            }
+        }
+        return out
+    }
+
     private fun startForeground(context: Context) {
         ContextCompat.startForegroundService(context, Intent(context, ScanService::class.java))
     }
@@ -346,6 +415,8 @@ object LibraryScanner {
             if (batch.isEmpty()) return
             checkpoint()
             val inserted = dao.insertIgnoreBatch(batch).count { it != -1L }
+            // Fill provenance for books scanned before this field existed.
+            dao.updateScanProvenanceBatch(batch)
             batch.clear()
             _status.update { it.copy(filesFoundInPass = it.filesFoundInPass + inserted) }
         }
@@ -410,7 +481,9 @@ object LibraryScanner {
                             lastLocatorJson = null,
                             progressPercent = 0.0,
                             lastOpenedAt = 0L,
-                            metadataExtracted = format != "EPUB"
+                            metadataExtracted = format != "EPUB",
+                            scanRootUri = treeUri.toString(),
+                            scanParentId = parentId
                         )
                     )
                     if (batch.size >= BATCH_SIZE) flush()
