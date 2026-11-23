@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -65,7 +66,7 @@ fun BookPlaceholderTile() {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun BookGridTile(book: BookEntity, inSelectionMode: Boolean, isSelected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+fun BookGridTile(book: BookEntity, inSelectionMode: Boolean, isSelected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, onToggleFavorite: () -> Unit) {
     val context = LocalContext.current
     val pct = (book.progressPercent * 100).roundToInt()
     Column(Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
@@ -94,18 +95,20 @@ fun BookGridTile(book: BookEntity, inSelectionMode: Boolean, isSelected: Boolean
                     Text(book.author, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
-            if (book.isFavorite) {
+            if (!inSelectionMode) {
                 Surface(
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
                     shape = CircleShape,
-                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp).size(24.dp)
+                    modifier = Modifier.align(Alignment.TopStart).padding(4.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Favorite,
-                        contentDescription = "Favorite",
-                        tint = Color(0xFFE11D48),
-                        modifier = Modifier.padding(4.dp)
-                    )
+                    IconButton(onClick = onToggleFavorite, modifier = Modifier.size(36.dp)) {
+                        Icon(
+                            imageVector = if (book.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                            contentDescription = if (book.isFavorite) "Remove from favorites" else "Add to favorites",
+                            tint = if (book.isFavorite) Color(0xFFE11D48) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
             if (isSelected) Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primary.copy(0.22f)))
