@@ -620,12 +620,12 @@ object LibraryScanner {
     }.getOrNull()
 
     private fun writeWebpThumbnail(file: File, bmp: Bitmap) {
-        val s = if (bmp.height > 280f) 280f / bmp.height else 1f
+        val s = if (bmp.height > 420f) 420f / bmp.height else 1f
         val t = if (s < 1f) {
             Bitmap.createScaledBitmap(bmp, (bmp.width * s).toInt().coerceAtLeast(1), (bmp.height * s).toInt().coerceAtLeast(1), true)
         } else bmp
         val fmt = if (Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.WEBP
-        file.outputStream().use { check(t.compress(fmt, 75, it)) { "Could not save cover" } }
+        file.outputStream().use { check(t.compress(fmt, 80, it)) { "Could not save cover" } }
     }
 
     private fun sha256(s: String): String =

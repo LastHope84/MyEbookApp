@@ -63,7 +63,7 @@ object OnlineMetadataFetcher {
         return (appleResults + otherResults).take(12)
     }
 
-    fun downloadCoverBitmap(urlString: String, maxDimension: Int = 1400): Bitmap? {
+    fun downloadCoverBitmap(urlString: String, maxDimension: Int = 1600): Bitmap? {
         if (maxDimension <= 0) return null
         return runCatching {
             val bytes = fetchBytes(urlString, timeoutMs = 12_000, maxBytes = MAX_COVER_BYTES) ?: return null
@@ -91,7 +91,7 @@ object OnlineMetadataFetcher {
             val date = if (rawDate.length >= 10) rawDate.take(10) else rawDate
             val cover = obj.optString("artworkUrl100", "").trim()
                 .takeIf { it.isNotBlank() }
-                ?.replace("100x100bb", "600x600bb")
+                ?.replace("100x100bb", "1200x1200bb")
                 ?.replace("http://", "https://")
             list.add(
                 OnlineBookCandidate(
@@ -126,13 +126,16 @@ object OnlineMetadataFetcher {
                 }
             }
             val imageLinks = info.optJSONObject("imageLinks")
-            val coverUrl = imageLinks?.optString("large", "")
+            val coverUrl = imageLinks?.optString("extraLarge", "")
+                ?.ifBlank { imageLinks.optString("large", "") }
                 ?.ifBlank { imageLinks.optString("medium", "") }
                 ?.ifBlank { imageLinks.optString("thumbnail", "") }
                 ?.ifBlank { imageLinks.optString("smallThumbnail", "") }
                 ?.ifBlank { null }
                 ?.replace("http://", "https://")
                 ?.replace("&edge=curl", "")
+                // Google serves the largest original when zoom is 0.
+                ?.replace(Regex("zoom=[0-9]+"), "zoom=0")
             list.add(
                 OnlineBookCandidate(
                     source = "Google Books",
