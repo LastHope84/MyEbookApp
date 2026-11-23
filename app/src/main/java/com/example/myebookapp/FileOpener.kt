@@ -107,7 +107,9 @@ object FileOpener {
 
             // Books edited in the app are shared with their corrections baked in.
             val exported = if (book.format == "EPUB" && book.metadataEdited) {
-                val base = book.title.ifBlank { book.fileName.substringBeforeLast('.') }
+                val authorPart = book.author.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
+                val stem = if (authorPart != null) "${book.title} - $authorPart" else book.title
+                val base = stem.ifBlank { book.fileName.substringBeforeLast('.') }
                     .replace(Regex("[\\\\/:*?\"<>|]"), "_")
                     .ifBlank { "book" }
                 var finalName = "$base.epub"

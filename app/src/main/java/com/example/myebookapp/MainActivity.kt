@@ -244,8 +244,15 @@ val cover = r.newCoverBitmap?.let {
     LibraryScanner.saveWebpThumbnail(ctx, b.uriString + "|edit|" + java.util.UUID.randomUUID(), it)
         ?: error("Could not save the cover.")
 }
-val count = dao.saveEditedMetadata(b.id, r.title, r.author, r.publishingDate, r.publisher, r.language, changeCover, cover, r.series, r.seriesIndex, r.tags)
+val exportCover = r.newCoverBitmap?.let {
+    LibraryScanner.saveExportCover(ctx, it) ?: error("Could not save the cover.")
+}
+val previousExportCover = b.exportCoverPath
+val count = dao.saveEditedMetadata(b.id, r.title, r.author, r.publishingDate, r.publisher, r.language, changeCover, cover, exportCover, r.series, r.seriesIndex, r.tags)
 check(count == 1) { "Book is no longer in the library." }
+if (changeCover && previousExportCover != null && previousExportCover != exportCover) {
+    runCatching { java.io.File(previousExportCover).delete() }
+}
 dao.getByUri(b.uriString)
 }
 edtB = null

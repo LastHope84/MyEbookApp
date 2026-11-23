@@ -601,6 +601,24 @@ object LibraryScanner {
         return file.absolutePath
     }
 
+    /** Full-size cover for exported copies, so a replaced cover is not the 280px grid thumbnail. */
+    fun saveExportCover(context: Context, bmp: Bitmap): String? = runCatching {
+        val longest = maxOf(bmp.width, bmp.height)
+        val s = if (longest > 1600) 1600f / longest else 1f
+        val scaled = if (s < 1f) {
+            Bitmap.createScaledBitmap(
+                bmp,
+                (bmp.width * s).toInt().coerceAtLeast(1),
+                (bmp.height * s).toInt().coerceAtLeast(1),
+                true
+            )
+        } else bmp
+        val dir = File(context.filesDir, "covers_export").apply { mkdirs() }
+        val file = File(dir, "${sha256(System.nanoTime().toString() + bmp.hashCode())}.jpg")
+        file.outputStream().use { check(scaled.compress(Bitmap.CompressFormat.JPEG, 95, it)) { "Could not save cover" } }
+        file.absolutePath
+    }.getOrNull()
+
     private fun writeWebpThumbnail(file: File, bmp: Bitmap) {
         val s = if (bmp.height > 280f) 280f / bmp.height else 1f
         val t = if (s < 1f) {

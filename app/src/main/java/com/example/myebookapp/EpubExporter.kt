@@ -141,7 +141,7 @@ object EpubExporter {
     }
 
     private fun replaceCover(context: Context, book: BookEntity, doc: Document, zip: ZipFile, opfPath: String): Pair<String, ByteArray>? {
-        val coverFile = book.coverPath?.let(::File)?.takeIf { it.exists() } ?: return null
+        val coverFile = book.exportCoverPath?.let(::File)?.takeIf { it.exists() } ?: return null
         val bitmap = BitmapFactory.decodeFile(coverFile.absolutePath) ?: return null
         val manifest = doc.getElementsByTagNameNS("*", "manifest").item(0) as? Element ?: return null
 
