@@ -66,6 +66,8 @@ object LibraryScanner {
         }
     }
 
+    fun logTts(context: Context, message: String) = log(context, "TTS: $message")
+
     private fun log(context: Context, message: String) {
         runCatching {
             val file = File(context.filesDir, "scan.log")

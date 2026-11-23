@@ -5,6 +5,7 @@ import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
+import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.text.Html
@@ -52,10 +53,14 @@ class TtsController(
     private var utteranceSeq = 0
     private var skipGuard = 0
     private var focusRequest: AudioFocusRequest? = null
+    private var lastSpeakKey = ""
+    private var lastSpeakAt = 0L
+    private var loadedLinkIndex = -1
 
     val currentState: TtsState get() = state
 
     fun start(from: Locator) {
+        loadedLinkIndex = -1
         base = from
         val order = publication.readingOrder
         linkIndex = order.indexOfFirst { it.href.toString() == from.href.toString() }.let { if (it < 0) 0 else it }
@@ -65,22 +70,27 @@ class TtsController(
 
     fun pause() {
         if (state != TtsState.PLAYING) return
+        LibraryScanner.logTts(context, "pause")
         engine?.stop()
         currentUtterance = ""
+        lastSpeakKey = ""
         abandonFocus()
         setState(TtsState.PAUSED)
     }
 
     fun resume() {
         if (state != TtsState.PAUSED) return
+        LibraryScanner.logTts(context, "resume")
         speakCurrent()
     }
 
     fun stop() {
         job?.cancel()
         job = null
+        loadedLinkIndex = -1
         engine?.stop()
         currentUtterance = ""
+        lastSpeakKey = ""
         abandonFocus()
         setState(TtsState.IDLE)
     }
@@ -121,6 +131,10 @@ class TtsController(
     }
 
     private fun loadChapter(index: Int, startProgression: Double) {
+        if (index == loadedLinkIndex && state == TtsState.PLAYING) {
+            LibraryScanner.logTts(context, "chapter $index already active; reload ignored")
+            return
+        }
         job?.cancel()
         job = scope.launch {
             val link = publication.readingOrder[index]
@@ -139,8 +153,10 @@ class TtsController(
             }
             skipGuard = 0
             linkIndex = index
+            loadedLinkIndex = index
             text = plain
             chunks = split(plain)
+            LibraryScanner.logTts(context, "chapter $index loaded (${plain.length} chars, ${chunks.size} parts)")
             base = base?.copy(
                 href = link.href.resolve(),
                 title = link.title,
@@ -170,6 +186,7 @@ class TtsController(
             return
         }
         linkIndex++
+        LibraryScanner.logTts(context, "advance to chapter $linkIndex")
         onChapterChanged(publication.readingOrder[linkIndex])
         loadChapter(linkIndex, 0.0)
     }
@@ -187,7 +204,16 @@ class TtsController(
             return
         }
         val chunk = chunks[chunkIndex]
+        val key = "$linkIndex:$chunkIndex"
+        val now = SystemClock.elapsedRealtime()
+        if (key == lastSpeakKey && now - lastSpeakAt < 3000) {
+            LibraryScanner.logTts(context, "skip duplicate $key")
+            return
+        }
+        lastSpeakKey = key
+        lastSpeakAt = now
         currentUtterance = "tts_${++utteranceSeq}"
+        LibraryScanner.logTts(context, "speak $key ${chunk.text.take(60)}")
         instance.speak(chunk.text, TextToSpeech.QUEUE_ADD, null, currentUtterance)
         setState(TtsState.PLAYING)
         reportProgress(chunk.start)
@@ -198,6 +224,7 @@ class TtsController(
 
         override fun onDone(utteranceId: String?) {
             if (utteranceId != currentUtterance) return
+            LibraryScanner.logTts(context, "done $utteranceId")
             // Consume it before the async work: engines occasionally deliver onDone twice,
             // and a duplicate must not advance the text a second time.
             currentUtterance = ""
