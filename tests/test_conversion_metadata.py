@@ -71,7 +71,7 @@ class ConversionMetadataTests(unittest.TestCase):
         self.assertIn('dao.indexConvertedOutput(book.id, book.uriString, entry)', conversion)
         self.assertIn('java.util.UUID.randomUUID()', conversion)
         tile = MAIN.split('val b = paged[i];', 1)[1].split('BookPlaceholderTile()', 1)[0]
-        self.assertEqual(2, tile.count('!bulkSaving && !converting'))
+        self.assertEqual(3, tile.count('!bulkSaving && !converting'))
 
 if __name__ == '__main__':
     unittest.main()

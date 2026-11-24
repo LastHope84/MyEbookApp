@@ -194,5 +194,17 @@ CBR support uses the UnRAR decompression code by Alexander Roshal. The code is f
 ### PDF text
 PDF text extraction uses Apache PDFBox, licensed under the Apache License 2.0.
 
+### MOBI conversion
+MOBI and AZW3 conversion uses libmobi, licensed under the GNU Lesser General Public License v3.0 or later. libmobi is loaded as a separate shared library; its source is available at https://github.com/bfabiszewski/libmobi.
+
+### Offline translation
+Offline translation uses Foxlet Translate (MIT). Foxlet includes the Bergamot translator (MPL 2.0), Marian (MIT), SentencePiece and ruy (Apache 2.0), and other components; the full notices travel inside the app. Mozilla Firefox Translations models are downloaded only when you install a language pack and are licensed under MPL 2.0.
+
+### Fonts
+The reader's OpenDyslexic, Accessible DfA and iA Writer Duospace fonts are included with Readium under the SIL Open Font License 1.1.
+
 ### Other components
-The reader uses Readium (BSD-3-Clause) for EPUB, AndroidX and Material Components (Apache 2.0), Coil (Apache 2.0), and junrar (UnRAR license). Full notices are in the project's THIRD_PARTY_NOTICES file.
+The reader uses Readium (BSD-3-Clause) for EPUB, AndroidX, Jetpack Compose and Material Components (Apache 2.0), Coil (Apache 2.0), Kotlin and kotlinx.coroutines (Apache 2.0), and junrar (UnRAR license). Full notices and licence texts are in the project repository's THIRD_PARTY_NOTICES.md and licenses folder.
+
+### Project code
+The app's own code is currently all rights reserved; no licence is granted for reuse or redistribution. Third-party components keep their own licences.

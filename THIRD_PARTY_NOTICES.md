@@ -1,68 +1,100 @@
 # Third-party notices
 
-MyEbookApp uses the following third-party components.
+MyEbookApp is built with the third-party components listed below. The full
+licence texts are in the [`licenses/`](licenses/) directory. Versions are the
+ones used by the current build.
 
-## UnRAR (CBR/RAR decompression)
+## Runtime components
 
-CBR support uses junrar, a Java port of the UnRAR decompressor.
+### libmobi — MOBI/AZW3 conversion
 
-```
- ******    *****   ******   UnRAR - free utility for RAR archives
- **   **  **   **  **   **  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- ******   *******  ******    License for use and distribution of
- **   **  **   **  **   **   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- **   **  **   **  **   **         FREE portable version
-                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Project: https://github.com/bfabiszewski/libmobi (v0.12)
+- Licence: GNU Lesser General Public License v3.0 or later
+  ([licenses/LGPL-3.0.txt](licenses/LGPL-3.0.txt))
+- Copyright (c) 2014-2022 Bartek Fabiszewski
 
-      The source code of UnRAR utility is freeware. This means:
+libmobi is compiled into a separate shared library (`libmobiconv.so`) together
+with the small JNI wrapper in `app/src/main/cpp/mobi_jni.c`, so the library can
+be replaced. The upstream source is available at the project URL above; the
+build fetches the v0.12 tag and copies `app/src/main/cpp/config.h` into it.
+libmobi itself is unmodified. Encrypted or DRM-protected files are refused.
 
-   1. All copyrights to RAR and the utility UnRAR are exclusively
-      owned by the author - Alexander Roshal.
+### junrar — CBR/RAR decompression
 
-   2. The UnRAR sources may be used in any software to handle RAR
-      archives without limitations free of charge, but cannot be used
-      to re-create the RAR compression algorithm, which is proprietary.
-      Distribution of modified UnRAR sources in separate form or as a
-      part of other software is permitted, provided that it is clearly
-      stated in the documentation and source comments that the code may
-      not be used to develop a RAR (WinRAR) compatible archiver.
+- Licence: UnRAR ([licenses/UnRAR.txt](licenses/UnRAR.txt))
+- junrar is a Java port of the UnRAR decompressor by Alexander Roshal.
 
-   3. The UnRAR utility may be freely distributed. It is allowed
-      to distribute UnRAR inside of other software packages.
+MyEbookApp only reads RAR archives. It does not create RAR archives and does
+not include a RAR compressor. CBR files that are really ZIP archives are read
+with the platform ZIP support instead.
 
-   4. THE RAR ARCHIVER AND THE UnRAR UTILITY ARE DISTRIBUTED "AS IS".
-      NO WARRANTY OF ANY KIND IS EXPRESSED OR IMPLIED. YOU USE AT
-      YOUR OWN RISK. THE AUTHOR WILL NOT BE LIABLE FOR DATA LOSS,
-      DAMAGES, LOSS OF PROFITS OR ANY OTHER KIND OF LOSS WHILE USING
-      OR MISUSING THIS SOFTWARE.
+### Apache PDFBox / pdfbox-android — PDF text layer
 
-   5. Installing and using the UnRAR utility signifies acceptance of
-      these terms and conditions of the license.
+- Licence: Apache License 2.0
+  ([licenses/Apache-2.0.txt](licenses/Apache-2.0.txt))
+- Copyright the Apache Software Foundation.
 
-   6. If you don't agree with terms of the license you must remove
-      UnRAR files from your storage devices and cease to use the
-      utility.
+Used for PDF word positions, text selection, search and read-aloud. PDF page
+rendering uses Android's built-in `PdfRenderer`.
 
-      Thank you for your interest in RAR and UnRAR.
+### Readium Kotlin Toolkit — EPUB reading
 
-                                            Alexander L. Roshal
-```
+- Project: https://github.com/readium/kotlin-toolkit (3.1.2)
+- Licence: BSD 3-Clause
+  ([licenses/BSD-3-Clause.txt](licenses/BSD-3-Clause.txt))
+- Copyright (c) 2017, Readium. All rights reserved.
 
-MyEbookApp only reads RAR archives. It does not create RAR archives and does not include a RAR compressor.
+Readium also bundles Readium CSS and three fonts used by the reader's
+appearance settings:
 
-## Apache PDFBox (PDF text extraction)
+| Font | Licence | Copyright |
+| --- | --- | --- |
+| OpenDyslexic | SIL Open Font License 1.1 ([licenses/OFL-1.1.txt](licenses/OFL-1.1.txt)) | Abbie Gonzalez |
+| Accessible DfA | SIL Open Font License 1.1 | Copyright (c) Orange 2015; Reserved Font Name Accessible-Dfa |
+| iA Writer Duospace (IBM Plex) | SIL Open Font License 1.1 | Copyright © 2017 IBM Corp.; Reserved Font Name "Plex" |
 
-PDF text extraction uses Apache PDFBox, licensed under the Apache License, Version 2.0:
-https://www.apache.org/licenses/LICENSE-2.0
+### AndroidX, Jetpack Compose, Material Components
 
-## Readium Kotlin Toolkit (EPUB)
+AndroidX libraries (Core, Activity, Fragment, Lifecycle, Media, Room, Paging),
+Jetpack Compose and Material Components are licensed under the Apache License
+2.0.
 
-The EPUB reader uses the Readium Kotlin Toolkit, licensed under the BSD-3-Clause license.
+### Coil, OkHttp, Okio
 
-## AndroidX, Material Components, Coil
+Coil (image loading) and its OkHttp/Okio dependencies are licensed under the
+Apache License 2.0.
 
-AndroidX libraries, Material Components and Coil are licensed under the Apache License, Version 2.0.
+### Kotlin standard library and kotlinx.coroutines
 
-## junrar
+Licensed under the Apache License 2.0.
 
-junrar is distributed under the UnRAR license shown above.
+### Foxlet Translate — offline translation engine
+
+- Project: https://github.com/yinvoke/foxlet-translate (v0.5.0, commit
+  `0eff2a15032362115848a496ce1df8ed9fc68650`)
+- Licence: MIT ([licenses/MIT.txt](licenses/MIT.txt))
+
+Foxlet includes the Bergamot translator (MPL 2.0), Marian (MIT), SentencePiece
+and ruy (Apache 2.0), and other components. The Foxlet AAR bundles the complete
+third-party licence materials and its NOTICE under
+`io/github/yinvoker/foxlet/licenses/`; those files are included in the APK.
+
+Mozilla Firefox Translations models are downloaded only when a language pack
+is installed by the user. They are licensed under MPL 2.0
+([licenses/MPL-2.0.txt](licenses/MPL-2.0.txt)) and are not bundled in the APK.
+
+## Build and test only (not distributed in the APK)
+
+- JUnit 4.13.2 — Eclipse Public License 1.0.
+- Gradle, the Android Gradle Plugin and the Kotlin compiler — Apache License
+  2.0.
+- Python 3 and its standard library are used for the source-level regression
+  tests; no third-party Python packages are required.
+
+## Notes
+
+- No component is used to bypass DRM. Encrypted MOBI/AZW3 files are refused,
+  and password-protected CBR files are refused.
+- If you redistribute this app or a modified version, keep these notices and
+  the licence texts, and make the libmobi source available as required by the
+  LGPL.

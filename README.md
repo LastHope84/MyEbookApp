@@ -1,64 +1,103 @@
 # MyEbookApp
 
-A personal Android ebook reader and library, built to help you organise your books and make reading comfortable. The app is under active development, so some features and controls are still a work in progress.
+MyEbookApp is a personal Android ebook reader and library. It is built for one
+reader's shelves rather than as a store product: the library lives on the
+device, there is no account, and there is no analytics.
 
-## What it can do
+Current release: **1.13.3** (Android 8.0 or later, arm64-v8a).
 
-- Scan selected folders and their subfolders for books and search the library.
-- Read EPUBs, save your place, search within a book and navigate its contents.
-- Adjust the reader's theme, font, spacing, brightness and other reading preferences.
-- Keep favourites and manually assign books to **To Read**, **Reading** or **Finished**.
-- Edit library metadata and covers locally, or look for matching editions online.
-- Attempt to convert MOBI-family files to EPUB, then share books or prepare an email to Send to Kindle.
-- Open the built-in user guide from the app's library menu.
+## Features
 
-### Supported files
+### Library
+
+- Scan folders and their subfolders through Android's folder picker, with a
+  foreground service so scans can continue in the background. Pause, resume or
+  stop from the scan banner.
+- Add one or more files with **Add File**, or open EPUB, CBZ, CBR, PDF, MOBI or
+  AZW3 files from a file manager, Downloads or another app.
+- Search an on-device index of title, author, publisher, series and tags.
+  Search needs at least two letters.
+- Cover grid or detailed list, sorted by title, author or recently opened.
+- Favorites, To Read / Reading / Finished shelves and custom shelves.
+- Built-in shelves: **Comics (CBR/CBZ)**, **Documents (PDF)** and **Not in a
+  custom shelf**.
+- Edit metadata and covers locally, or look for matching editions online.
+- Clean duplicate library entries (same file name and size), keeping the most
+  recently used copy; files are not deleted.
+- Back up the library, covers and settings to a `.zip`, optionally including
+  the book files the app owns; restore replaces the library after confirmation.
+- Activity log, storage summary, temporary-cache cleanup and converted-original
+  visibility.
+
+### Reading
+
+- **EPUB** through the Readium Kotlin Toolkit: saved position and progress,
+  table of contents, in-book search, rotation, and appearance controls for
+  theme, font, size, spacing and margins. The OpenDyslexic, Accessible DfA and
+  iA Writer Duospace fonts are included.
+- **Read aloud** with the phone's text-to-speech engine, including a media
+  notification with Play/Pause/Stop and page following while the voice reads.
+- **CBZ and CBR comics**: page swiping, tap zones, pinch and double-tap zoom
+  with panning, a page slider, and a remembered right-to-left mode for manga.
+  ComicInfo.xml metadata and the first page as cover are used when present.
+- **PDF**: page rendering through Android's `PdfRenderer`, plus a selectable
+  text layer through PDFBox for copy, dictionary lookup, offline translation,
+  read-aloud and whole-document search. Scanned PDFs without a text layer keep
+  the page controls and hide the text actions.
+- **Offline translation** (arm64 build): install language packs from Settings
+  and translate selected text or a whole EPUB. The original book is kept and a
+  translated copy is added.
+- Dictionary lookup for selected words, using online sources.
+- Share a book, or prepare a Send to Kindle email for you to review and send.
+- Delete the app's own copy of an imported or converted book; source files in
+  your folders are never deleted.
+
+### Conversion
+
+- Convert MOBI, AZW, AZW3 and PRC files to EPUB with libmobi. Conversion
+  quality depends on the source; encrypted or DRM-protected files are refused.
+- Converted EPUBs go to app storage by default. **Pick SD / Folder** in
+  Settings chooses another folder; **Reset** returns to app storage. If the
+  chosen folder is unavailable, the EPUB is saved in app storage instead.
+- Successfully converted originals are hidden by default, not deleted.
+
+## Supported files
 
 | Format | What the app does |
 | --- | --- |
 | EPUB | Opens in the reader. |
-| MOBI, AZW, AZW3, PRC | Finds them in scanned folders and offers conversion to EPUB. Conversion is not guaranteed; encrypted or DRM-protected MOBI files cannot be converted. |
+| CBZ | Opens as a comic. |
+| CBR | Opens as a comic; ZIP-based CBR files use the ZIP reader. |
+| PDF | Opens as pages, with text features when the PDF has a text layer. |
+| MOBI, AZW, AZW3, PRC | Added to the library and offered conversion to EPUB. |
 
-Other formats are not added by the folder scanner. EPUB compatibility can also vary between books.
+The folder scanner ignores other formats and hidden folders. EPUB, comic and
+PDF compatibility varies between files.
 
-## Getting started
+## Install
 
-1. Install a compatible APK on an Android device running **Android 7.0 or later**. The current build targets ARM64 and ARMv7 devices.
-2. Open the app, tap the library menu and choose **Add Folder**.
-3. Select a folder containing ebooks and grant access. The app scans its subfolders too.
-4. Tap an EPUB in the library and choose **Read Book**. Use **To Convert** for compatible non-EPUB books.
+Prebuilt APKs are debug-signed and published from this project's server:
 
-For more detail, see the [full user guide](docs/USER_GUIDE.md), also available inside the app.
+- Latest: <https://rhealyn.clodhost.com/downloads/MyEbookApp-latest.apk>
+- GitHub Actions also uploads each build as the `MyEbookApp-debug-apk`
+  artifact (kept for 14 days): <https://github.com/LastHope84/MyEbookApp/actions/workflows/build.yml>
 
-## APKs and installation
-
-This repository builds a **debug APK** with [GitHub Actions](https://github.com/LastHope84/MyEbookApp/actions/workflows/build.yml). Open a successful run and look for its `MyEbookApp-debug-apk` artifact. Artifacts are currently kept for 14 days and downloading them may require a GitHub account. They are build artifacts, not a promised stable release channel.
-
-Android accepts an update only when its signing certificate matches the installed app and its version code is suitable. A locally built APK may use a different signature from a CI-built APK. Uninstalling to switch signatures can delete the app's library data and privately stored conversions, so export important converted books first.
-
-## Your files and privacy
-
-The current library edit flow stores metadata and cover changes in the app; it does not rewrite the source ebook. Sharing sends the file itself, not those app-only edits. Removing a book from the library removes its library entry, not the original file. Conversion creates a separate EPUB; check the result and keep the source.
-
-Library records, reading progress and preferences are stored on the device. Android backup may apply. Converted EPUBs are saved to app-private storage by default and may be lost if you uninstall or clear app data; use Share to save a copy elsewhere and keep separate backups of originals.
-
-Online metadata lookup sends the title and author you enter to catalogue services. Dictionary lookups send selected words to online sources. Sharing hands a file to the app you choose; Send to Kindle prepares an email for you to review and send, rather than sending it automatically.
-
-## Current limitations
-
-- Reading statuses are **manual**: opening a book or reaching its end does not automatically change its shelf. Custom shelves are not available in this version.
-- Some displayed settings are not connected yet, including the conversion-output folder picker, duplicate cleanup and reopening the last book on launch.
-- Folder scanning runs in a foreground service so it can continue while the app is in the background. Hidden folders are skipped. An unreadable EPUB is kept in the library with basic details instead of blocking the rest of the scan.
-- Some EPUBs may not open correctly, and conversion quality depends on the source.
-- The app has no visible export for its library edits or shelves. See the [guide](docs/USER_GUIDE.md#storage-safety-and-troubleshooting) before clearing app data or uninstalling.
+Android only accepts an update when the signing certificate matches the
+installed app. Uninstalling to switch signatures can delete the library,
+progress and app-private files, so make a backup first.
 
 ## Build from source
 
-The project uses Kotlin, Jetpack Compose, Room, Readium and a native libmobi component. The CI configuration is the reference for the current build environment.
+The CI workflow is the reference build. It uses:
 
-Requirements include JDK 17, Android SDK 35, Android NDK 26.1.10909125, CMake 3.22.1 or newer, Git and Gradle 8.13. The repository does **not** currently include a Gradle wrapper or a bundled copy of libmobi.
+- JDK 17
+- Gradle 8.13
+- Android SDK 35 (36 for the offline-translation build)
+- Android NDK 26.1.10909125
+- CMake 3.22.1 or newer
 
-From the repository root, matching the CI setup:
+The repository does not include libmobi or a Gradle wrapper. Fetch libmobi
+v0.12 and build the normal (no offline translation) debug APK with:
 
 ```sh
 git clone --depth 1 --branch v0.12 https://github.com/bfabiszewski/libmobi.git app/src/main/cpp/libmobi
@@ -66,8 +105,70 @@ cp app/src/main/cpp/config.h app/src/main/cpp/libmobi/config.h
 gradle assembleDebug
 ```
 
-The APK is generated under `app/build/outputs/apk/debug/`. This is a debug build; see the signing warning above before installing it over an existing app.
+The APK is written to `app/build/outputs/apk/debug/`.
+
+The published arm64 build also compiles Foxlet Translate 0.5.0 from the pinned
+commit `0eff2a15032362115848a496ce1df8ed9fc68650` and passes the resulting AAR
+with `-PfoxletAar=/path/to/foxlet-release.aar`. Without that property the app
+builds with a fail-closed translation stub (`app/src/nofoxlet`).
+
+Source-level regression tests live in `tests/` and need only Python 3:
+
+```sh
+python3 -m unittest discover -s tests
+```
+
+## Project layout
+
+```text
+app/src/main/java/          Library, readers, conversion, backup and settings
+app/src/main/cpp/           JNI wrapper and CMake build for libmobi
+app/src/foxlet/             Real offline-translation runtime (arm64 build)
+app/src/nofoxlet/           Fail-closed translation stub (normal build)
+app/src/main/res/           Icons and Android resources
+docs/USER_GUIDE.md          User guide (also available inside the app)
+licenses/                   Full third-party licence texts
+tests/                      Python source-level regression tests
+```
+
+## Privacy
+
+- Library records, reading progress, favorites, shelves and settings are stored
+  on the device. The app has no account and sends no telemetry.
+- Online metadata lookup sends the title and author you enter to catalogue
+  services. Dictionary lookups send the selected word to online sources.
+- Language packs are downloaded from the model provider only when you choose
+  them; translation itself runs on the device.
+- Sharing hands the file to the app you choose. Send to Kindle prepares an
+  email for you to review and send; the app does not send it.
+- A backup file contains library details, settings and your Kindle email
+  address. Keep it somewhere safe.
+
+## Limitations
+
+- Some EPUBs may not open correctly, and conversion quality depends on the
+  source file.
+- PDF text features need a PDF with a real text layer.
+- Offline translation is only in the arm64 build and needs downloaded language
+  packs.
+- Restore replaces the library on the device. Books added after the backup are
+  removed from the library, though their files are not deleted.
+- Folder access depends on Android's persisted permission. On a new phone,
+  re-add the folder and rescan.
+- Aggressive battery settings, especially on MIUI/HyperOS, can stop background
+  scans. Allow notifications and remove battery restrictions for the app.
 
 ## Licence
 
-There is currently no project licence file in this repository. Please do not assume that the project code is licensed for reuse or redistribution. Third-party components have their own licences.
+The project's own code is currently **all rights reserved**: no licence is
+granted for reuse or redistribution. Third-party components keep their own
+licences, including libmobi (LGPL-3.0-or-later), junrar (UnRAR), Readium
+(BSD-3-Clause), Apache PDFBox (Apache-2.0), Foxlet Translate (MIT), Mozilla
+translation models (MPL-2.0), and the bundled fonts (SIL OFL 1.1). See
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the
+[`licenses/`](licenses/) directory for details.
+
+## Credits
+
+Thanks to the libmobi, Readium, PDFBox, junrar, Foxlet, Bergamot, Marian and
+Mozilla translations projects, and to the font authors.

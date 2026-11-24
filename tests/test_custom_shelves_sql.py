@@ -6,7 +6,7 @@ import unittest
 
 SOURCE = (pathlib.Path(__file__).resolve().parents[1] / "app/src/main/java/com/example/myebookapp/BookDatabase.kt").read_text()
 MIGRATION_34 = SOURCE.split('internal val M34', 1)[1].split('internal val M45', 1)[0]
-MIGRATION_45 = SOURCE.split('internal val M45', 1)[1].split('fun getInstance', 1)[0]
+MIGRATION_45 = SOURCE.split('internal val M45', 1)[1].split('internal val M56', 1)[0]
 STATEMENTS_34 = re.findall(r'db\.execSQL\("([^"]+)"\)', MIGRATION_34)
 STATEMENTS_45 = re.findall(r'db\.execSQL\("([^"]+)"\)', MIGRATION_45)
 
@@ -22,11 +22,11 @@ class CustomShelvesSqlTests(unittest.TestCase):
     def setUp(self):
         self.db = sqlite3.connect(':memory:')
         self.db.execute('PRAGMA foreign_keys=ON')
-        self.db.execute('CREATE TABLE books (id INTEGER PRIMARY KEY, uriString TEXT UNIQUE, title TEXT, author TEXT, publisher TEXT, series TEXT, tags TEXT, isFavorite INTEGER, readingStatus TEXT, progressPercent REAL, lastLocatorJson TEXT)')
+        self.db.execute('CREATE TABLE books (id INTEGER PRIMARY KEY, uriString TEXT UNIQUE, title TEXT, author TEXT, publisher TEXT, series TEXT, tags TEXT, isFavorite INTEGER, readingStatus TEXT, progressPercent REAL, lastLocatorJson TEXT, lastOpenedAt INTEGER)')
         self.db.execute('CREATE VIRTUAL TABLE books_fts USING fts4(content=`books`, author, publisher, series, tags, title)')
-        self.db.executemany('INSERT INTO books VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
-            (1, 'uri:1', 'Alpha', 'Ada', 'Pub', 'Saga', 'magic', 1, 'READING', 0.75, 'locator'),
-            (2, 'uri:2', 'Beta', 'Bob', 'Pub', None, None, 0, 'FINISHED', 1.0, 'other')])
+        self.db.executemany('INSERT INTO books VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+            (1, 'uri:1', 'Alpha', 'Ada', 'Pub', 'Saga', 'magic', 1, 'READING', 0.75, 'locator', 100),
+            (2, 'uri:2', 'Beta', 'Bob', 'Pub', None, None, 0, 'FINISHED', 1.0, 'other', 200)])
         self.db.execute("INSERT INTO books_fts(books_fts) VALUES ('rebuild')")
         self.before = self.db.execute('SELECT * FROM books ORDER BY id').fetchall()
         self.assertEqual(len(STATEMENTS_34), 4)
@@ -44,13 +44,13 @@ class CustomShelvesSqlTests(unittest.TestCase):
     def test_membership_search_and_independence(self):
         self.db.executemany('INSERT INTO custom_shelves(id, name) VALUES (?, ?)', [(1, 'ew'), (2, 'Loved')])
         self.db.executemany('INSERT INTO custom_shelf_books VALUES (?, ?)', [(1, 1), (2, 1), (1, 2)])
-        self.assertEqual([r[0] for r in self.db.execute(query('customShelfPaged'), {'shelfId': 1, 'showConvertedOriginals': 0})], [1, 2])
-        self.assertEqual([r[0] for r in self.db.execute(query('searchCustomShelfPaged'), {'shelfId': 1, 'q': 'Alpha*', 'showConvertedOriginals': 0})], [1])
-        self.assertEqual(list(self.db.execute(query('searchCustomShelfPaged'), {'shelfId': 2, 'q': 'Beta*', 'showConvertedOriginals': 0})), [])
+        self.assertEqual([r[0] for r in self.db.execute(query('customShelfPaged'), {'shelfId': 1, 'showConvertedOriginals': 0, 'sort': 'title'})], [1, 2])
+        self.assertEqual([r[0] for r in self.db.execute(query('searchCustomShelfPaged'), {'shelfId': 1, 'q': 'Alpha*', 'showConvertedOriginals': 0, 'sort': 'title'})], [1])
+        self.assertEqual(list(self.db.execute(query('searchCustomShelfPaged'), {'shelfId': 2, 'q': 'Beta*', 'showConvertedOriginals': 0, 'sort': 'title'})), [])
         self.db.execute('DELETE FROM custom_shelf_books WHERE shelfId=1 AND bookId=1')
         self.assertEqual(self.db.execute('SELECT * FROM custom_shelf_books WHERE bookId=1').fetchall(), [(2, 1)])
         self.assertEqual(self.db.execute('SELECT * FROM books ORDER BY id').fetchall(), self.before)
-        self.db.execute("INSERT OR IGNORE INTO books VALUES (3, 'uri:1', 'replacement', '', '', NULL, NULL, 0, 'NEW', 0, NULL)")
+        self.db.execute("INSERT OR IGNORE INTO books VALUES (3, 'uri:1', 'replacement', '', '', NULL, NULL, 0, 'NEW', 0, NULL, 0)")
         self.assertEqual(self.db.execute('SELECT * FROM books ORDER BY id').fetchall(), self.before)
         self.assertEqual(self.db.execute('SELECT * FROM custom_shelf_books WHERE bookId=1').fetchall(), [(2, 1)])
 

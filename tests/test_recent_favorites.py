@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DAO = (ROOT / 'app/src/main/java/com/example/myebookapp/BookDatabase.kt').read_text()
 MAIN = (ROOT / 'app/src/main/java/com/example/myebookapp/MainActivity.kt').read_text()
-MIGRATION_45 = DAO.split('internal val M45', 1)[1].split('fun getInstance', 1)[0]
+MIGRATION_45 = DAO.split('internal val M45', 1)[1].split('internal val M56', 1)[0]
 STATEMENTS_45 = re.findall(r'db\.execSQL\("([^"]+)"\)', MIGRATION_45)
 
 def query_for(name):
@@ -36,20 +36,20 @@ class RecentAndFavorites(unittest.TestCase):
         self.assertEqual([x[0] for x in self.db.execute(query_for('searchRecentlyAddedPaged'), {'q':'needle', 'showConvertedOriginals': 0})], [69,30])
         self.assertEqual([x[0] for x in self.db.execute(query_for('searchRecentlyAddedIds'), {'q':'needle', 'showConvertedOriginals': 0})], [69,30])
 
-    def test_favorite_toggle_is_individual_and_rolls_back(self):
-        sql = query_for('toggleFavoritesChunk').replace(':ids', '?,?')
-        self.db.execute(sql, (1, 2))
-        self.assertEqual(self.db.execute('SELECT isFavorite FROM books WHERE id IN (1,2) ORDER BY id').fetchall(), [(0,), (1,)])
+    def test_favorite_update_is_individual_and_rolls_back(self):
+        sql = query_for('setFavoriteForIdsChunk').replace(':favorite', '?').replace(':ids', '?,?')
+        self.db.execute(sql, (1, 1, 2))
+        self.assertEqual(self.db.execute('SELECT isFavorite FROM books WHERE id IN (1,2) ORDER BY id').fetchall(), [(1,), (1,)])
         self.db.rollback()
         self.assertEqual(self.db.execute('SELECT isFavorite FROM books WHERE id IN (1,2) ORDER BY id').fetchall(), [(1,), (0,)])
-        self.assertIn('@Transaction suspend fun toggleFavorites', DAO)
+        self.assertIn('@Transaction suspend fun setFavoriteForIds', DAO)
         self.assertIn('unique.chunked(BULK_ID_CHUNK_SIZE)', DAO)
         self.assertIn('check(count == unique.size)', DAO)
 
     def test_counts_and_ui_wiring(self):
         self.assertEqual(self.db.execute(query_for('observeFavoriteCount'), {'showConvertedOriginals': 0}).fetchone()[0], 35)
         self.assertEqual(self.db.execute(query_for('observeStatusCount'), {'status':'READING', 'showConvertedOriginals': 0}).fetchone()[0], 23)
-        for token in ('badge={Text("$count")}', 'badge={Text("${shelf.bookCount}")}', 'dao.toggleFavorites(ids)', 'dao.searchRecentlyAddedIds(f, showConvertedOriginals)', 'dao.searchRecentlyAddedPaged(f, showConvertedOriginals)'):
+        for token in ('badge={Text("$count")}', 'badge={Text("${shelf.bookCount}")}', 'dao.setFavoriteForIds(ids, add)', 'dao.searchRecentlyAddedIds(f, showConvertedOriginals)', 'dao.searchRecentPaged(f, showConvertedOriginals)'):
             self.assertIn(token, MAIN)
 
 if __name__ == '__main__':
