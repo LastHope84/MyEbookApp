@@ -25,10 +25,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily as ComposeFontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.Color as ReadiumColor
 import org.readium.r2.navigator.preferences.FontFamily
@@ -345,7 +347,9 @@ fun AppearanceBottomSheet(
                 .padding(bottom = 28.dp)
         ) {
             Text("Reading Appearance", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+            AppearancePreview(settings)
+            Spacer(modifier = Modifier.height(16.dp))
 
             Text("Page Theme", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.height(8.dp))
@@ -655,5 +659,46 @@ fun TocBottomSheet(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AppearancePreview(settings: ReaderSettings) {
+    val background = when (settings.pageTheme) {
+        ReaderPageTheme.AMOLED -> Color.Black
+        ReaderPageTheme.EINK -> Color.White
+        else -> settings.pageTheme.previewBg
+    }
+    val foreground = when (settings.pageTheme) {
+        ReaderPageTheme.AMOLED -> Color(0xFFDCDCDC)
+        ReaderPageTheme.EINK -> Color.Black
+        else -> settings.pageTheme.previewFg
+    }
+    val family = when (settings.font) {
+        ReaderFontOption.SERIF -> ComposeFontFamily.Serif
+        ReaderFontOption.SANS -> ComposeFontFamily.SansSerif
+        ReaderFontOption.MONO -> ComposeFontFamily.Monospace
+        ReaderFontOption.CURSIVE -> ComposeFontFamily.Cursive
+        else -> ComposeFontFamily.Default
+    }
+    val size = (16f * settings.fontSize.toFloat()).sp
+    val line = (16f * settings.fontSize.toFloat() * settings.lineHeight.toFloat()).sp
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(background)
+            .padding(
+                horizontal = (14f * settings.pageMargins.toFloat()).dp,
+                vertical = 14.dp
+            )
+    ) {
+        Text(
+            "The quick brown fox jumps over the lazy dog. Questa è un'anteprima: cambia tema, carattere e spaziatura per vedere subito il risultato.",
+            color = foreground,
+            fontFamily = family,
+            fontSize = size,
+            lineHeight = line
+        )
     }
 }
