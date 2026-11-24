@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.util.LruCache
 import android.util.Xml
 import kotlinx.coroutines.Dispatchers
@@ -256,7 +257,8 @@ class ComicArchive private constructor(
 
     companion object {
         fun open(context: Context, uriString: String, fileSize: Long, lastModified: Long): ComicArchive {
-            val file = archiveFile(context, uriString, fileSize, lastModified)
+            val (currentSize, currentModified) = queryVersion(context, Uri.parse(uriString), fileSize, lastModified)
+            val file = archiveFile(context, uriString, currentSize, currentModified)
             val zip = try {
                 ZipFile(file)
             } catch (e: Exception) {
@@ -276,6 +278,26 @@ class ComicArchive private constructor(
                 runCatching { zip.close() }
                 throw e
             }
+        }
+
+        /** Read the current provider version so a replaced file never reuses an old copy. */
+        private fun queryVersion(context: Context, uri: Uri, fallbackSize: Long, fallbackModified: Long): Pair<Long, Long> {
+            if (uri.scheme == "file") {
+                val file = uri.path?.let { File(it) }
+                if (file != null && file.isFile) return file.length() to file.lastModified()
+            }
+            return runCatching {
+                context.contentResolver.query(
+                    uri,
+                    arrayOf(DocumentsContract.Document.COLUMN_SIZE, DocumentsContract.Document.COLUMN_LAST_MODIFIED),
+                    null, null, null
+                )?.use { cursor ->
+                    if (!cursor.moveToFirst()) return@use null
+                    val size = cursor.getLong(0).takeIf { it > 0 } ?: fallbackSize
+                    val modified = cursor.getLong(1).takeIf { it > 0 } ?: fallbackModified
+                    size to modified
+                }
+            }.getOrNull() ?: (fallbackSize to fallbackModified)
         }
 
         /**

@@ -50,7 +50,7 @@ class GuideContractTest(unittest.TestCase):
         self.assertIn("readingStatus = 'READING'\")\n    suspend fun markFinished", DAO)
         self.assertIn('selectAllOnShelf()', MAIN)
         for label in ('Move to reading shelf', 'Manage custom shelves', 'Switch favorite status',
-                      'Share selected files', 'Convert non-EPUB books'):
+                      'Share selected files', 'Convert MOBI / AZW3 books'):
             self.assertIn('Text("' + label + '")', MAIN)
 
     def test_safety_claims_have_source_guards(self):

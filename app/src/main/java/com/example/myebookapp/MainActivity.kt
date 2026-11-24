@@ -639,7 +639,7 @@ showBulkActions.let { if (it) {
                 catch (e: Exception) { Toast.makeText(ctx,"Could not load selected books: ${e.localizedMessage ?: "unknown error"}",Toast.LENGTH_LONG).show() }
                 finally { bulkSaving=false }
             }
-        }, modifier=Modifier.fillMaxWidth()) { Text("Convert non-EPUB books") }
+        }, modifier=Modifier.fillMaxWidth()) { Text("Convert MOBI / AZW3 books") }
     } }, confirmButton={TextButton(onClick={showBulkActions=false}){Text("Done")}})
 } }
 showBulkMove.let { if (it) {
