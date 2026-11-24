@@ -106,7 +106,7 @@ In the library menu, open Settings, enter your Send to Kindle email and tap Save
 ## Library settings
 
 ### Appearance
-Open the library menu and tap Settings. Choose the app theme mode and accent; the accent row scrolls sideways. AMOLED Pitch-Black applies to dark app UI. Tap Done to close Settings.
+Open the library menu and tap Settings. Choose the app theme mode and accent; the accent row scrolls sideways. AMOLED Pitch-Black applies to dark app UI. The App Icon row switches the launcher icon between Charcoal, Cream, Purple and Lavender; your launcher may take a moment to refresh. Tap Done to close Settings.
 
 ### Other settings
 Save your Kindle email here. Check for new books on open scans your folders when you open the app, at most once a day. The Reopen Last Book on Launch switch is displayed, but automatic reopening is not connected in this version. The output-folder picker and Clean Duplicates buttons are also not connected. Do not rely on these controls to perform those actions.

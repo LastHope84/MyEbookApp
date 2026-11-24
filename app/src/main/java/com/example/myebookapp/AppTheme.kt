@@ -54,6 +54,7 @@ object ThemePrefs {
     private const val KEY_AUTO_RESUME = "open_last_book_on_launch"
     private const val KEY_OFFLINE_TRANSLATION = "offline_translation_enabled"
     private const val KEY_SORT = "library_sort"
+    private const val KEY_ICON = "app_icon_variant"
     private const val KEY_AUTO_SCAN = "auto_scan_on_open"
     private const val KEY_LAST_AUTO_SCAN = "last_auto_scan"
     private const val KEY_KINDLE_EMAIL = "kindle_email"
@@ -89,6 +90,15 @@ object ThemePrefs {
     fun saveAmoled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_AMOLED, enabled).apply()
+    }
+
+    fun getIconVariant(context: Context): String =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_ICON, AppIcon.CHARCOAL) ?: AppIcon.CHARCOAL
+
+    fun saveIconVariant(context: Context, variant: String) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putString(KEY_ICON, variant).apply()
     }
 
     fun getSort(context: Context): String =

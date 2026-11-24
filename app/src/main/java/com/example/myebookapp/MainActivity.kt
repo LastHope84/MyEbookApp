@@ -121,6 +121,7 @@ var preparingKindle by remember { mutableStateOf(false) }
 val folders = LibraryScanner.getSavedFolders(ctx)
 LaunchedEffect(Unit) {
     LibraryScanner.restore(ctx)
+    AppIcon.ensureApplied(ctx)
     if (ThemePrefs.isAutoScanOnOpen(ctx)) {
         val folders = LibraryScanner.getSavedFolders(ctx)
         val now = System.currentTimeMillis()
