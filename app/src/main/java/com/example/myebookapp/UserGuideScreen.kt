@@ -116,7 +116,7 @@ private val guideTopics = listOf(
         "Offline translation" to "Offline translation uses Foxlet Translate (MIT). Foxlet includes the Bergamot translator (MPL 2.0), Marian (MIT), SentencePiece and ruy (Apache 2.0), and other components; the full notices travel inside the app. Mozilla Firefox Translations models are downloaded only when you install a language pack and are licensed under MPL 2.0.",
         "Fonts" to "The reader's OpenDyslexic, Accessible DfA and iA Writer Duospace fonts are included with Readium under the SIL Open Font License 1.1.",
         "Other components" to "The reader uses Readium (BSD-3-Clause) for EPUB, AndroidX, Jetpack Compose and Material Components (Apache 2.0), Coil (Apache 2.0), Kotlin and kotlinx.coroutines (Apache 2.0), and junrar (UnRAR license). Full notices and licence texts are in the project repository's THIRD_PARTY_NOTICES.md and licenses folder.",
-        "Project code" to "The app's own code is currently all rights reserved; no licence is granted for reuse or redistribution. Third-party components keep their own licences."
+        "Project code" to "The app's own code is licensed under the GNU General Public License, version 3 or later. You may use, study, modify and redistribute it; derivative works must stay under the same licence and provide source. CBR support uses junrar under the UnRAR licence, with an additional permission allowing the combination; see the repository's LICENSE and LICENSE-EXCEPTION files."
     ))
 )
 

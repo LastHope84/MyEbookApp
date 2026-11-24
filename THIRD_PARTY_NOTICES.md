@@ -26,7 +26,9 @@ libmobi itself is unmodified. Encrypted or DRM-protected files are refused.
 
 MyEbookApp only reads RAR archives. It does not create RAR archives and does
 not include a RAR compressor. CBR files that are really ZIP archives are read
-with the platform ZIP support instead.
+with the platform ZIP support instead. Because the UnRAR licence is not
+GPL-compatible, junrar is combined with this GPL program under the additional
+permission in [LICENSE-EXCEPTION.md](LICENSE-EXCEPTION.md).
 
 ### Apache PDFBox / pdfbox-android — PDF text layer
 
@@ -93,8 +95,11 @@ is installed by the user. They are licensed under MPL 2.0
 
 ## Notes
 
+- MyEbookApp's own code is licensed under the GNU General Public License,
+  version 3 or later (see [LICENSE](LICENSE)). The junrar exception is in
+  [LICENSE-EXCEPTION.md](LICENSE-EXCEPTION.md).
 - No component is used to bypass DRM. Encrypted MOBI/AZW3 files are refused,
   and password-protected CBR files are refused.
 - If you redistribute this app or a modified version, keep these notices and
-  the licence texts, and make the libmobi source available as required by the
-  LGPL.
+  the licence texts, make the corresponding source available under the GPL,
+  and make the libmobi source available as required by the LGPL.

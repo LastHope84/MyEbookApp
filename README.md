@@ -4,7 +4,7 @@ MyEbookApp is a personal Android ebook reader and library. It is built for one
 reader's shelves rather than as a store product: the library lives on the
 device, there is no account, and there is no analytics.
 
-Current release: **1.13.3** (Android 8.0 or later, arm64-v8a).
+Current release: **1.13.4** (Android 8.0 or later, arm64-v8a).
 
 ## Features
 
@@ -76,11 +76,14 @@ PDF compatibility varies between files.
 
 ## Install
 
-Prebuilt APKs are debug-signed and published from this project's server:
+Prebuilt APKs are debug-signed and published in two places:
 
-- Latest: <https://rhealyn.clodhost.com/downloads/MyEbookApp-latest.apk>
-- GitHub Actions also uploads each build as the `MyEbookApp-debug-apk`
-  artifact (kept for 14 days): <https://github.com/LastHope84/MyEbookApp/actions/workflows/build.yml>
+- Latest on GitHub:
+  <https://github.com/LastHope84/MyEbookApp/releases/download/latest/MyEbookApp-latest.apk>
+- Latest on the project server:
+  <https://rhealyn.clodhost.com/downloads/MyEbookApp-latest.apk>
+- GitHub Actions also keeps each build as the `MyEbookApp-debug-apk` artifact
+  for 14 days: <https://github.com/LastHope84/MyEbookApp/actions/workflows/build.yml>
 
 Android only accepts an update when the signing certificate matches the
 installed app. Uninstalling to switch signatures can delete the library,
@@ -160,13 +163,23 @@ tests/                      Python source-level regression tests
 
 ## Licence
 
-The project's own code is currently **all rights reserved**: no licence is
-granted for reuse or redistribution. Third-party components keep their own
-licences, including libmobi (LGPL-3.0-or-later), junrar (UnRAR), Readium
-(BSD-3-Clause), Apache PDFBox (Apache-2.0), Foxlet Translate (MIT), Mozilla
-translation models (MPL-2.0), and the bundled fonts (SIL OFL 1.1). See
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the
-[`licenses/`](licenses/) directory for details.
+Copyright (c) 2026 LastHope84.
+
+MyEbookApp's own code is free software: you can redistribute it and/or modify
+it under the terms of the **GNU General Public License, version 3 or later**
+([LICENSE](LICENSE)). Derivative works must stay under the same licence and
+make their source available.
+
+CBR support uses junrar under the UnRAR licence, which is free to use but not
+GPL-compatible. An additional permission under GPLv3 section 7 allows the
+combination; see [LICENSE-EXCEPTION.md](LICENSE-EXCEPTION.md). A build without
+junrar and CBR support would be strictly GPL-only.
+
+Third-party components keep their own licences, including libmobi
+(LGPL-3.0-or-later), Readium (BSD-3-Clause), Apache PDFBox (Apache-2.0),
+Foxlet Translate (MIT), Mozilla translation models (MPL-2.0), and the bundled
+fonts (SIL OFL 1.1). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
+the [`licenses/`](licenses/) directory for details.
 
 ## Credits
 

@@ -207,4 +207,4 @@ The reader's OpenDyslexic, Accessible DfA and iA Writer Duospace fonts are inclu
 The reader uses Readium (BSD-3-Clause) for EPUB, AndroidX, Jetpack Compose and Material Components (Apache 2.0), Coil (Apache 2.0), Kotlin and kotlinx.coroutines (Apache 2.0), and junrar (UnRAR license). Full notices and licence texts are in the project repository's THIRD_PARTY_NOTICES.md and licenses folder.
 
 ### Project code
-The app's own code is currently all rights reserved; no licence is granted for reuse or redistribution. Third-party components keep their own licences.
+The app's own code is licensed under the GNU General Public License, version 3 or later. You may use, study, modify and redistribute it; derivative works must stay under the same licence and provide source. CBR support uses junrar under the UnRAR licence, with an additional permission allowing the combination; see the repository's LICENSE and LICENSE-EXCEPTION files.
