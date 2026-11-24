@@ -663,6 +663,8 @@ showBulkShelves.let { if (it) {
                     if (selectedCustomId == shelf.id) TextButton(enabled=!bulkSaving,onClick={ val ids=selIds.toList(); bulkSaving=true; scp.launch { try { withContext(Dispatchers.IO) { dao.removeBooksFromCustomShelf(shelf.id, ids) }; showBulkShelves=false; selIds=emptySet(); selMode=false } catch (e: CancellationException) { throw e } catch (e: Exception) { Toast.makeText(ctx,"Could not remove books from ${shelf.name}.",Toast.LENGTH_LONG).show() } finally { bulkSaving=false } } }) { Text("Remove") }
                 } }
             }
+            Spacer(Modifier.height(6.dp))
+            HorizontalDivider()
             Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.End) {
                 TextButton(enabled=!bulkSaving, onClick={ showBulkShelves=false }) { Text("Done") }
             }

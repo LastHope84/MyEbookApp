@@ -47,6 +47,8 @@ fun CustomShelfMembershipDialog(
                         }
                     }
                 }
+                Spacer(Modifier.height(6.dp))
+                HorizontalDivider()
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDismiss, enabled = !saving) { Text("Done") }
                 }
