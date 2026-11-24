@@ -17,7 +17,7 @@ android {
     defaultConfig {
         applicationId = "com.example.myebookapp"
         minSdk = if (foxletAar != null) 28 else 24; targetSdk = 35
-        versionCode = buildNum; versionName = "1.9.0"
+        versionCode = buildNum; versionName = "1.10.0"
         ndk { abiFilters += if (foxletAar != null) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a") }
     }
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt") } }
@@ -56,4 +56,5 @@ dependencies {
     implementation("androidx.paging:paging-compose:3.3.5"); implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("androidx.media:media:1.7.0")
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    implementation("com.github.junrar:junrar:8.1.2")
 }

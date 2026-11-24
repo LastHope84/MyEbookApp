@@ -63,6 +63,25 @@ class PdfPageText(
         return text.substring(wordStarts[first], wordEnds[last])
     }
 
+    fun sentenceRangeFor(wordIndex: Int): IntRange {
+        if (words.isEmpty()) return 0..0
+        val index = wordIndex.coerceIn(0, words.lastIndex)
+        val offset = wordStarts[index]
+        var start = offset
+        while (start > 0) {
+            val ch = text[start - 1]
+            if (ch == '.' || ch == '!' || ch == '?' || ch == '…' || ch == '\n') break
+            start--
+        }
+        var end = offset
+        while (end < text.length) {
+            val ch = text[end]
+            end++
+            if (ch == '.' || ch == '!' || ch == '?' || ch == '…' || ch == '\n') break
+        }
+        return wordRangeForOffsets(start, end) ?: (index..index)
+    }
+
     fun wordRangeForOffsets(start: Int, end: Int): IntRange? {
         if (words.isEmpty() || end <= start) return null
         var first = -1
@@ -201,7 +220,11 @@ class PdfTextSource private constructor(
                 try {
                     PDFBoxResourceLoader.init(context.applicationContext)
                     val file = textFile(context, uriString, fileSize, lastModified)
-                    val document = PDDocument.load(file, MemoryUsageSetting.setupMixed(32L * 1024 * 1024))
+                    val tempDir = File(context.cacheDir, "pdfbox").apply { mkdirs() }
+                    val document = PDDocument.load(
+                        file,
+                        MemoryUsageSetting.setupMixed(32L * 1024 * 1024).setTempDir(tempDir)
+                    )
                     PdfTextSource(document, executor, dispatcher, document.numberOfPages)
                 } catch (e: CancellationException) {
                     runCatching { dispatcher.close() }

@@ -62,7 +62,7 @@ private fun handleI(i: Intent?) {
         try {
             val book = withContext(Dispatchers.IO) { ExternalImport.import(applicationContext, uri) }
             when (book.format) {
-                "EPUB", "CBZ", "PDF" -> openInReader(this@MainActivity, book)
+                "EPUB", "CBZ", "CBR", "PDF" -> openInReader(this@MainActivity, book)
                 else -> Toast.makeText(
                     this@MainActivity,
                     "${book.title} added to your library.",
@@ -101,6 +101,7 @@ val toReadCount by remember(showConvertedOriginals) { dao.observeStatusCount("TB
 val finishedCount by remember(showConvertedOriginals) { dao.observeStatusCount("FINISHED", showConvertedOriginals) }.collectAsState(0)
 var tab by remember { mutableStateOf(LibraryTab.ALL) }; var qry by remember { mutableStateOf("") }; var dbQry by remember { mutableStateOf("") }
 var selB by remember { mutableStateOf<BookEntity?>(null) }; var edtB by remember { mutableStateOf<BookEntity?>(null) }
+var deleteFileBook by remember { mutableStateOf<BookEntity?>(null) }
 var showSet by remember { mutableStateOf(false) }; var showVisibility by remember { mutableStateOf(false) }; var showFolders by remember { mutableStateOf(false) }; var showGuide by rememberSaveable { mutableStateOf(false) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
 var showBulkActions by remember { mutableStateOf(false) }
 var showScanLog by remember { mutableStateOf(false) }
@@ -392,7 +393,7 @@ val fileP = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultip
                     ).show()
                     if (added.size == 1) {
                         val book = added.first()
-                        if (book.format in setOf("EPUB", "CBZ", "PDF")) openInReader(ctx, book) else selB = book
+                        if (book.format in setOf("EPUB", "CBZ", "CBR", "PDF")) openInReader(ctx, book) else selB = book
                     }
                 }
             }
@@ -608,10 +609,51 @@ onCustomShelves = { membershipBook = b },
 statusChangeEnabled = !shelfSaving,
 hasCustomShelves = customShelves.isNotEmpty(),
 translationEnabled = ThemePrefs.isOfflineTranslationEnabled(ctx) && translationJob == null,
-onTranslate = { translatingSource = ""; translatingTarget = ""; translatingBook = b }
+onTranslate = { translatingSource = ""; translatingTarget = ""; translatingBook = b },
+canDeleteFile = AppFiles.isAppOwned(ctx, b.uriString),
+onDeleteFile = { selB = null; deleteFileBook = b }
 )
 }
 }
+}
+deleteFileBook?.let { target ->
+    AlertDialog(
+        onDismissRequest = { deleteFileBook = null },
+        title = { Text("Delete file?") },
+        text = {
+            Text(
+                "This permanently deletes the app's copy of \"${target.title}\" and removes its library entry. " +
+                    "Your original download or source folder file is not touched. This cannot be undone."
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                deleteFileBook = null
+                scp.launch {
+                    val deleted = withContext(Dispatchers.IO) {
+                        if (!AppFiles.delete(ctx, target)) {
+                            false
+                        } else {
+                            try {
+                                dao.deleteById(target.id)
+                                true
+                            } catch (e: Exception) {
+                                false
+                            }
+                        }
+                    }
+                    Toast.makeText(
+                        ctx,
+                        if (deleted) "File deleted." else "Could not delete the file.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = {
+            TextButton(onClick = { deleteFileBook = null }) { Text("Cancel") }
+        }
+    )
 }
 translatingBook?.let { book ->
     AlertDialog(onDismissRequest = { translatingBook = null }, title = { Text("Translate EPUB offline") },

@@ -16,7 +16,7 @@ class GuideContractTest(unittest.TestCase):
     def test_topic_ids_are_unique_and_complete(self):
         ids = re.findall(r'GuideTopic\("([a-z_]+)",', GUIDE)
         self.assertEqual(ids, ['start', 'shelves', 'reading', 'comics', 'pdf', 'reader_settings',
-                               'metadata', 'convert', 'share', 'settings', 'safety'])
+                               'metadata', 'convert', 'share', 'settings', 'safety', 'licenses'])
         self.assertEqual(len(ids), len(set(ids)))
 
     def test_drawer_and_two_level_back_navigation(self):

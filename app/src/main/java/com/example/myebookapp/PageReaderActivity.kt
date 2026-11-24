@@ -21,7 +21,6 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -192,6 +191,15 @@ class PageReaderActivity : FragmentActivity() {
                         "PDF" -> PdfPageSource.open(
                             this@PageReaderActivity, uriString, stored.fileSize, stored.lastModified
                         )
+                        "CBR" -> try {
+                            ComicPageSource.open(
+                                this@PageReaderActivity, uriString, stored.fileSize, stored.lastModified
+                            )
+                        } catch (e: Exception) {
+                            CbrPageSource.open(
+                                this@PageReaderActivity, uriString, stored.fileSize, stored.lastModified
+                            )
+                        }
                         else -> ComicPageSource.open(
                             this@PageReaderActivity, uriString, stored.fileSize, stored.lastModified
                         )
@@ -559,6 +567,18 @@ private fun PageReaderScreen(
                             )
                         }
                     },
+                    onSentence = {
+                        val text = currentText
+                        if (text != null) {
+                            val range = text.sentenceRangeFor(selected.startWord)
+                            selection = PdfSelection(
+                                selected.pageIndex,
+                                range.first,
+                                range.last,
+                                text.textForRange(range)
+                            )
+                        }
+                    },
                     onDismiss = { selection = null }
                 )
             }
@@ -615,6 +635,7 @@ private fun SelectionActions(
     onDefine: () -> Unit,
     onTranslate: () -> Unit,
     onSpeak: () -> Unit,
+    onSentence: () -> Unit,
     onDismiss: () -> Unit
 ) {
     Surface(
@@ -628,6 +649,7 @@ private fun SelectionActions(
         ) {
             TextButton(onClick = onCopy) { Text("Copy") }
             TextButton(onClick = onDefine) { Text("Define") }
+            TextButton(onClick = onSentence) { Text("Sentence") }
             if (canTranslate) TextButton(onClick = onTranslate) { Text("Translate") }
             TextButton(onClick = onSpeak) { Text("Speak") }
             TextButton(onClick = onDismiss) { Text("×") }
@@ -834,6 +856,7 @@ private fun DocumentPage(
     var scale by remember(index) { mutableFloatStateOf(1f) }
     var pan by remember(index) { mutableStateOf(Offset.Zero) }
     var size by remember { mutableStateOf(IntSize.Zero) }
+    val context = LocalContext.current
     val activeState by rememberUpdatedState(active)
     val onZoomState by rememberUpdatedState(onZoomChanged)
     val onTapState by rememberUpdatedState(onTap)
@@ -885,7 +908,14 @@ private fun DocumentPage(
                 best = i
             }
         }
-        return if (best >= 0 && bestDistance <= 36f * 36f) best else null
+        return if (best >= 0 && bestDistance <= 48f * 48f) best else null
+    }
+
+    fun selectWordAt(position: Offset): Boolean {
+        val text = pageText ?: return false
+        val word = wordAt(position) ?: return false
+        onSelectionState(PdfSelection(index, word, word, text.textForRange(word..word)))
+        return true
     }
 
     LaunchedEffect(active) {
@@ -896,54 +926,10 @@ private fun DocumentPage(
         modifier = Modifier
             .fillMaxSize()
             .onSizeChanged { size = it }
-            // One finger belongs to the pager until a pinch starts; after zooming,
-            // this detector takes the drags so the page can be panned.
-            .pointerInput(index) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
-                    var event: PointerEvent
-                    do {
-                        event = awaitPointerEvent()
-                        val pressed = event.changes.count { it.pressed }
-                        if (pressed > 1 || scale > 1f) {
-                            val newScale = (scale * event.calculateZoom()).coerceIn(1f, 4f)
-                            val newPan = clampPan(pan + event.calculatePan(), newScale)
-                            scale = newScale
-                            pan = newPan
-                            if (activeState) onZoomState(newScale > 1.01f)
-                            event.changes.forEach { it.consume() }
-                        }
-                    } while (event.changes.any { it.pressed })
-                }
-            }
-            .pointerInput(index, pageText, scale) {
-                if (pageText == null || scale > 1.01f) return@pointerInput
-                var startWord = -1
-                detectDragGesturesAfterLongPress(
-                    onDragStart = { position ->
-                        val word = wordAt(position)
-                        if (word != null) {
-                            startWord = word
-                            onSelectionState(
-                                PdfSelection(index, word, word, pageText.textForRange(word..word))
-                            )
-                        }
-                    },
-                    onDrag = { change, _ ->
-                        if (startWord < 0) return@detectDragGesturesAfterLongPress
-                        val word = wordAt(change.position) ?: return@detectDragGesturesAfterLongPress
-                        val first = min(startWord, word)
-                        val last = max(startWord, word)
-                        onSelectionState(
-                            PdfSelection(index, first, last, pageText.textForRange(first..last))
-                        )
-                        change.consume()
-                    },
-                    onDragEnd = {},
-                    onDragCancel = {}
-                )
-            }
-            .pointerInput(index) {
+            // The tap detector is outermost so its long-press sees the down
+            // before inner detectors consume it. The zoom detector sits in the
+            // middle; the selection drag detector is innermost.
+            .pointerInput(index, pageText) {
                 detectTapGestures(
                     onTap = { position ->
                         if (scale <= 1.01f && size.width > 0) {
@@ -961,8 +947,46 @@ private fun DocumentPage(
                             pan = clampPan((center - position) * (target - 1f), target)
                             if (activeState) onZoomState(true)
                         }
+                    },
+                    onLongPress = { position ->
+                        val text = pageText
+                        when {
+                            text == null -> Toast.makeText(
+                                context,
+                                "Text is still loading or unavailable for this page.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            text.words.isEmpty() -> Toast.makeText(
+                                context,
+                                "This page has no selectable text.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            !selectWordAt(position) -> Toast.makeText(
+                                context,
+                                "No word found there. Hold directly on a word.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
                     }
                 )
+            }
+            .pointerInput(index) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    var event: PointerEvent
+                    do {
+                        event = awaitPointerEvent()
+                        val pressed = event.changes.count { it.pressed }
+                        if (pressed > 1 || scale > 1f) {
+                            val newScale = (scale * event.calculateZoom()).coerceIn(1f, 4f)
+                            val newPan = clampPan(pan + event.calculatePan(), newScale)
+                            scale = newScale
+                            pan = newPan
+                            if (activeState) onZoomState(newScale > 1.01f)
+                            event.changes.forEach { it.consume() }
+                        }
+                    } while (event.changes.any { it.pressed })
+                }
             },
         contentAlignment = Alignment.Center
     ) {

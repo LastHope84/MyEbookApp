@@ -36,6 +36,11 @@
                 <data android:mimeType="application/comicbook+zip" />
                 <data android:mimeType="application/x-comicbook+zip" />
                 <data android:mimeType="application/zip" />
+                <data android:mimeType="application/vnd.comicbook-rar" />
+                <data android:mimeType="application/x-cbr" />
+                <data android:mimeType="application/x-rar-compressed" />
+                <data android:mimeType="application/vnd.rar" />
+                <data android:mimeType="application/x-rar" />
                 <data android:mimeType="application/x-zip-compressed" />
             </intent-filter>
             <intent-filter>
@@ -54,6 +59,8 @@
                 <data android:pathPattern=".*\\.AZW3" />
                 <data android:pathPattern=".*\\.cbz" />
                 <data android:pathPattern=".*\\.CBZ" />
+                <data android:pathPattern=".*\\.cbr" />
+                <data android:pathPattern=".*\\.CBR" />
                 <data android:pathPattern=".*\\.pdf" />
                 <data android:pathPattern=".*\\.PDF" />
             </intent-filter>
@@ -69,6 +76,11 @@
                 <data android:mimeType="application/comicbook+zip" />
                 <data android:mimeType="application/x-comicbook+zip" />
                 <data android:mimeType="application/zip" />
+                <data android:mimeType="application/vnd.comicbook-rar" />
+                <data android:mimeType="application/x-cbr" />
+                <data android:mimeType="application/x-rar-compressed" />
+                <data android:mimeType="application/vnd.rar" />
+                <data android:mimeType="application/x-rar" />
                 <data android:mimeType="application/x-zip-compressed" />
             </intent-filter>
         </activity>

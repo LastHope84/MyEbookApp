@@ -32,7 +32,9 @@ fun BookDetailsBottomSheet(
     onFavoriteChange: (Boolean) -> Unit, onStatusChange: (String) -> Unit, onCustomShelves: () -> Unit,
     statusChangeEnabled: Boolean, translationEnabled: Boolean = false,
     hasCustomShelves: Boolean = true,
-    onTranslate: () -> Unit = {}
+    onTranslate: () -> Unit = {},
+    canDeleteFile: Boolean = false,
+    onDeleteFile: () -> Unit = {}
 ) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val sheetS = rememberModalBottomSheetState(true)
@@ -58,14 +60,14 @@ fun BookDetailsBottomSheet(
                 )
             }
             Spacer(Modifier.height(16.dp))
-            val isPaged = b.format == "CBZ" || b.format == "PDF"
+            val isPaged = b.format == "CBZ" || b.format == "CBR" || b.format == "PDF"
             val convertible = b.format == "MOBI" || b.format == "AZW3"
             if (b.format == "EPUB" || isPaged) {
                 Button(onClick = onR, Modifier.fillMaxWidth()) {
                     Text(
                         when {
                             pct > 0 -> "Continue ($pct%)"
-                            b.format == "CBZ" -> "Read Comic"
+                            b.format == "CBZ" || b.format == "CBR" -> "Read Comic"
                             b.format == "PDF" -> "Read PDF"
                             else -> "Read Book"
                         }
@@ -129,6 +131,17 @@ fun BookDetailsBottomSheet(
                 pathMsg?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
             }
             Spacer(Modifier.height(12.dp))
+            if (canDeleteFile) {
+                TextButton(onClick = onDeleteFile) {
+                    Text("Delete file from device", color = MaterialTheme.colorScheme.error)
+                }
+                Text(
+                    "Deletes the app's copy of this file. Your original download or source file is not touched.",
+                    style = MaterialTheme.typography.labelSmall,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(8.dp))
+            }
             TextButton(onClick = onDel) { Text("Remove from Library", color = MaterialTheme.colorScheme.error) }
             Spacer(Modifier.height(24.dp))
         }

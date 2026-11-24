@@ -17,6 +17,7 @@ object ExternalImport {
     private val SUPPORTED = mapOf(
         "epub" to "EPUB",
         "cbz" to "CBZ",
+        "cbr" to "CBR",
         "pdf" to "PDF",
         "mobi" to "MOBI",
         "azw3" to "AZW3",
@@ -63,6 +64,7 @@ object ExternalImport {
                     )
                 }
                 "PDF" -> PdfParser.parse(context, fileUri.toString(), dest.name, dest.length(), dest.lastModified())
+                "CBR" -> CbrParser.parse(context, fileUri, dest.name, dest.length(), dest.lastModified())
                 else -> basicMeta(dest.name)
             }
         } catch (e: CancellationException) {

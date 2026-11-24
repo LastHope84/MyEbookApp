@@ -103,32 +103,17 @@ object ComicParser {
         if (names.isEmpty()) error("No comic pages found")
         names.sortWith(NaturalOrder)
 
-        val seriesName = info?.series?.takeIf { it.isNotBlank() }
-        val number = info?.number?.takeIf { it.isNotBlank() }?.let { formatNumber(it) }
-        val title = info?.title?.takeIf { it.isNotBlank() }
-            ?: if (seriesName != null && number != null) "$seriesName #$number" else seriesName
-            ?: fileName.substringBeforeLast('.').ifBlank { "Untitled comic" }
-        val author = info?.writer?.takeIf { it.isNotBlank() }
-            ?: info?.penciller?.takeIf { it.isNotBlank() }
-            ?: "Unknown"
-        val date = listOfNotNull(
-            info?.year?.takeIf { it.isNotBlank() },
-            info?.month?.takeIf { it.isNotBlank() }?.toIntOrNull()?.let { "%02d".format(it) }
-        ).joinToString("-").ifBlank { "Unknown" }
-        val genre = info?.genre?.takeIf { it.isNotBlank() }
-            ?.replace(',', ';')
-            ?.replace(Regex("\\s*;\\s*"), "; ")
-
+        val fields = comicInfoFields(info, fileName)
         return ComicMetadata(
-            title = title,
-            author = author,
-            publishingDate = date,
-            publisher = info?.publisher?.takeIf { it.isNotBlank() } ?: "Unknown",
-            language = info?.language?.takeIf { it.isNotBlank() } ?: "Unknown",
+            title = fields.title,
+            author = fields.author,
+            publishingDate = fields.publishingDate,
+            publisher = fields.publisher,
+            language = fields.language,
             coverBitmap = readCover(context, uri, names.first()),
-            series = seriesName,
-            seriesIndex = number?.toDoubleOrNull(),
-            tags = genre,
+            series = fields.series,
+            seriesIndex = fields.seriesIndex,
+            tags = fields.tags,
             pageCount = names.size
         )
     }
@@ -170,7 +155,7 @@ object ComicParser {
         return out.toByteArray()
     }
 
-    private fun decodeSampled(bytes: ByteArray, max: Int): Bitmap? {
+    internal fun decodeSampled(bytes: ByteArray, max: Int): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
@@ -180,11 +165,50 @@ object ComicParser {
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
     }
 
-    private fun formatNumber(raw: String): String =
-        raw.toDoubleOrNull()?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: raw
 }
 
-private fun parseComicInfoXml(stream: InputStream): ComicInfoData? {
+internal data class ComicInfoFields(
+    val title: String,
+    val author: String,
+    val publishingDate: String,
+    val publisher: String,
+    val language: String,
+    val series: String?,
+    val seriesIndex: Double?,
+    val tags: String?
+)
+
+internal fun comicInfoFields(info: ComicInfoData?, fileName: String): ComicInfoFields {
+    val seriesName = info?.series?.takeIf { it.isNotBlank() }
+    val number = info?.number?.takeIf { it.isNotBlank() }?.let { raw ->
+        raw.toDoubleOrNull()?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: raw
+    }
+    val title = info?.title?.takeIf { it.isNotBlank() }
+        ?: if (seriesName != null && number != null) "$seriesName #$number" else seriesName
+        ?: fileName.substringBeforeLast('.').ifBlank { "Untitled comic" }
+    val author = info?.writer?.takeIf { it.isNotBlank() }
+        ?: info?.penciller?.takeIf { it.isNotBlank() }
+        ?: "Unknown"
+    val date = listOfNotNull(
+        info?.year?.takeIf { it.isNotBlank() },
+        info?.month?.takeIf { it.isNotBlank() }?.toIntOrNull()?.let { "%02d".format(it) }
+    ).joinToString("-").ifBlank { "Unknown" }
+    val genre = info?.genre?.takeIf { it.isNotBlank() }
+        ?.replace(',', ';')
+        ?.replace(Regex("\\s*;\\s*"), "; ")
+    return ComicInfoFields(
+        title = title,
+        author = author,
+        publishingDate = date,
+        publisher = info?.publisher?.takeIf { it.isNotBlank() } ?: "Unknown",
+        language = info?.language?.takeIf { it.isNotBlank() } ?: "Unknown",
+        series = seriesName,
+        seriesIndex = number?.toDoubleOrNull(),
+        tags = genre
+    )
+}
+
+internal fun parseComicInfoXml(stream: InputStream): ComicInfoData? {
     val fields = HashMap<String, String>()
     val known = setOf("title", "series", "number", "writer", "penciller", "publisher", "year", "month", "languageiso", "genre")
     val parser = Xml.newPullParser()
