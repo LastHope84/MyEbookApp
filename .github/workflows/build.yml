@@ -14,6 +14,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      APP_FEATURES: "Folder library with search, favorites, reading shelves and custom shelves; built-in Comics, PDFs and unshelved shelves; EPUB reader with themes and read-aloud; comic and PDF readers with zoom, text selection, search and read-aloud; offline translation packs; MOBI/AZW3 to EPUB conversion; metadata editing and covers; backup and restore."
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -80,7 +82,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk MyEbookApp-latest.apk
-          NOTES="Automated debug build from commit $GITHUB_SHA on the main branch. Debug-signed with the project keystore; install it over a build with the same signature."
+          NOTES=$(printf '%s\n\n%s\n\n%s' \
+            "MyEbookApp is a personal Android ebook reader for EPUB, CBZ/CBR comics and PDF, with offline translation and MOBI/AZW3 conversion." \
+            "This is an automated debug build from commit $GITHUB_SHA on the main branch. Debug-signed with the project keystore; install it over a build with the same signature." \
+            "Features: $APP_FEATURES")
           if gh release view latest >/dev/null 2>&1; then
             gh release edit latest --target "$GITHUB_SHA" --notes "$NOTES"
             gh release upload latest MyEbookApp-latest.apk --clobber
@@ -97,10 +102,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk "MyEbookApp-${GITHUB_REF_NAME}.apk"
+          NOTES=$(printf '%s\n\n%s\n\n%s' \
+            "MyEbookApp is a personal Android ebook reader for EPUB, CBZ/CBR comics and PDF, with offline translation and MOBI/AZW3 conversion." \
+            "Built from commit $GITHUB_SHA." \
+            "Features: $APP_FEATURES")
           if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
             gh release upload "${GITHUB_REF_NAME}" "MyEbookApp-${GITHUB_REF_NAME}.apk" --clobber
           else
             gh release create "${GITHUB_REF_NAME}" "MyEbookApp-${GITHUB_REF_NAME}.apk" \
               --title "MyEbookApp ${GITHUB_REF_NAME}" \
-              --notes "Built from commit $GITHUB_SHA."
+              --notes "$NOTES"
           fi
