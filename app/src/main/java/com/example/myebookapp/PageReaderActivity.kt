@@ -191,11 +191,11 @@ class PageReaderActivity : FragmentActivity() {
                         "PDF" -> PdfPageSource.open(
                             this@PageReaderActivity, uriString, stored.fileSize, stored.lastModified
                         )
-                        "CBR" -> try {
+                        "CBR" -> if (ArchiveSniffer.kind(this@PageReaderActivity, uriString) == "ZIP") {
                             ComicPageSource.open(
                                 this@PageReaderActivity, uriString, stored.fileSize, stored.lastModified
                             )
-                        } catch (e: Exception) {
+                        } else {
                             CbrPageSource.open(
                                 this@PageReaderActivity, uriString, stored.fileSize, stored.lastModified
                             )

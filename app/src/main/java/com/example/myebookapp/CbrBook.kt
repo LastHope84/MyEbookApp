@@ -13,6 +13,31 @@ import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
 
+/** Tells a ZIP-based .cbr (common) from a real RAR before copying the whole file. */
+object ArchiveSniffer {
+    fun kind(context: Context, uriString: String): String? {
+        val uri = Uri.parse(uriString)
+        val input = if (uri.scheme == "file") {
+            uri.path?.let { path -> runCatching { File(path).inputStream() }.getOrNull() }
+        } else {
+            runCatching { context.contentResolver.openInputStream(uri) }.getOrNull()
+        } ?: return null
+        return input.use { stream ->
+            val head = ByteArray(8)
+            val read = runCatching { stream.read(head) }.getOrDefault(0)
+            if (read >= 4 && head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte()) {
+                "ZIP"
+            } else if (read >= 4 && head[0] == 'R'.code.toByte() && head[1] == 'a'.code.toByte() &&
+                head[2] == 'r'.code.toByte() && head[3] == '!'.code.toByte()
+            ) {
+                "RAR"
+            } else {
+                null
+            }
+        }
+    }
+}
+
 /**
  * CBR support uses junrar's decompressor (UnRAR license). It may read RAR
  * archives but may not be used to build a RAR-compatible archiver.
