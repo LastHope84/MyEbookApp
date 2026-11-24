@@ -25,6 +25,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.ExperimentalTextApi
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily as ComposeFontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -662,8 +665,10 @@ fun TocBottomSheet(
     }
 }
 
+@OptIn(ExperimentalTextApi::class)
 @Composable
 private fun AppearancePreview(settings: ReaderSettings) {
+    val context = LocalContext.current
     val background = when (settings.pageTheme) {
         ReaderPageTheme.AMOLED -> Color.Black
         ReaderPageTheme.EINK -> Color.White
@@ -679,6 +684,16 @@ private fun AppearancePreview(settings: ReaderSettings) {
         ReaderFontOption.SANS -> ComposeFontFamily.SansSerif
         ReaderFontOption.MONO -> ComposeFontFamily.Monospace
         ReaderFontOption.CURSIVE -> ComposeFontFamily.Cursive
+        // The reader engine ships these exact fonts as assets.
+        ReaderFontOption.OPEN_DYSLEXIC -> ComposeFontFamily(
+            Font(context.assets, "readium/fonts/OpenDyslexic-Regular.otf")
+        )
+        ReaderFontOption.ACCESSIBLE_DFA -> ComposeFontFamily(
+            Font(context.assets, "readium/readium-css/fonts/AccessibleDfA.otf")
+        )
+        ReaderFontOption.DUOSPACE -> ComposeFontFamily(
+            Font(context.assets, "readium/readium-css/fonts/iAWriterDuospace-Regular.ttf")
+        )
         else -> ComposeFontFamily.Default
     }
     val size = (16f * settings.fontSize.toFloat()).sp
