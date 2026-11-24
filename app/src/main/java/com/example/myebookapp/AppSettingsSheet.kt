@@ -51,6 +51,7 @@ fun AppSettingsBottomSheet(
     var cacheClearedMsg by remember { mutableStateOf<String?>(null) }
     var translationEnabled by remember { mutableStateOf(ThemePrefs.isOfflineTranslationEnabled(context)) }
     var autoScan by remember { mutableStateOf(ThemePrefs.isAutoScanOnOpen(context)) }
+    var autoOpen by remember { mutableStateOf(autoOpenLastBook) }
 
     LaunchedEffect(Unit) {
         storageSummary = withContext(Dispatchers.IO) { computeStorageSummary(context) }
@@ -145,7 +146,13 @@ fun AppSettingsBottomSheet(
                     Text("Reopen Last Book on Launch", style = MaterialTheme.typography.bodyLarge)
                     Text("Wake straight into your current book like a Kindle", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Switch(checked = autoOpenLastBook, onCheckedChange = onAutoOpenChange)
+                Switch(
+                    checked = autoOpen,
+                    onCheckedChange = {
+                        autoOpen = it
+                        onAutoOpenChange(it)
+                    }
+                )
             }
 
             Spacer(modifier = Modifier.height(8.dp))
