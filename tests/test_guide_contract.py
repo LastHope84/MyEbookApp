@@ -57,9 +57,13 @@ class GuideContractTest(unittest.TestCase):
         self.assertIn('status != null && status !in setOf("NEW", "TBR", "READING", "FINISHED")', MAIN)
         self.assertIn('Original file unchanged.', MAIN)
         self.assertIn('Original kept.', MAIN)
-        self.assertIn('not connected in this version', GUIDE)
-        self.assertIn('{ThemePrefs.saveKindleEmail(ctx,it)}, {}, {}, {}, {showSet=false}', MAIN)
-        self.assertIn('not written into the attachment', GUIDE)
+        self.assertNotIn('not connected in this version', GUIDE)
+        self.assertIn('convertedFolderP.launch(null)', MAIN)
+        self.assertIn('ThemePrefs.saveConvertedOutputUri(ctx, null)', MAIN)
+        self.assertIn('removeDuplicateBooks(dao)', MAIN)
+        self.assertIn('didAutoOpenLastBook', MAIN)
+        self.assertIn('{ showSet = false; showCleanDuplicates = true }', MAIN)
+        self.assertIn('the original file is untouched', GUIDE)
 
     def test_guide_does_not_change_ebook_data(self):
         for token in ('bookDao(', 'contentResolver', 'deleteById(', 'openOutputStream('):

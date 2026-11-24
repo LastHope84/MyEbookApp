@@ -136,7 +136,7 @@ Choose To Convert in the menu, tap a MOBI or AZW3 book and tap Convert to EPUB. 
 Open the library menu and tap Converted original visibility. Switch on Show converted originals to reveal linked originals on shelves and include them in counts; switch it off to hide them again. Previously converted books cannot be linked automatically, so their originals remain visible. Hiding an entry never deletes its file.
 
 ### Where it goes
-By default, converted EPUBs are in the app's private storage. Share the converted book to save a copy elsewhere. App storage can be lost if the app is uninstalled or its data is cleared. Although Settings displays Pick SD / Folder and Reset, those controls are not connected in this version; do not rely on them to change the destination.
+By default, converted EPUBs are in the app's private storage. In Settings, Pick SD / Folder saves converted EPUBs in a folder you choose, and Reset returns to app storage. If the chosen folder becomes unavailable, the EPUB is saved in app storage instead. App storage can be lost if the app is uninstalled or its data is cleared, so share important books to save a copy elsewhere.
 
 ## Share and Send to Kindle
 
@@ -152,7 +152,7 @@ In the library menu, open Settings, enter your Send to Kindle email and tap Save
 Open the library menu and tap Settings. Choose the app theme mode and accent; the accent row scrolls sideways. AMOLED Pitch-Black applies to dark app UI. Tap Done to close Settings.
 
 ### Other settings
-Save your Kindle email here. Check for new books on open scans your folders when you open the app, at most once a day. The Reopen Last Book on Launch switch is displayed, but automatic reopening is not connected in this version. The output-folder picker and Clean Duplicates buttons are also not connected. Do not rely on these controls to perform those actions.
+Save your Kindle email here. Check for new books on open scans your folders when you open the app, at most once a day. Reopen Last Book on Launch opens the last book you were reading when the app starts. Clean Duplicates removes duplicate library entries that have the same file name and size, keeping the one with the most recent activity; no ebook files are deleted.
 
 ### Storage
 The storage summary shows app covers, converted EPUBs and temporary cache. Clear Temp Cache removes temporary working, share and reader copies, not the original source ebooks or the app's converted EPUB folder. Avoid clearing it while an attachment is still being used by another app.

@@ -39,7 +39,7 @@ data class PendingConvertTarget(val uri: Uri, val fileName: String, val existing
 data class ConversionFailure(val book: BookEntity, val reason: String)
 
 class MainActivity : ComponentActivity() {
-companion object { var didAutoOpen = false }
+companion object { var didAutoOpen = false; var didAutoOpenLastBook = false }
 override fun onCreate(s: Bundle?) { super.onCreate(s); handleI(intent)
 setContent {
 val c = LocalContext.current; var m by remember { mutableStateOf(ThemePrefs.getMode(c)) }
@@ -127,6 +127,9 @@ fun cancelSelectAll() {
 val customShelves by dao.observeCustomShelves().collectAsState(initial = emptyList())
 val customShelvesWithCounts by remember(showConvertedOriginals) { dao.observeCustomShelvesWithCounts(showConvertedOriginals) }.collectAsState(initial = emptyList())
 var selectedCustomId by remember { mutableStateOf<Long?>(null) }
+var showCleanDuplicates by remember { mutableStateOf(false) }
+var cleaningDuplicates by remember { mutableStateOf(false) }
+var convertedOutput by remember { mutableStateOf(ThemePrefs.getConvertedOutputUri(ctx)) }
 var showCreateShelf by remember { mutableStateOf(false) }
 var shelfToDelete by remember { mutableStateOf<CustomShelf?>(null) }
 var membershipBook by remember { mutableStateOf<BookEntity?>(null) }
@@ -171,6 +174,14 @@ LaunchedEffect(Unit) {
             LibraryScanner.scanFolders(ctx, folders.map(Uri::parse))
         }
     }
+}
+LaunchedEffect(Unit) {
+    if (MainActivity.didAutoOpen || MainActivity.didAutoOpenLastBook) return@LaunchedEffect
+    if (!ThemePrefs.isAutoOpenLastBook(ctx)) return@LaunchedEffect
+    MainActivity.didAutoOpenLastBook = true
+    delay(350)
+    val last = withContext(Dispatchers.IO) { dao.getLastOpenedOnce(showConvertedOriginals) }
+    if (last != null && last.format in setOf("EPUB", "CBZ", "CBR", "PDF")) openInReader(ctx, last)
 }
 fun sendToKindle(book: BookEntity) {
 if (preparingKindle) return
@@ -363,6 +374,21 @@ val folderP = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocu
             requestScan("folder", u.toString())
         } catch (e: Exception) {
             Toast.makeText(ctx, "Could not save folder permission: ${e.localizedMessage ?: "unknown error"}", Toast.LENGTH_LONG).show()
+        }
+    }
+}
+val convertedFolderP = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { u ->
+    if (u != null) {
+        try {
+            ctx.contentResolver.takePersistableUriPermission(
+                u,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+            ThemePrefs.saveConvertedOutputUri(ctx, u.toString())
+            convertedOutput = u.toString()
+            Toast.makeText(ctx, "Converted EPUBs will be saved in the chosen folder.", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(ctx, "Could not save that folder: ${e.localizedMessage ?: "unknown error"}", Toast.LENGTH_LONG).show()
         }
     }
 }
@@ -574,7 +600,23 @@ items(paged.itemCount, key=paged.itemKey{it.id}) { i ->
 }
 }
 }
-if (showSet) AppSettingsBottomSheet(tm, acc, am, ThemePrefs.isAutoOpenLastBook(ctx), ThemePrefs.getKindleEmail(ctx), ThemePrefs.getConvertedOutputUri(ctx), onT, onA, onAm, {ThemePrefs.saveAutoOpenLastBook(ctx,it)}, {ThemePrefs.saveKindleEmail(ctx,it)}, {}, {}, {}, {showSet=false})
+if (showSet) AppSettingsBottomSheet(
+    tm, acc, am,
+    ThemePrefs.isAutoOpenLastBook(ctx),
+    ThemePrefs.getKindleEmail(ctx),
+    convertedOutput,
+    onT, onA, onAm,
+    { ThemePrefs.saveAutoOpenLastBook(ctx, it) },
+    { ThemePrefs.saveKindleEmail(ctx, it) },
+    { convertedFolderP.launch(null) },
+    {
+        ThemePrefs.saveConvertedOutputUri(ctx, null)
+        convertedOutput = null
+        Toast.makeText(ctx, "Converted EPUBs will be saved in app storage.", Toast.LENGTH_LONG).show()
+    },
+    { showSet = false; showCleanDuplicates = true },
+    { showSet = false }
+)
 if (showVisibility) AlertDialog(
     onDismissRequest={showVisibility=false},
     title={Text("Converted original visibility")},
@@ -590,6 +632,46 @@ if (showVisibility) AlertDialog(
         }
     }},
     confirmButton={TextButton(onClick={showVisibility=false}) { Text("Done") }}
+)
+if (showCleanDuplicates) AlertDialog(
+    onDismissRequest = { if (!cleaningDuplicates) showCleanDuplicates = false },
+    title = { Text("Clean duplicates?") },
+    text = {
+        Text(
+            "This removes duplicate library entries that have the same file name and size, " +
+                "keeping the copy with the most recent reading activity. " +
+                "No ebook files are deleted."
+        )
+    },
+    confirmButton = {
+        TextButton(
+            enabled = !cleaningDuplicates,
+            onClick = {
+                cleaningDuplicates = true
+                scp.launch {
+                    try {
+                        val removed = withContext(Dispatchers.IO) { removeDuplicateBooks(dao) }
+                        Toast.makeText(
+                            ctx,
+                            if (removed == 0) "No duplicates found."
+                            else "Removed $removed duplicate ${if (removed == 1) "entry" else "entries"}.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        showCleanDuplicates = false
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Toast.makeText(ctx, "Could not clean duplicates: ${e.localizedMessage ?: "unknown error"}", Toast.LENGTH_LONG).show()
+                    } finally {
+                        cleaningDuplicates = false
+                    }
+                }
+            }
+        ) { Text("Clean") }
+    },
+    dismissButton = {
+        TextButton(enabled = !cleaningDuplicates, onClick = { showCleanDuplicates = false }) { Text("Cancel") }
+    }
 )
 selB?.let { selected ->
 key(selected.id) {
