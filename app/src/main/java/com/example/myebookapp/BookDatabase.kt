@@ -186,6 +186,7 @@ interface BookDao {
     @Query("SELECT COUNT(*) FROM books WHERE format NOT IN ('EPUB', 'CBZ', 'CBR', 'PDF') AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") fun observeToConvertCount(showConvertedOriginals: Boolean = false): Flow<Int>
     @Query("SELECT COUNT(*) FROM books WHERE isFavorite = 1 AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") fun observeFavoriteCount(showConvertedOriginals: Boolean = false): Flow<Int>
     @Query("SELECT COUNT(*) FROM books WHERE readingStatus = :status AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") fun observeStatusCount(status: String, showConvertedOriginals: Boolean = false): Flow<Int>
+    @Query("SELECT COUNT(*) FROM books WHERE (lastOpenedAt > 0 OR id IN (SELECT outputBookId FROM conversion_links)) AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") fun observeRecentCount(showConvertedOriginals: Boolean = false): Flow<Int>
 
     // Built-in shelves: format collections and books outside every custom shelf.
     @Query("SELECT COUNT(*) FROM books WHERE format IN (:formats) AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") fun observeFormatCount(formats: List<String>, showConvertedOriginals: Boolean = false): Flow<Int>

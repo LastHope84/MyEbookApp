@@ -132,6 +132,7 @@ val toConv by remember(showConvertedOriginals) { dao.observeToConvertCount(showC
 val comicsCount by remember(showConvertedOriginals) { dao.observeFormatCount(listOf("CBZ", "CBR"), showConvertedOriginals) }.collectAsState(0)
 val pdfCount by remember(showConvertedOriginals) { dao.observeFormatCount(listOf("PDF"), showConvertedOriginals) }.collectAsState(0)
 val unshelvedCount by remember(showConvertedOriginals) { dao.observeUnshelvedCount(showConvertedOriginals) }.collectAsState(0)
+val recentCount by remember(showConvertedOriginals) { dao.observeRecentCount(showConvertedOriginals) }.collectAsState(0)
 val favoriteCount by remember(showConvertedOriginals) { dao.observeFavoriteCount(showConvertedOriginals) }.collectAsState(0)
 val readingCount by remember(showConvertedOriginals) { dao.observeStatusCount("READING", showConvertedOriginals) }.collectAsState(0)
 val toReadCount by remember(showConvertedOriginals) { dao.observeStatusCount("TBR", showConvertedOriginals) }.collectAsState(0)
@@ -567,7 +568,7 @@ Spacer(Modifier.height(12.dp)); LibraryTab.entries.forEach { t ->
         Text("Built-in shelves", style=MaterialTheme.typography.titleSmall, modifier=Modifier.padding(top=12.dp, bottom=4.dp))
     }
     val count = when (t) {
-        LibraryTab.ALL -> total; LibraryTab.RECENT -> minOf(total, 50)
+        LibraryTab.ALL -> total; LibraryTab.RECENT -> recentCount
         LibraryTab.FAV -> favoriteCount; LibraryTab.READING -> readingCount
         LibraryTab.TBR -> toReadCount; LibraryTab.DONE -> finishedCount
         LibraryTab.CONV -> toConv; LibraryTab.COMICS -> comicsCount

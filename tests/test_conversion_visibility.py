@@ -65,7 +65,8 @@ class VisibilityTests(unittest.TestCase):
                 if name == 'observeCustomShelvesWithCounts':
                     self.assertEqual([('empty', 0), ('shelf', 2)], [(r[1], r[2]) for r in hidden])
                     self.assertEqual([('empty', 0), ('shelf', 3)], [(r[1], r[2]) for r in shown])
-                elif name in ('observeTotalCount', 'observeFavoriteCount', 'observeStatusCount'):
+                elif name in ('observeTotalCount', 'observeFavoriteCount', 'observeStatusCount',
+                              'observeRecentCount'):
                     self.assertEqual((2,), hidden[0]); self.assertEqual((3,), shown[0])
                 elif name == 'observeToConvertCount':
                     self.assertEqual((1,), hidden[0]); self.assertEqual((2,), shown[0])
