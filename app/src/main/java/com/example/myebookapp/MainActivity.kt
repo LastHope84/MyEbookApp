@@ -370,7 +370,7 @@ customShelvesWithCounts.forEach { shelf ->
         TextButton(onClick={shelfToDelete=CustomShelf(shelf.id, shelf.name)}) { Text("Delete") }
     }
 }
-TextButton(onClick={showCreateShelf=true}) { Text("+ Create shelf") }
+NavigationDrawerItem(label={Text("+ Create shelf")}, selected=false, onClick={showCreateShelf=true})
 Spacer(Modifier.height(8.dp)); HorizontalDivider(); Spacer(Modifier.height(8.dp))
 NavigationDrawerItem(label={Text("Add Folder")}, selected=false, onClick={scp.launch{drw.close()}; folderP.launch(null)})
 NavigationDrawerItem(label={Text("Manage folders")}, selected=false, onClick={scp.launch{drw.close()}; showFolders=true})
