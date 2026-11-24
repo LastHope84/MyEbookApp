@@ -686,13 +686,13 @@ private fun AppearancePreview(settings: ReaderSettings) {
         ReaderFontOption.CURSIVE -> ComposeFontFamily.Cursive
         // The reader engine ships these exact fonts as assets.
         ReaderFontOption.OPEN_DYSLEXIC -> ComposeFontFamily(
-            Font(context.assets, "readium/fonts/OpenDyslexic-Regular.otf")
+            Font("readium/fonts/OpenDyslexic-Regular.otf", context.assets)
         )
         ReaderFontOption.ACCESSIBLE_DFA -> ComposeFontFamily(
-            Font(context.assets, "readium/readium-css/fonts/AccessibleDfA.otf")
+            Font("readium/readium-css/fonts/AccessibleDfA.otf", context.assets)
         )
         ReaderFontOption.DUOSPACE -> ComposeFontFamily(
-            Font(context.assets, "readium/readium-css/fonts/iAWriterDuospace-Regular.ttf")
+            Font("readium/readium-css/fonts/iAWriterDuospace-Regular.ttf", context.assets)
         )
         else -> ComposeFontFamily.Default
     }
