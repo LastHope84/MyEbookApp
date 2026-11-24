@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
@@ -136,5 +137,161 @@ fun BookGridTile(book: BookEntity, inSelectionMode: Boolean, isSelected: Boolean
         Spacer(Modifier.height(6.dp))
         Text(book.title, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text(book.author, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+fun GridViewIcon() {
+    val color = LocalContentColor.current
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        repeat(2) {
+            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                repeat(2) {
+                    Box(
+                        Modifier
+                            .size(7.dp)
+                            .clip(RoundedCornerShape(1.5.dp))
+                            .background(color)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun BookListRow(
+    book: BookEntity,
+    inSelectionMode: Boolean,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onToggleFavorite: () -> Unit
+) {
+    val context = LocalContext.current
+    val pct = (book.progressPercent * 100).roundToInt()
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 5.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        ),
+        border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .padding(10.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(64.dp)
+                    .height(92.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                if (!book.coverPath.isNullOrBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context).data(File(book.coverPath)).crossfade(true).build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Text(
+                        book.format,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    book.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    book.author,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                val details = buildList {
+                    val status = when (book.readingStatus) {
+                        "TBR" -> "To Read"
+                        "READING" -> "Reading"
+                        "FINISHED" -> "Finished"
+                        else -> null
+                    }
+                    status?.let { add(it) }
+                    book.series?.takeIf { it.isNotBlank() }?.let {
+                        add(if (book.seriesIndex != null) "$it #${book.seriesIndex}" else it)
+                    }
+                    book.publisher?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }?.let { add(it) }
+                    book.publishingDate?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }?.let { add(it) }
+                }
+                if (details.isNotEmpty()) {
+                    Text(
+                        details.joinToString(" • "),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    LinearProgressIndicator(
+                        progress = { book.progressPercent.toFloat().coerceIn(0f, 1f) },
+                        modifier = Modifier.weight(1f).height(4.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "$pct%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (inSelectionMode) {
+                Box(
+                    modifier = Modifier
+                        .padding(start = 6.dp)
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isSelected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surface.copy(0.8f)
+                        )
+                        .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Text(
+                            "✓",
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            } else {
+                IconButton(onClick = onToggleFavorite, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        imageVector = if (book.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        contentDescription = if (book.isFavorite) "Remove from favorites" else "Add to favorites",
+                        tint = if (book.isFavorite) Color(0xFFE11D48) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
     }
 }

@@ -9,16 +9,22 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -72,6 +78,7 @@ var showBulkShareConfirm by remember { mutableStateOf(false) }
 var preparingBulkShare by remember { mutableStateOf(false) }
 var sortMode by remember { mutableStateOf(ThemePrefs.getSort(ctx)) }
 var showSortMenu by remember { mutableStateOf(false) }
+var listMode by remember { mutableStateOf(ThemePrefs.getLibraryView(ctx) == "list") }
 var bulkSaving by remember { mutableStateOf(false) }
 var selectingAll by remember { mutableStateOf(false) }
 var selectAllJob by remember { mutableStateOf<Job?>(null) }
@@ -393,6 +400,16 @@ Scaffold(topBar={ TopAppBar(navigationIcon={ IconButton(enabled=!bulkSaving, onC
         }
     }) { Text("Actions") }
 } else {
+    IconButton(onClick = {
+        listMode = !listMode
+        ThemePrefs.saveLibraryView(ctx, if (listMode) "list" else "grid")
+    }) {
+        if (listMode) {
+            GridViewIcon()
+        } else {
+            Icon(Icons.Filled.List, contentDescription = "List view")
+        }
+    }
     Box {
         val sortLabel = when (sortMode) { "author" -> "Author"; "recent" -> "Recent"; else -> "Title" }
         TextButton(onClick = { showSortMenu = true }) { Text(sortLabel) }
@@ -464,6 +481,19 @@ val message = if (dbQry.isNotBlank()) "No books match this search on this shelf.
     else if (tab in listOf(LibraryTab.READING, LibraryTab.TBR, LibraryTab.DONE)) "No books on this shelf yet. Open a book in All Books to choose its shelf."
     else "No books here yet."
 Text(message, modifier = Modifier.padding(20.dp), style = MaterialTheme.typography.bodyMedium)
+} else if (listMode) {
+LazyColumn(contentPadding = PaddingValues(vertical = 6.dp), modifier = Modifier.fillMaxSize()) {
+items(paged.itemCount, key=paged.itemKey{it.id}) { i ->
+    val b = paged[i]
+    if (b != null) {
+        BookListRow(b, selMode, selIds.contains(b.id),
+            { if (!bulkSaving && !converting) { cancelSelectAll(); if (selMode) { selIds = if (selIds.contains(b.id)) selIds - b.id else selIds + b.id; if (selIds.isEmpty()) selMode=false } else selB = b } },
+            { if (!bulkSaving && !converting) { cancelSelectAll(); selMode=true; selIds = selIds + b.id } },
+            { if (!bulkSaving && !converting) scp.launch { withContext(Dispatchers.IO) { dao.setFavorite(b.id, !b.isFavorite) } } })
+    } else {
+        Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 5.dp).height(92.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)))
+    }
+}
 } else LazyVerticalGrid(columns = GridCells.Fixed(3), contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp), modifier = Modifier.fillMaxSize()) {
 items(paged.itemCount, key=paged.itemKey{it.id}) { i ->
     val b = paged[i]; if (b != null) BookGridTile(b, selMode, selIds.contains(b.id), { if (!bulkSaving && !converting) { cancelSelectAll(); if (selMode) { selIds = if (selIds.contains(b.id)) selIds - b.id else selIds + b.id; if (selIds.isEmpty()) selMode=false } else selB = b } }, { if (!bulkSaving && !converting) { cancelSelectAll(); selMode=true; selIds = selIds + b.id } }, { if (!bulkSaving && !converting) scp.launch { withContext(Dispatchers.IO) { dao.setFavorite(b.id, !b.isFavorite) } } }) else BookPlaceholderTile()
