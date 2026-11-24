@@ -154,7 +154,7 @@ The storage summary shows app covers, converted EPUBs and temporary cache. Clear
 ## Storage, safety and troubleshooting
 
 ### What is stored
-The app keeps library records, metadata edits, favorites, reading statuses, progress and preferences on this device. Folder books remain in their original locations; access depends on Android's folder permission. Back up your original files separately. The app has no visible export for its library edits or shelves.
+The app keeps library records, metadata edits, favorites, reading statuses, progress and preferences on this device. Folder books remain in their original locations; access depends on Android's folder permission. Files added with Add File or opened from another app are copied into app storage, so they are lost if the app is uninstalled or its data is cleared. Back up your original files separately. The app has no visible export for its library edits or shelves.
 
 ### Uninstall or clear app data
 Clearing app data or uninstalling can remove library records, preferences, app-only metadata and EPUBs in private app storage. Copy important converted EPUBs out using Share before doing so. Original files in separately chosen folders are not removed by the library's Remove action.
