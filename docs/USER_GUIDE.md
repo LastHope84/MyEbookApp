@@ -189,7 +189,7 @@ Check that the file is still accessible and a suitable sharing or email app is i
 ## Licenses and credits
 
 ### Credits
-MyEbookApp is built with open-source software. Thanks to libmobi by Bartek Fabiszewski; the Readium Kotlin Toolkit and Readium CSS; Apache PDFBox; junrar and the UnRAR authors; Foxlet Translate by yinvoker, the Bergamot project, Marian, SentencePiece and ruy; Mozilla Firefox Translations and the model authors; AndroidX, Jetpack Compose, Material Components, Room, Paging, Coil, Kotlin and kotlinx.coroutines; and the font authors: Abbie Gonzalez (OpenDyslexic), Orange (Accessible DfA) and IBM (iA Writer Duospace / IBM Plex). Full licence details are in the repository's THIRD_PARTY_NOTICES.md and licenses folder.
+MyEbookApp is a personal project by LastHope84, built with Claude (Anthropic). It is built with open-source software. Thanks to libmobi by Bartek Fabiszewski; the Readium Kotlin Toolkit and Readium CSS; Apache PDFBox; junrar and the UnRAR authors; Foxlet Translate by yinvoker, the Bergamot project, Marian, SentencePiece and ruy; Mozilla Firefox Translations and the model authors; AndroidX, Jetpack Compose, Material Components, Room, Paging, Coil, Kotlin and kotlinx.coroutines; and the font authors: Abbie Gonzalez (OpenDyslexic), Orange (Accessible DfA) and IBM (iA Writer Duospace / IBM Plex). Full licence details are in the repository's THIRD_PARTY_NOTICES.md and licenses folder.
 
 ### CBR (RAR)
 CBR support uses the UnRAR decompression code by Alexander Roshal. The code is free to use in software that handles RAR archives, but may not be used to develop a RAR-compatible archiver. MyEbookApp only reads comics and never creates RAR archives.

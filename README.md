@@ -4,7 +4,7 @@ MyEbookApp is a personal Android ebook reader and library. It is built for one
 reader's shelves rather than as a store product: the library lives on the
 device, there is no account, and there is no analytics.
 
-Current release: **1.13.6** (Android 8.0 or later, arm64-v8a).
+Current release: **1.13.7** (Android 8.0 or later, arm64-v8a).
 
 ## Features
 
@@ -182,6 +182,8 @@ fonts (SIL OFL 1.1). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
 the [`licenses/`](licenses/) directory for details.
 
 ## Credits
+
+MyEbookApp is a personal project by LastHope84, built with Claude (Anthropic).
 
 Thanks to the libmobi, Readium, PDFBox, junrar, Foxlet, Bergamot, Marian and
 Mozilla translations projects, and to the font authors.
