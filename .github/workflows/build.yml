@@ -80,12 +80,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk MyEbookApp-latest.apk
+          NOTES="Automated debug build from commit $GITHUB_SHA on the main branch. Debug-signed with the project keystore; install it over a build with the same signature."
           if gh release view latest >/dev/null 2>&1; then
+            gh release edit latest --target "$GITHUB_SHA" --notes "$NOTES"
             gh release upload latest MyEbookApp-latest.apk --clobber
           else
             gh release create latest MyEbookApp-latest.apk \
+              --target "$GITHUB_SHA" \
               --title "Latest build" \
-              --notes "Automated debug build from commit $GITHUB_SHA on the main branch. Debug-signed with the project keystore; install it over a build with the same signature."
+              --notes "$NOTES"
           fi
 
       - name: Publish tagged release
