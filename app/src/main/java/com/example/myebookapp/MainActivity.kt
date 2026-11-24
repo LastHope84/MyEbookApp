@@ -33,6 +33,9 @@ import androidx.paging.*
 import androidx.paging.compose.*
 import kotlinx.coroutines.*
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 enum class LibraryTab(val title: String) { ALL("All Books"), RECENT("Recent"), FAV("Favorites"), READING("Reading"), TBR("To Read"), DONE("Finished"), CONV("To Convert") }
 data class PendingConvertTarget(val uri: Uri, val fileName: String, val existingBookId: Long? = null)
@@ -130,6 +133,11 @@ var selectedCustomId by remember { mutableStateOf<Long?>(null) }
 var showCleanDuplicates by remember { mutableStateOf(false) }
 var cleaningDuplicates by remember { mutableStateOf(false) }
 var convertedOutput by remember { mutableStateOf(ThemePrefs.getConvertedOutputUri(ctx)) }
+var showBackupOptions by remember { mutableStateOf(false) }
+var backupIncludeBooks by remember { mutableStateOf(false) }
+var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
+var pendingRestoreInfo by remember { mutableStateOf<BackupInfo?>(null) }
+var backupBusy by remember { mutableStateOf<String?>(null) }
 var showCreateShelf by remember { mutableStateOf(false) }
 var shelfToDelete by remember { mutableStateOf<CustomShelf?>(null) }
 var membershipBook by remember { mutableStateOf<BookEntity?>(null) }
@@ -392,6 +400,47 @@ val convertedFolderP = rememberLauncherForActivityResult(ActivityResultContracts
         }
     }
 }
+val backupCreateP = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { u ->
+    if (u == null) return@rememberLauncherForActivityResult
+    val includeBooks = backupIncludeBooks
+    backupBusy = "Backing up library…"
+    scp.launch {
+        try {
+            val summary = withContext(Dispatchers.IO) {
+                BackupRestore.export(ctx, AppDatabase.getInstance(ctx), u, includeBooks)
+            }
+            Toast.makeText(
+                ctx,
+                "Backup saved: ${summary.books} books, ${summary.shelves} shelves" +
+                    (if (summary.bookFiles > 0) ", ${summary.bookFiles} book files" else "") + ".",
+                Toast.LENGTH_LONG
+            ).show()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Toast.makeText(ctx, "Backup failed: ${e.localizedMessage ?: "unknown error"}", Toast.LENGTH_LONG).show()
+        } finally {
+            backupBusy = null
+        }
+    }
+}
+val restorePickP = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
+    if (u == null) return@rememberLauncherForActivityResult
+    backupBusy = "Reading backup…"
+    scp.launch {
+        try {
+            val info = withContext(Dispatchers.IO) { BackupRestore.inspect(ctx, u) }
+            pendingRestoreUri = u
+            pendingRestoreInfo = info
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Toast.makeText(ctx, "That file is not a valid backup: ${e.localizedMessage ?: "unknown error"}", Toast.LENGTH_LONG).show()
+        } finally {
+            backupBusy = null
+        }
+    }
+}
 var importingFiles by remember { mutableStateOf(false) }
 val fileP = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
     if (uris.isNullOrEmpty() || importingFiles) return@rememberLauncherForActivityResult
@@ -615,6 +664,8 @@ if (showSet) AppSettingsBottomSheet(
         Toast.makeText(ctx, "Converted EPUBs will be saved in app storage.", Toast.LENGTH_LONG).show()
     },
     { showSet = false; showCleanDuplicates = true },
+    { showSet = false; showBackupOptions = true },
+    { showSet = false; restorePickP.launch(arrayOf("*/*")) },
     { showSet = false }
 )
 if (showVisibility) AlertDialog(
@@ -673,6 +724,114 @@ if (showCleanDuplicates) AlertDialog(
         TextButton(enabled = !cleaningDuplicates, onClick = { showCleanDuplicates = false }) { Text("Cancel") }
     }
 )
+if (showBackupOptions) AlertDialog(
+    onDismissRequest = { showBackupOptions = false },
+    title = { Text("Back up library") },
+    text = {
+        Column {
+            Text("The backup includes library entries, reading progress, favorites, shelves, covers and settings.")
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = backupIncludeBooks,
+                    onCheckedChange = { backupIncludeBooks = it }
+                )
+                Text("Include book files stored in the app (larger)", modifier = Modifier.padding(start = 4.dp))
+            }
+            Text(
+                "Books in your own folders are not copied; only their library entries are backed up.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    },
+    confirmButton = {
+        TextButton(onClick = {
+            showBackupOptions = false
+            backupCreateP.launch("MyEbookApp-backup-${java.time.LocalDate.now()}.zip")
+        }) { Text("Choose file…") }
+    },
+    dismissButton = {
+        TextButton(onClick = { showBackupOptions = false }) { Text("Cancel") }
+    }
+)
+pendingRestoreInfo?.let { info ->
+    val closeRestore = {
+        pendingRestoreUri = null
+        pendingRestoreInfo = null
+    }
+    val whenText = if (info.createdAt > 0) {
+        SimpleDateFormat("d MMM yyyy, HH:mm", Locale.getDefault()).format(Date(info.createdAt))
+    } else "unknown date"
+    AlertDialog(
+        onDismissRequest = closeRestore,
+        title = { Text("Restore library?") },
+        text = {
+            Column {
+                Text("Backup from $whenText" + (if (info.appVersion.isNotBlank()) " (app ${info.appVersion})" else "") + ".")
+                Text(
+                    "It contains ${info.bookCount} book ${if (info.bookCount == 1) "entry" else "entries"} " +
+                        "and ${info.shelfCount} ${if (info.shelfCount == 1) "shelf" else "shelves"}."
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("This replaces the library on this device. Source files in your folders are not touched. This cannot be undone.")
+                if (!info.includeBooks) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "This backup does not include books stored in the app. On a new phone, those entries will show but their files must be added again.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val u = pendingRestoreUri
+                closeRestore()
+                if (u != null) {
+                    backupBusy = "Restoring library…"
+                    scp.launch {
+                        try {
+                            LibraryScanner.stopScan(ctx)
+                            val summary = withContext(Dispatchers.IO) {
+                                BackupRestore.restore(ctx, AppDatabase.getInstance(ctx), u)
+                            }
+                            Toast.makeText(
+                                ctx,
+                                "Library restored: ${summary.books} books, ${summary.shelves} shelves.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            MainActivity.didAutoOpenLastBook = true
+                            (ctx as? MainActivity)?.recreate()
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Toast.makeText(ctx, "Restore failed: ${e.localizedMessage ?: "unknown error"}", Toast.LENGTH_LONG).show()
+                        } finally {
+                            backupBusy = null
+                        }
+                    }
+                }
+            }) { Text("Restore") }
+        },
+        dismissButton = { TextButton(onClick = closeRestore) { Text("Cancel") } }
+    )
+}
+backupBusy?.let { msg ->
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text("Please wait") },
+        text = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(22.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(msg)
+            }
+        },
+        confirmButton = {}
+    )
+}
 selB?.let { selected ->
 key(selected.id) {
 val liveBook by remember(selected.id) { dao.observeById(selected.id) }.collectAsState(initial = selected)

@@ -114,6 +114,20 @@ interface BookDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertIgnoreBatch(books: List<BookEntity>): List<Long>
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertIgnore(book: BookEntity): Long
     @Query("SELECT * FROM books WHERE uriString = :u LIMIT 1") suspend fun getByUri(u: String): BookEntity?
+
+    // Backup/restore: read every row, then replace the library in one transaction.
+    @Query("SELECT * FROM books ORDER BY id") suspend fun getAllBooksOnce(): List<BookEntity>
+    @Query("SELECT * FROM custom_shelves ORDER BY id") suspend fun getAllCustomShelvesOnce(): List<CustomShelf>
+    @Query("SELECT * FROM custom_shelf_books") suspend fun getAllShelfBooksOnce(): List<CustomShelfBook>
+    @Query("SELECT * FROM conversion_links") suspend fun getAllConversionLinksOnce(): List<ConversionLink>
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun restoreBooks(books: List<BookEntity>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun restoreCustomShelves(shelves: List<CustomShelf>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun restoreShelfBooks(rows: List<CustomShelfBook>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun restoreConversionLinks(links: List<ConversionLink>)
+    @Query("DELETE FROM conversion_links") suspend fun deleteAllConversionLinks()
+    @Query("DELETE FROM custom_shelf_books") suspend fun deleteAllShelfBooks()
+    @Query("DELETE FROM custom_shelves") suspend fun deleteAllCustomShelves()
+    @Query("DELETE FROM books") suspend fun deleteAllBooks()
     @Query("SELECT * FROM books WHERE id = :id LIMIT 1") fun observeById(id: Long): Flow<BookEntity?>
     @Query("UPDATE books SET isFavorite = :favorite WHERE id = :id") suspend fun setFavorite(id: Long, favorite: Boolean): Int
     @Query("UPDATE books SET isFavorite = :favorite WHERE id IN (:ids)") suspend fun setFavoriteForIdsChunk(ids: List<Long>, favorite: Boolean): Int

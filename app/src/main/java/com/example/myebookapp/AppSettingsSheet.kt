@@ -40,6 +40,8 @@ fun AppSettingsBottomSheet(
     onPickConvertedFolder: () -> Unit,
     onResetConvertedFolder: () -> Unit,
     onCleanDuplicates: () -> Unit,
+    onBackup: () -> Unit,
+    onRestore: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -275,6 +277,23 @@ fun AppSettingsBottomSheet(
             cacheClearedMsg?.let { msg ->
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(msg, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+            SectionLabel("Backup & Restore")
+            Text(
+                "Save your library entries, reading progress, favorites, shelves, covers and settings to a .zip file. Restore it on this phone or a new one. Book files stored in the app are optional.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onBackup, modifier = Modifier.weight(1f)) {
+                    Text("Back up")
+                }
+                OutlinedButton(onClick = onRestore, modifier = Modifier.weight(1f)) {
+                    Text("Restore")
+                }
             }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))

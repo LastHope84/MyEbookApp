@@ -160,7 +160,10 @@ The storage summary shows app covers, converted EPUBs and temporary cache. Clear
 ## Storage, safety and troubleshooting
 
 ### What is stored
-The app keeps library records, metadata edits, favorites, reading statuses, progress and preferences on this device. Folder books remain in their original locations; access depends on Android's folder permission. Files added with Add File or opened from another app are copied into app storage, so they are lost if the app is uninstalled or its data is cleared. Back up your original files separately. The app has no visible export for its library edits or shelves.
+The app keeps library records, metadata edits, favorites, reading statuses, progress and preferences on this device. Folder books remain in their original locations; access depends on Android's folder permission. Files added with Add File or opened from another app are copied into app storage, so they are lost if the app is uninstalled or its data is cleared. Back up your original files separately, and use Back up in Settings to save library edits, shelves, progress and settings.
+
+### Backup and restore
+In Settings, Back up saves library entries, reading progress, favorites, shelves, covers and settings to a .zip file you choose. Include book files stored in the app to also save imported and converted books; books in your own folders are not copied. Restore replaces the library on this device after confirmation and never touches source files in your folders. On a new phone, re-add your folders so folder books can open again. The backup contains your Kindle email and library details, so keep it somewhere safe.
 
 ### Uninstall or clear app data
 Clearing app data or uninstalling can remove library records, preferences, app-only metadata and EPUBs in private app storage. Copy important converted EPUBs out using Share before doing so. Original files in separately chosen folders are not removed by the library's Remove action.

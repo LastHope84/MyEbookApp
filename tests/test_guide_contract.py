@@ -64,6 +64,10 @@ class GuideContractTest(unittest.TestCase):
         self.assertIn('didAutoOpenLastBook', MAIN)
         self.assertIn('{ showSet = false; showCleanDuplicates = true }', MAIN)
         self.assertIn('the original file is untouched', GUIDE)
+        self.assertIn('BackupRestore.export', MAIN)
+        self.assertIn('BackupRestore.restore', MAIN)
+        self.assertIn('Back up', GUIDE)
+        self.assertNotIn('has no visible export', GUIDE)
 
     def test_guide_does_not_change_ebook_data(self):
         for token in ('bookDao(', 'contentResolver', 'deleteById(', 'openOutputStream('):
