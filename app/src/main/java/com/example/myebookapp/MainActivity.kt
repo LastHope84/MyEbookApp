@@ -485,7 +485,13 @@ if (showGuide) {
     UserGuideScreen(onClose = { showGuide = false })
     return
 }
-BackHandler(drw.isOpen || selMode) { if (!bulkSaving) { if (drw.isOpen) scp.launch { drw.close() } else { cancelSelectAll(); selIds = emptySet(); selMode = false } } }
+BackHandler(drw.isOpen || selMode || selectedCustomId != null) {
+    if (!bulkSaving) when {
+        drw.isOpen -> scp.launch { drw.close() }
+        selMode -> { cancelSelectAll(); selIds = emptySet(); selMode = false }
+        else -> { cancelSelectAll(); selectedCustomId = null; tab = LibraryTab.ALL; selIds = emptySet(); selMode = false }
+    }
+}
 LaunchedEffect(qry) { delay(250); if (dbQry != qry) { cancelSelectAll(); dbQry = qry } }
 
 val customId = selectedCustomId
