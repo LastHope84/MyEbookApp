@@ -3,11 +3,14 @@ package com.example.myebookapp
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /** Display names never replace the original codes used to identify packs. */
@@ -54,7 +57,10 @@ internal fun TranslationPackSettings(enabled: Boolean) {
     var showAllPacks by remember { mutableStateOf(false) }
     var showRoutes by remember { mutableStateOf(false) }
 
-    suspend fun refresh() { routes = TranslationRuntime.routes(context) }
+    var expanded by remember { mutableStateOf(false) }
+    suspend fun refresh() {
+        routes = withContext(Dispatchers.IO) { TranslationRuntime.routes(context) }
+    }
     fun run(block: suspend () -> Unit) {
         if (busy) return
         busy = true
@@ -65,7 +71,8 @@ internal fun TranslationPackSettings(enabled: Boolean) {
             finally { busy = false }
         }
     }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(expanded) {
+        if (!expanded || routes.isNotEmpty()) return@LaunchedEffect
         busy = true
         try { refresh() }
         catch (e: CancellationException) { throw e }
@@ -81,8 +88,24 @@ internal fun TranslationPackSettings(enabled: Boolean) {
     }
     val visiblePacks = if (showAllPacks) matchingPacks else matchingPacks.take(6)
     Spacer(Modifier.height(12.dp))
-    Text("Language packs", style = MaterialTheme.typography.titleSmall)
-    Text("Packs remain installed when translation is switched off. This list does not recheck installed files; downloads are checked, and models are checked before use.", style = MaterialTheme.typography.bodySmall)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Language packs", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "Packs remain installed when translation is switched off.",
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+        TextButton(onClick = { expanded = !expanded }) {
+            Text(if (expanded) "Hide" else "Manage")
+        }
+    }
+    if (!expanded) return
+    Text("This list does not recheck installed files; downloads are checked, and models are checked before use.", style = MaterialTheme.typography.bodySmall)
     if (busy) Text("Working…", style = MaterialTheme.typography.bodySmall)
     message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
     if (routes.isEmpty() && !busy) Text("No catalogue available.", style = MaterialTheme.typography.bodySmall)
