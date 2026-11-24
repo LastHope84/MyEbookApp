@@ -157,11 +157,12 @@ class PdfTextSource private constructor(
                     val height = position.heightDir
                     if (width <= 0f && height <= 0f) continue
                     val x = position.xDirAdj
-                    val y = position.yDirAdj
+                    // yDirAdj is the baseline; the glyph box sits mostly above it.
+                    val baseline = position.yDirAdj
                     left = min(left, x)
-                    top = min(top, y)
+                    top = min(top, baseline - height * 0.85f)
                     right = max(right, x + width)
-                    bottom = max(bottom, y + height)
+                    bottom = max(bottom, baseline + height * 0.15f)
                 }
                 if (left == Float.MAX_VALUE) return
                 words.add(
