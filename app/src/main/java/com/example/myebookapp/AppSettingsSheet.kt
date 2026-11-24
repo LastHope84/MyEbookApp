@@ -40,6 +40,8 @@ fun AppSettingsBottomSheet(
     onPickConvertedFolder: () -> Unit,
     onResetConvertedFolder: () -> Unit,
     onCleanDuplicates: () -> Unit,
+    onActivityLog: () -> Unit,
+    onConvertedVisibility: () -> Unit,
     onBackup: () -> Unit,
     onRestore: () -> Unit,
     onDismiss: () -> Unit
@@ -277,6 +279,15 @@ fun AppSettingsBottomSheet(
             cacheClearedMsg?.let { msg ->
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(msg, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(onClick = onActivityLog, modifier = Modifier.fillMaxWidth()) {
+                Text("Activity log")
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            OutlinedButton(onClick = onConvertedVisibility, modifier = Modifier.fillMaxWidth()) {
+                Text("Converted original visibility")
             }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))

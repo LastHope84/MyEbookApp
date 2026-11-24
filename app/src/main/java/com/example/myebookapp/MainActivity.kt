@@ -591,8 +591,6 @@ NavigationDrawerItem(label={Text("Add File")}, selected=false, onClick={scp.laun
 NavigationDrawerItem(label={Text("Manage folders")}, selected=false, onClick={scp.launch{drw.close()}; showFolders=true})
 if (folders.isNotEmpty()) NavigationDrawerItem(label={Text("Rescan Folders")}, selected=false, onClick={scp.launch{drw.close()}; requestScan("rescan")})
 NavigationDrawerItem(label={Text("Settings")}, selected=false, onClick={scp.launch{drw.close()}; showSet=true})
-NavigationDrawerItem(label={Text("Activity log")}, selected=false, onClick={scp.launch{drw.close()}; showScanLog=true})
-NavigationDrawerItem(label={Text("Converted original visibility")}, selected=false, onClick={scp.launch{drw.close()}; showVisibility=true})
 NavigationDrawerItem(label={Text("User Guide")}, selected=false, onClick={scp.launch { drw.close(); showGuide=true }})
 }
 }
@@ -726,6 +724,8 @@ if (showSet) AppSettingsBottomSheet(
         Toast.makeText(ctx, "Converted EPUBs will be saved in app storage.", Toast.LENGTH_LONG).show()
     },
     { showSet = false; showCleanDuplicates = true },
+    { showSet = false; showScanLog = true },
+    { showSet = false; showVisibility = true },
     { showSet = false; showBackupOptions = true },
     { showSet = false; restorePickP.launch(arrayOf("*/*")) },
     { showSet = false }

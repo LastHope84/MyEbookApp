@@ -136,7 +136,7 @@ Edits and cover changes are saved in this app's library. The original ebook is n
 Choose To Convert in the menu, tap a MOBI or AZW3 book and tap Convert to EPUB. The app attempts to create a separate EPUB, adds it to the library and opens its details. Once a MOBI or AZW3 is successfully converted and linked, its original library entry is hidden by default, not deleted. Conversion can fail or produce imperfect results depending on the source; check the output. Failed conversions remain visible and the source file is kept.
 
 ### Show or hide originals
-Open the library menu and tap Converted original visibility. Switch on Show converted originals to reveal linked originals on shelves and include them in counts; switch it off to hide them again. Previously converted books cannot be linked automatically, so their originals remain visible. Hiding an entry never deletes its file.
+Open Settings and tap Converted original visibility. Switch on Show converted originals to reveal linked originals on shelves and include them in counts; switch it off to hide them again. Previously converted books cannot be linked automatically, so their originals remain visible. Hiding an entry never deletes its file.
 
 ### Where it goes
 By default, converted EPUBs are in the app's private storage. In Settings, Pick SD / Folder saves converted EPUBs in a folder you choose, and Reset returns to app storage. If the chosen folder becomes unavailable, the EPUB is saved in app storage instead. App storage can be lost if the app is uninstalled or its data is cleared, so share important books to save a copy elsewhere.
@@ -175,7 +175,7 @@ Clearing app data or uninstalling can remove library records, preferences, app-o
 Check that the file is in a selected folder and still accessible, then use Rescan Folders or add the folder again. If Android reports that folder access was lost, add the folder again and allow access. Clear any active library search and check All Books. Scans may take time.
 
 ### Scan details
-If a scan stops, open the scan banner and tap Scan details, or open the menu and tap Activity log. The log shows which folder failed and why, and also records read-aloud events; include it when asking for help. Background scans may also be stopped by aggressive phone battery settings, so allow notifications and remove battery restrictions for the app.
+If a scan stops, open the scan banner and tap Scan details, or open Settings and tap Activity log. The log shows which folder failed and why, and also records read-aloud events; include it when asking for help. Background scans may also be stopped by aggressive phone battery settings, so allow notifications and remove battery restrictions for the app.
 
 ### Book or conversion fails
 Check that the source file is accessible and intact. The reader opens EPUBs; use Convert for supported non-EPUB entries. Not every source can be converted or read successfully. Keep the source and try another copy or app if needed.
