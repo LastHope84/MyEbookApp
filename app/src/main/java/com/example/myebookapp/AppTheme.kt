@@ -198,10 +198,20 @@ fun MyEbookTheme(
     }
 
     if (darkTheme && resolvedAmoled) {
+        // Material 3 draws cards, sheets, the drawer and bars from the surface
+        // container family, so all of them must be blacked out, not just background.
         colorScheme = colorScheme.copy(
             background = Color.Black,
             surface = Color.Black,
-            surfaceVariant = Color(0xFF141418)
+            surfaceDim = Color.Black,
+            surfaceBright = Color(0xFF1A1A1C),
+            surfaceContainerLowest = Color.Black,
+            surfaceContainerLow = Color(0xFF0A0A0C),
+            surfaceContainer = Color(0xFF0E0E10),
+            surfaceContainerHigh = Color(0xFF121214),
+            surfaceContainerHighest = Color(0xFF161618),
+            surfaceVariant = Color(0xFF141416),
+            surfaceTint = Color.Black
         )
     }
 
