@@ -35,18 +35,23 @@ fun CustomShelfMembershipDialog(
         onDismissRequest = onDismiss,
         title = { Text("Custom shelves") },
         text = {
-            if (shelves.isEmpty()) Text("No custom shelves yet. Create one from the library menu.")
-            else Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
-                Text("A book can be on more than one shelf.", style = MaterialTheme.typography.bodySmall)
-                shelves.forEach { shelf ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = shelf.id in shelfIds, enabled = !saving,
-                            onCheckedChange = { onChange(shelf, it) })
-                        Text(shelf.name, modifier = Modifier.padding(start = 8.dp))
+            Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                if (shelves.isEmpty()) Text("No custom shelves yet. Create one from the library menu.")
+                else {
+                    Text("A book can be on more than one shelf.", style = MaterialTheme.typography.bodySmall)
+                    shelves.forEach { shelf ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = shelf.id in shelfIds, enabled = !saving,
+                                onCheckedChange = { onChange(shelf, it) })
+                            Text(shelf.name, modifier = Modifier.padding(start = 8.dp))
+                        }
                     }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss, enabled = !saving) { Text("Done") }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss, enabled = !saving) { Text("Done") } }
+        confirmButton = {}
     )
 }

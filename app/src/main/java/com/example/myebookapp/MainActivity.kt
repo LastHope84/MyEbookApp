@@ -621,15 +621,22 @@ showBulkMove.let { if (it) {
 } }
 showBulkShelves.let { if (it) {
     AlertDialog(onDismissRequest={ if (!bulkSaving) showBulkShelves=false }, title={Text("Custom shelves")}, text={
-        if (customShelves.isEmpty()) Text("Create a custom shelf first.") else Column(Modifier.heightIn(max=400.dp).verticalScroll(rememberScrollState())) {
-            Text("Add the ${selIds.size} selected books to a shelf. Books can belong to more than one custom shelf.", style=MaterialTheme.typography.bodySmall)
-            customShelves.forEach { shelf -> Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
-                Text(shelf.name, modifier=Modifier.weight(1f))
-                TextButton(enabled=!bulkSaving,onClick={ val ids=selIds.toList(); bulkSaving=true; scp.launch { try { withContext(Dispatchers.IO) { dao.addBooksToCustomShelf(shelf.id, ids) }; Toast.makeText(ctx,"Added to ${shelf.name}.",Toast.LENGTH_SHORT).show() } catch (e: CancellationException) { throw e } catch (e: Exception) { Toast.makeText(ctx,"Could not update ${shelf.name}.",Toast.LENGTH_LONG).show() } finally { bulkSaving=false } } }) { Text("Add") }
-                if (selectedCustomId == shelf.id) TextButton(enabled=!bulkSaving,onClick={ val ids=selIds.toList(); bulkSaving=true; scp.launch { try { withContext(Dispatchers.IO) { dao.removeBooksFromCustomShelf(shelf.id, ids) }; showBulkShelves=false; selIds=emptySet(); selMode=false } catch (e: CancellationException) { throw e } catch (e: Exception) { Toast.makeText(ctx,"Could not remove books from ${shelf.name}.",Toast.LENGTH_LONG).show() } finally { bulkSaving=false } } }) { Text("Remove") }
-            } }
+        Column(Modifier.heightIn(max=400.dp).verticalScroll(rememberScrollState())) {
+            if (customShelves.isEmpty()) {
+                Text("Create a custom shelf first.")
+            } else {
+                Text("Add the ${selIds.size} selected books to a shelf. Books can belong to more than one custom shelf.", style=MaterialTheme.typography.bodySmall)
+                customShelves.forEach { shelf -> Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
+                    Text(shelf.name, modifier=Modifier.weight(1f))
+                    TextButton(enabled=!bulkSaving,onClick={ val ids=selIds.toList(); bulkSaving=true; scp.launch { try { withContext(Dispatchers.IO) { dao.addBooksToCustomShelf(shelf.id, ids) }; Toast.makeText(ctx,"Added to ${shelf.name}.",Toast.LENGTH_SHORT).show() } catch (e: CancellationException) { throw e } catch (e: Exception) { Toast.makeText(ctx,"Could not update ${shelf.name}.",Toast.LENGTH_LONG).show() } finally { bulkSaving=false } } }) { Text("Add") }
+                    if (selectedCustomId == shelf.id) TextButton(enabled=!bulkSaving,onClick={ val ids=selIds.toList(); bulkSaving=true; scp.launch { try { withContext(Dispatchers.IO) { dao.removeBooksFromCustomShelf(shelf.id, ids) }; showBulkShelves=false; selIds=emptySet(); selMode=false } catch (e: CancellationException) { throw e } catch (e: Exception) { Toast.makeText(ctx,"Could not remove books from ${shelf.name}.",Toast.LENGTH_LONG).show() } finally { bulkSaving=false } } }) { Text("Remove") }
+                } }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.End) {
+                TextButton(enabled=!bulkSaving, onClick={ showBulkShelves=false }) { Text("Done") }
+            }
         }
-    }, confirmButton={ TextButton(enabled=!bulkSaving,onClick={showBulkShelves=false}){Text("Done")} })
+    }, confirmButton={})
 } }
 bulkFavoriteAction?.let { add ->
     AlertDialog(onDismissRequest={ if (!bulkSaving) bulkFavoriteAction=null },
