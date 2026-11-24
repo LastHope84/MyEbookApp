@@ -527,7 +527,7 @@ liveBook?.let { b ->
 BookDetailsBottomSheet(
 b = b, hasK = ThemePrefs.getKindleEmail(ctx).isNotBlank(),
 onD = { selB = null },
-onR = { selB = null; openInReader(ctx, b.uriString) },
+onR = { selB = null; openInReader(ctx, b) },
 onE = { if (!b.metadataExtracted) { Toast.makeText(ctx, "Wait for this book's metadata scan to finish before editing.", Toast.LENGTH_LONG).show() } else { selB = null; edtB = b } },
 onS = { val i = FileOpener.prepareShareIntent(ctx, listOf(b)); ctx.startActivity(i) },
 onK = { sendToKindle(b) }, onC = { convertBook(b) },
@@ -631,9 +631,9 @@ showBulkActions.let { if (it) {
                     val books=withContext(Dispatchers.IO) {
                         val selected=dao.getByIds(ids)
                         check(selected.isNotEmpty() && selected.size == ids.size) { "Some selected books are no longer in the library. No books were converted." }
-                        selected.filter { it.format != "EPUB" }
+                        selected.filter { it.format == "MOBI" || it.format == "AZW3" }
                     }
-                    if (books.isEmpty()) Toast.makeText(ctx,"The selected books are already EPUBs.",Toast.LENGTH_SHORT).show()
+                    if (books.isEmpty()) Toast.makeText(ctx,"The selected books are already readable in the app.",Toast.LENGTH_SHORT).show()
                     else { selIds=emptySet(); selMode=false; convertBooks(books, false) }
                 } catch (e: CancellationException) { throw e }
                 catch (e: Exception) { Toast.makeText(ctx,"Could not load selected books: ${e.localizedMessage ?: "unknown error"}",Toast.LENGTH_LONG).show() }

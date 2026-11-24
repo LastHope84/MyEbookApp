@@ -15,7 +15,7 @@ DOC = (ROOT / 'docs/USER_GUIDE.md').read_text()
 class GuideContractTest(unittest.TestCase):
     def test_topic_ids_are_unique_and_complete(self):
         ids = re.findall(r'GuideTopic\("([a-z_]+)",', GUIDE)
-        self.assertEqual(ids, ['start', 'shelves', 'reading', 'reader_settings',
+        self.assertEqual(ids, ['start', 'shelves', 'reading', 'comics', 'reader_settings',
                                'metadata', 'convert', 'share', 'settings', 'safety'])
         self.assertEqual(len(ids), len(set(ids)))
 

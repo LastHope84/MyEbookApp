@@ -58,13 +58,23 @@ fun BookDetailsBottomSheet(
                 )
             }
             Spacer(Modifier.height(16.dp))
-            if (b.format == "EPUB") {
-                Button(onClick = onR, Modifier.fillMaxWidth()) { Text(if (pct > 0) "Continue ($pct%)" else "Read Book") }
-            } else {
+            val isComic = b.format == "CBZ"
+            val convertible = b.format == "MOBI" || b.format == "AZW3"
+            if (b.format == "EPUB" || isComic) {
+                Button(onClick = onR, Modifier.fillMaxWidth()) {
+                    Text(
+                        when {
+                            pct > 0 -> "Continue ($pct%)"
+                            isComic -> "Read Comic"
+                            else -> "Read Book"
+                        }
+                    )
+                }
+            } else if (convertible) {
                 Button(onClick = onC, Modifier.fillMaxWidth()) { Text("Convert ${b.format} to EPUB") }
             }
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onE, Modifier.weight(1f)) { Text("Edit") }
+                if (!isComic) OutlinedButton(onClick = onE, Modifier.weight(1f)) { Text("Edit") }
                 OutlinedButton(onClick = onS, Modifier.weight(1f)) { Text("Share") }
             }
             if (b.format == "EPUB") {
@@ -75,7 +85,7 @@ fun BookDetailsBottomSheet(
                 if (!hasK) {
                     Text("Add your Kindle email in Settings first.", style = MaterialTheme.typography.labelSmall)
                 }
-            } else {
+            } else if (convertible) {
                 Text("Convert to EPUB before sending to Kindle.", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 8.dp))
             }
             Spacer(Modifier.height(12.dp)); HorizontalDivider(); Spacer(Modifier.height(12.dp))

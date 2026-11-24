@@ -75,7 +75,7 @@ class BulkSafety(unittest.TestCase):
         action = UI.split('showBulkActions.let', 1)[1].split('showBulkMove.let', 1)[0]
         load = action.index('val selected=dao.getByIds(ids)')
         check = action.index('check(selected.isNotEmpty() && selected.size == ids.size)')
-        filter_epubs = action.index('selected.filter { it.format != "EPUB" }')
+        filter_epubs = action.index('selected.filter { it.format == "MOBI" || it.format == "AZW3" }')
         convert = action.index('convertBooks(books, false)')
         self.assertLess(load, check)
         self.assertLess(check, filter_epubs)

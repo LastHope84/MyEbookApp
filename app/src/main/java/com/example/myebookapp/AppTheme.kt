@@ -59,6 +59,7 @@ object ThemePrefs {
     private const val KEY_LAST_AUTO_SCAN = "last_auto_scan"
     private const val KEY_KINDLE_EMAIL = "kindle_email"
     private const val KEY_CONVERT_OUT_URI = "converted_output_tree_uri"
+    private const val KEY_COMIC_RTL = "comic_right_to_left"
 
     fun getMode(context: Context): AppThemeMode {
         val raw = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -158,6 +159,14 @@ object ThemePrefs {
     fun saveConvertedOutputUri(context: Context, uriString: String?) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit().putString(KEY_CONVERT_OUT_URI, uriString ?: "").apply()
+    }
+
+    fun isComicRtl(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY_COMIC_RTL, false)
+
+    fun saveComicRtl(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_COMIC_RTL, enabled).apply()
     }
 }
 

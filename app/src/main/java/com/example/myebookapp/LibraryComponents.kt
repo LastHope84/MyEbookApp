@@ -44,13 +44,14 @@ fun HamburgerIcon() {
     }
 }
 
-fun openInReader(context: Context, uriString: String) {
-    val uri = Uri.parse(uriString)
-    val intent = Intent(context, ReaderActivity::class.java).apply {
-        putExtra("book_uri", uriString)
-        if (uri.scheme == "content") { 
+fun openInReader(context: Context, book: BookEntity) {
+    val uri = Uri.parse(book.uriString)
+    val target = if (book.format == "CBZ") ComicReaderActivity::class.java else ReaderActivity::class.java
+    val intent = Intent(context, target).apply {
+        putExtra("book_uri", book.uriString)
+        if (uri.scheme == "content") {
             data = uri
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) 
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }
     context.startActivity(intent)

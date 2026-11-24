@@ -499,6 +499,7 @@ object LibraryScanner {
                     }
                     val format = when (name.substringAfterLast('.', "").lowercase()) {
                         "epub" -> "EPUB"
+                        "cbz" -> "CBZ"
                         "mobi" -> "MOBI"
                         "azw3", "azw", "prc" -> "AZW3"
                         else -> null
@@ -520,7 +521,7 @@ object LibraryScanner {
                             lastLocatorJson = null,
                             progressPercent = 0.0,
                             lastOpenedAt = 0L,
-                            metadataExtracted = format != "EPUB",
+                            metadataExtracted = format != "EPUB" && format != "CBZ",
                             scanRootUri = treeUri.toString(),
                             scanParentId = parentId
                         )
@@ -536,7 +537,7 @@ object LibraryScanner {
     private suspend fun processMetadata(context: Context, dao: BookDao) {
         var afterId = 0L
         var failed = 0
-        val initialPending = dao.countPendingEpubs()
+        val initialPending = dao.countPendingMetadata()
         _status.update {
             it.copy(
                 metadataLeft = initialPending,
@@ -545,13 +546,30 @@ object LibraryScanner {
         }
         while (true) {
             checkpoint()
-            val pending = dao.getPendingEpubsAfter(afterId, METADATA_BATCH)
+            val pending = dao.getPendingMetadataAfter(afterId, METADATA_BATCH)
             if (pending.isEmpty()) break
             for (book in pending) {
                 checkpoint()
                 afterId = book.id
                 try {
-                    val parsed = EpubParser.parseEpub(context, Uri.parse(book.uriString), book.fileName)
+                    val uri = Uri.parse(book.uriString)
+                    val parsed = when (book.format) {
+                        "CBZ" -> ComicParser.parse(context, uri, book.fileName).let {
+                            EpubMetadata(
+                                fileName = book.fileName,
+                                title = it.title,
+                                author = it.author,
+                                publishingDate = it.publishingDate,
+                                publisher = it.publisher,
+                                language = it.language,
+                                coverBitmap = it.coverBitmap,
+                                series = it.series,
+                                seriesIndex = it.seriesIndex,
+                                tags = it.tags
+                            )
+                        }
+                        else -> EpubParser.parseEpub(context, uri, book.fileName)
+                    }
                     checkpoint()
                     val cover = parsed.coverBitmap?.let { saveWebpThumbnail(context, book.uriString, it) }
                     checkpoint()
@@ -563,7 +581,7 @@ object LibraryScanner {
                             parsed.seriesIndex, parsed.tags
                         )
                     }
-                    val left = dao.countPendingEpubs()
+                    val left = dao.countPendingMetadata()
                     _status.update {
                         it.copy(
                             metadataProcessed = it.metadataProcessed + changed,
@@ -585,7 +603,7 @@ object LibraryScanner {
                 }
             }
         }
-        val remaining = dao.countPendingEpubs()
+        val remaining = dao.countPendingMetadata()
         _status.update { it.copy(metadataLeft = remaining) }
         if (failed > 0) {
             val noun = if (failed == 1) "book" else "books"

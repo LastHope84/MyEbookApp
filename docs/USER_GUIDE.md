@@ -8,7 +8,7 @@ For the current app version.
 Open the library menu (the three lines), tap Add Folder, choose a folder in Android's file picker and grant access. The app scans its subfolders, excluding hidden folders. Scanning can take time; a progress banner appears in the library, and a notification keeps the scan running while the app is in the background. You can pause, resume or stop from the banner. An unreadable book is kept with basic details instead of blocking the rest of the scan.
 
 ### Supported files
-The folder scanner finds EPUB, MOBI, AZW, AZW3 and PRC files. EPUBs can be read in the app; the other listed formats appear in To Convert. Other formats are not added by this scanner.
+The folder scanner finds EPUB, CBZ, MOBI, AZW, AZW3 and PRC files. EPUBs and CBZ comics can be read in the app; MOBI, AZW, AZW3 and PRC appear in To Convert. Other formats are not added by this scanner.
 
 ### Add more or rescan
 Use Add Folder again for another folder. After adding files to a saved folder, open the menu and tap Rescan Folders. The app stores access to selected folders; if a folder is moved or access expires, choose it again.
@@ -31,7 +31,7 @@ You can change the reading shelf yourself without changing saved progress. When 
 In the library menu, tap + Create shelf and give it a name. Open a book and tap Custom shelves to add or remove it; the button appears once at least one shelf exists. A book can belong to multiple custom shelves as well as a reading shelf. Delete beside a custom shelf removes the shelf, not its books or reading progress.
 
 ### All Books, Recent and To Convert
-All Books shows visible library entries. Recent shows the books you opened most recently, newest first, including finished books, plus newly converted EPUBs at their conversion time. To Convert lists visible non-EPUB entries. Counts in the menu exclude hidden originals and are independent of search.
+All Books shows visible library entries. Recent shows the books you opened most recently, newest first, including finished books and comics, plus newly converted EPUBs at their conversion time. To Convert lists visible MOBI, AZW, AZW3 and PRC entries. Counts in the menu exclude hidden originals and are independent of search.
 
 ### Details and path
 Book details show available metadata and a Path. Tap the path to try opening its folder in a file manager. If that is not possible, the app copies a readable path instead.
@@ -58,6 +58,23 @@ Select a word in the book and choose Define in the selection menu. The app looks
 
 ### Listen (TTS)
 Tap the play icon in the reader top bar to hear the book read aloud from your position. Tap it again to pause; tap once more to resume. Choose a voice and language in Settings, under Read Aloud (TTS). Voices marked "needs internet" require a connection. While it reads, a notification and the phone's media controls offer Play, Pause and Stop. Reading continues if you switch apps; closing the book stops it.
+
+## Reading comics (CBZ)
+
+### Open a comic
+CBZ files are added by the folder scanner like books. Tap a comic, then Read Comic or Continue. Pages open full screen, one at a time. Swipe left or right, or tap the left and right edges of the page, to turn pages. Tap the middle of the page to show or hide the controls.
+
+### Controls
+The top bar shows Back, the title and the current page out of the total. The bottom bar has a slider to jump to any page. Tap Left to right or Right to left to change page direction; Right to left suits manga. The choice is remembered for every comic.
+
+### Zoom
+Pinch to zoom in, drag to move around a zoomed page, and double-tap to zoom in or back out. While a page is zoomed, swiping no longer turns pages, so you can pan freely. Double-tap to return to the whole page, then swipe as usual.
+
+### Comic details and progress
+When the comic includes a ComicInfo.xml file, its title, writer, series, number, publisher, year, language and genre are used; the first page becomes the cover. Otherwise the file name is the title. The app remembers the last page and marks the comic Reading, then Finished when you reach the last page. Favorites, shelves, search and Recent work like they do for books.
+
+### Sharing and formats
+Share sends the original CBZ file. Comics are not sent to Kindle from this app. CBZ is a ZIP archive of images; CBR (RAR) and PDF comics are not supported yet.
 
 ## Reading appearance
 
