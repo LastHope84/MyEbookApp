@@ -89,7 +89,7 @@ class BulkSafety(unittest.TestCase):
             self.assertRegex(DAO, r'@Transaction suspend fun ' + method + r'\(')
         self.assertIn('ids.distinct().chunked(BULK_ID_CHUNK_SIZE)', DAO)
         self.assertIn('generation == selectAllGeneration && selMode', UI)
-        self.assertIn('cancelSelectAll(); dbQry = qry', UI)
+        self.assertIn('cancelSelectAll(); dbQry = q', UI)
         self.assertIn('Could not select books on this shelf.', UI)
         self.assertIn('Could not update reading shelf.', UI)
         self.assertIn('dao.addBooksToCustomShelf(shelf.id, ids)', UI)

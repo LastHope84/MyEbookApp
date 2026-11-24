@@ -39,6 +39,9 @@ In the library menu, tap + Create shelf and give it a name. Open a book and tap 
 ### All Books, Recent and To Convert
 All Books shows visible library entries. Recent shows the books you opened most recently, newest first, including finished books, comics and PDFs, plus newly converted EPUBs at their conversion time. To Convert lists visible MOBI, AZW, AZW3 and PRC entries. Counts in the menu exclude hidden originals and are independent of search.
 
+### Built-in shelves
+Comics (CBR/CBZ) collects comic archives, Documents (PDF) collects PDFs, and Not in a custom shelf shows books that are not on any of your custom shelves. They update automatically and can be searched and sorted like other shelves. Press Android Back to return to All Books.
+
 ### Details and path
 Book details show available metadata and a Path. Tap the path to try opening its folder in a file manager. If that is not possible, the app copies a readable path instead.
 

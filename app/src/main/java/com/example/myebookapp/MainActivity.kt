@@ -37,7 +37,11 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-enum class LibraryTab(val title: String) { ALL("All Books"), RECENT("Recent"), FAV("Favorites"), READING("Reading"), TBR("To Read"), DONE("Finished"), CONV("To Convert") }
+enum class LibraryTab(val title: String) {
+    ALL("All Books"), RECENT("Recent"), FAV("Favorites"), READING("Reading"),
+    TBR("To Read"), DONE("Finished"), CONV("To Convert"),
+    COMICS("Comics (CBR/CBZ)"), PDFS("Documents (PDF)"), UNFILED("Not in a custom shelf")
+}
 data class PendingConvertTarget(val uri: Uri, val fileName: String, val existingBookId: Long? = null)
 data class ConversionFailure(val book: BookEntity, val reason: String)
 
@@ -125,6 +129,9 @@ val visibilityPrefs = remember { ctx.getSharedPreferences("library_visibility", 
 var showConvertedOriginals by remember { mutableStateOf(visibilityPrefs.getBoolean("show_converted_originals", false)) }
 val drw = rememberDrawerState(DrawerValue.Closed); val total by remember(showConvertedOriginals) { dao.observeTotalCount(showConvertedOriginals) }.collectAsState(0)
 val toConv by remember(showConvertedOriginals) { dao.observeToConvertCount(showConvertedOriginals) }.collectAsState(0); val scanS by LibraryScanner.status.collectAsState()
+val comicsCount by remember(showConvertedOriginals) { dao.observeFormatCount(listOf("CBZ", "CBR"), showConvertedOriginals) }.collectAsState(0)
+val pdfCount by remember(showConvertedOriginals) { dao.observeFormatCount(listOf("PDF"), showConvertedOriginals) }.collectAsState(0)
+val unshelvedCount by remember(showConvertedOriginals) { dao.observeUnshelvedCount(showConvertedOriginals) }.collectAsState(0)
 val favoriteCount by remember(showConvertedOriginals) { dao.observeFavoriteCount(showConvertedOriginals) }.collectAsState(0)
 val readingCount by remember(showConvertedOriginals) { dao.observeStatusCount("READING", showConvertedOriginals) }.collectAsState(0)
 val toReadCount by remember(showConvertedOriginals) { dao.observeStatusCount("TBR", showConvertedOriginals) }.collectAsState(0)
@@ -309,6 +316,15 @@ suspend fun idsOnShelf(tab: LibraryTab, custom: Long?, f: String?): List<Long> {
             val status = when (tab) { LibraryTab.READING -> "READING"; LibraryTab.TBR -> "TBR"; else -> "FINISHED" }
             if (f == null) dao.getStatusIds(status, showConvertedOriginals) else dao.searchStatusIds(status, f, showConvertedOriginals)
         }
+        tab == LibraryTab.COMICS -> {
+            val formats = listOf("CBZ", "CBR")
+            if (f == null) dao.getFormatIds(formats, showConvertedOriginals) else dao.searchFormatIds(f, formats, showConvertedOriginals)
+        }
+        tab == LibraryTab.PDFS -> {
+            val formats = listOf("PDF")
+            if (f == null) dao.getFormatIds(formats, showConvertedOriginals) else dao.searchFormatIds(f, formats, showConvertedOriginals)
+        }
+        tab == LibraryTab.UNFILED -> if (f == null) dao.getUnshelvedIds(showConvertedOriginals) else dao.searchUnshelvedIds(f, showConvertedOriginals)
         else -> if (f == null) dao.getToConvertIds(showConvertedOriginals) else dao.searchToConvertIds(f, showConvertedOriginals)
     }
 }
@@ -513,7 +529,7 @@ if (showGuide) {
     UserGuideScreen(onClose = { showGuide = false })
     return
 }
-BackHandler(drw.isOpen || selMode || selectedCustomId != null) {
+BackHandler(drw.isOpen || selMode || selectedCustomId != null || tab != LibraryTab.ALL) {
     if (!bulkSaving) when {
         drw.isOpen -> scp.launch { drw.close() }
         selMode -> { cancelSelectAll(); selIds = emptySet(); selMode = false }
@@ -534,6 +550,9 @@ LibraryTab.READING -> if (f == null) dao.statusPaged("READING", showConvertedOri
 LibraryTab.TBR -> if (f == null) dao.statusPaged("TBR", showConvertedOriginals, sortMode) else dao.searchStatusPaged("TBR", f, showConvertedOriginals, sortMode)
 LibraryTab.DONE -> if (f == null) dao.statusPaged("FINISHED", showConvertedOriginals, sortMode) else dao.searchStatusPaged("FINISHED", f, showConvertedOriginals, sortMode)
 LibraryTab.CONV -> if (f == null) dao.toConvertPaged(showConvertedOriginals, sortMode) else dao.searchToConvertPaged(f, showConvertedOriginals, sortMode)
+LibraryTab.COMICS -> { val formats = listOf("CBZ", "CBR"); if (f == null) dao.formatPaged(formats, showConvertedOriginals, sortMode) else dao.searchFormatPaged(f, formats, showConvertedOriginals, sortMode) }
+LibraryTab.PDFS -> { val formats = listOf("PDF"); if (f == null) dao.formatPaged(formats, showConvertedOriginals, sortMode) else dao.searchFormatPaged(f, formats, showConvertedOriginals, sortMode) }
+LibraryTab.UNFILED -> if (f == null) dao.unshelvedPaged(showConvertedOriginals, sortMode) else dao.searchUnshelvedPaged(f, showConvertedOriginals, sortMode)
 }
 }.flow.cachedIn(scp) }.collectAsLazyPagingItems()
 
@@ -543,7 +562,17 @@ Column(Modifier.fillMaxHeight().verticalScroll(rememberScrollState()).padding(16
 Text("My Ebook Library", style=MaterialTheme.typography.titleLarge, fontWeight=FontWeight.Bold); Text("$total books", style=MaterialTheme.typography.labelMedium)
 Spacer(Modifier.height(12.dp)); LibrarySearchField(onCommit = { q -> cancelSelectAll(); dbQry = q })
 Spacer(Modifier.height(12.dp)); LibraryTab.entries.forEach { t ->
-    val count = when (t) { LibraryTab.ALL -> total; LibraryTab.RECENT -> minOf(total, 50); LibraryTab.FAV -> favoriteCount; LibraryTab.READING -> readingCount; LibraryTab.TBR -> toReadCount; LibraryTab.DONE -> finishedCount; LibraryTab.CONV -> toConv }
+    if (t == LibraryTab.COMICS) {
+        Spacer(Modifier.height(8.dp)); HorizontalDivider()
+        Text("Built-in shelves", style=MaterialTheme.typography.titleSmall, modifier=Modifier.padding(top=12.dp, bottom=4.dp))
+    }
+    val count = when (t) {
+        LibraryTab.ALL -> total; LibraryTab.RECENT -> minOf(total, 50)
+        LibraryTab.FAV -> favoriteCount; LibraryTab.READING -> readingCount
+        LibraryTab.TBR -> toReadCount; LibraryTab.DONE -> finishedCount
+        LibraryTab.CONV -> toConv; LibraryTab.COMICS -> comicsCount
+        LibraryTab.PDFS -> pdfCount; LibraryTab.UNFILED -> unshelvedCount
+    }
     NavigationDrawerItem(label={Text(t.title)}, badge={Text("$count")}, selected=selectedCustomId == null && tab==t, onClick={cancelSelectAll(); selectedCustomId=null; tab=t; selIds=emptySet(); selMode=false; scp.launch{drw.close()}})
 }
 Spacer(Modifier.height(8.dp)); HorizontalDivider()

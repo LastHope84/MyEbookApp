@@ -46,9 +46,14 @@ class VisibilityTests(unittest.TestCase):
         self.db.execute('INSERT INTO books_fts(rowid,author,publisher,title) VALUES(?,?,?,?)', (id, 'author', 'publisher', 'shared title'))
 
     def run_query(self, name, show=False, **kwargs):
-        args = dict(showConvertedOriginals=int(show), q='shared*', status='READING', shelfId=1)
+        args = dict(showConvertedOriginals=int(show), q='shared*', status='READING',
+                    shelfId=1, sort='title')
         args.update(kwargs)
-        return self.db.execute(QUERIES[name], args).fetchall()
+        sql = QUERIES[name]
+        # Room expands list parameters before SQLite sees them; do the same here.
+        if ':formats' in sql:
+            sql = sql.replace('IN (:formats)', "IN ('CBZ', 'CBR', 'PDF')")
+        return self.db.execute(sql, args).fetchall()
 
     def test_all_library_queries_filter_and_reveal(self):
         # Run every actual parameterized visibility query, including the FTS variants.
@@ -68,6 +73,12 @@ class VisibilityTests(unittest.TestCase):
                     self.assertEqual(hidden, shown)
                 elif name in ('observeLastOpened', 'getLastOpenedOnce'):
                     self.assertEqual(3, hidden[0][0]); self.assertEqual(3, shown[0][0])
+                elif name in ('observeFormatCount', 'observeUnshelvedCount'):
+                    self.assertEqual((0,), hidden[0]); self.assertEqual((0,), shown[0])
+                elif name in ('formatPaged', 'searchFormatPaged', 'getFormatIds', 'searchFormatIds',
+                              'unshelvedPaged', 'searchUnshelvedPaged', 'getUnshelvedIds',
+                              'searchUnshelvedIds'):
+                    self.assertEqual([], hidden); self.assertEqual([], shown)
                 else:
                     self.assertNotIn(1, [r[0] for r in hidden])
                     self.assertIn(1, [r[0] for r in shown])
