@@ -80,7 +80,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import kotlin.math.roundToInt
 
-class ComicReaderActivity : ComponentActivity() {
+class PageReaderActivity : ComponentActivity() {
     companion object {
         // Saves must finish even when the reader is closing.
         private val saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -89,9 +89,9 @@ class ComicReaderActivity : ComponentActivity() {
     private val loading = mutableStateOf(true)
     private val loadError = mutableStateOf<String?>(null)
     private var book: BookEntity? = null
-    private var archive: ComicArchive? = null
-    private var loader: ComicPageLoader? = null
-    private var pageNames: List<String> = emptyList()
+    private var source: PagedImageSource? = null
+    private var loader: PageLoader? = null
+    private var pageCount = 0
     private var startPage = 0
     private var currentPage = 0
     private var lastSavedPage = -1
@@ -109,30 +109,29 @@ class ComicReaderActivity : ComponentActivity() {
 
         val uriString = intent.getStringExtra("book_uri")
         if (uriString.isNullOrBlank()) {
-            loadError.value = "No comic was selected."
+            loadError.value = "No document was selected."
             loading.value = false
         } else {
-            openComic(uriString)
+            openDocument(uriString)
         }
 
         setContent {
             MyEbookTheme(mode = AppThemeMode.DARK, amoledDark = true, forceDark = true) {
                 Box(Modifier.fillMaxSize().background(Color.Black)) {
                     val error = loadError.value
-                    val names = pageNames
                     val pageLoader = loader
                     when {
                         loading.value -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                             CircularProgressIndicator(color = Color.White)
                         }
                         error != null -> ErrorScreen(error) { finish() }
-                        pageLoader != null && names.isNotEmpty() -> ComicReaderScreen(
-                            title = book?.title ?: "Comic",
-                            pages = names,
+                        pageLoader != null && pageCount > 0 -> PageReaderScreen(
+                            title = book?.title ?: "Document",
+                            pageCount = pageCount,
                             startPage = startPage,
                             loader = pageLoader,
-                            initialRtl = ThemePrefs.isComicRtl(this@ComicReaderActivity),
-                            onRtlChange = { ThemePrefs.saveComicRtl(this@ComicReaderActivity, it) },
+                            initialRtl = ThemePrefs.isComicRtl(this@PageReaderActivity),
+                            onRtlChange = { ThemePrefs.saveComicRtl(this@PageReaderActivity, it) },
                             onPageSettled = {
                                 currentPage = it
                                 savePage(it)
@@ -145,17 +144,25 @@ class ComicReaderActivity : ComponentActivity() {
         }
     }
 
-    private fun openComic(uriString: String) {
+    private fun openDocument(uriString: String) {
         lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
+            val result: Result<Triple<BookEntity, PagedImageSource, Int>> = withContext(Dispatchers.IO) {
+                try {
                     val stored = dao.getByUri(uriString)
-                        ?: throw IllegalStateException("This comic is not in the library anymore.")
-                    val comic = ComicArchive.open(this@ComicReaderActivity, uriString, stored.fileSize, stored.lastModified)
+                        ?: throw IllegalStateException("This document is not in the library anymore.")
+                    val opened: PagedImageSource = when (stored.format) {
+                        "PDF" -> PdfPageSource.open(
+                            this@PageReaderActivity, uriString, stored.fileSize, stored.lastModified
+                        )
+                        else -> ComicPageSource.open(
+                            this@PageReaderActivity, uriString, stored.fileSize, stored.lastModified
+                        )
+                    }
                     val saved = stored.lastLocatorJson?.let {
                         runCatching { JSONObject(it).optInt("page", -1) }.getOrNull()
                     } ?: -1
-                    val total = comic.pages.size
+                    val total = opened.pageCount
+                    if (total <= 0) throw IllegalStateException("This document has no readable pages.")
                     val start = when {
                         saved in 0 until total -> saved
                         stored.progressPercent > 0.0 -> ((stored.progressPercent * total).toInt() - 1).coerceIn(0, total - 1)
@@ -164,24 +171,28 @@ class ComicReaderActivity : ComponentActivity() {
                     val now = System.currentTimeMillis()
                     dao.touchOpened(uriString, now)
                     dao.markStarted(uriString)
-                    Triple(stored, comic, start)
+                    Result.success(Triple(stored, opened, start))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Result.failure(e)
                 }
             }
-            result.onSuccess { (stored, comic, start) ->
+            result.onSuccess { (stored, opened, start) ->
                 if (isFinishing || isDestroyed) {
-                    comic.close()
+                    opened.close()
                     return@onSuccess
                 }
                 book = stored
-                archive = comic
-                pageNames = comic.pages.map { it.name }
+                source = opened
+                pageCount = opened.pageCount
                 startPage = start
                 currentPage = start
                 val metrics = resources.displayMetrics
-                loader = ComicPageLoader(comic, metrics.widthPixels, metrics.heightPixels)
+                loader = PageLoader(opened, metrics.widthPixels, metrics.heightPixels)
                 loading.value = false
             }.onFailure { error ->
-                loadError.value = error.localizedMessage ?: "Could not open this comic."
+                loadError.value = error.localizedMessage ?: "Could not open this document."
                 loading.value = false
             }
         }
@@ -189,7 +200,7 @@ class ComicReaderActivity : ComponentActivity() {
 
     private fun savePage(index: Int) {
         val stored = book ?: return
-        val total = pageNames.size
+        val total = pageCount
         if (total == 0 || index !in 0 until total || index == lastSavedPage) return
         lastSavedPage = index
         val percent = (index + 1).toDouble() / total
@@ -207,18 +218,18 @@ class ComicReaderActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        archive?.close()
+        source?.close()
         loader?.clear()
         super.onDestroy()
     }
 }
 
 @Composable
-private fun ComicReaderScreen(
+private fun PageReaderScreen(
     title: String,
-    pages: List<String>,
+    pageCount: Int,
     startPage: Int,
-    loader: ComicPageLoader,
+    loader: PageLoader,
     initialRtl: Boolean,
     onRtlChange: (Boolean) -> Unit,
     onPageSettled: (Int) -> Unit,
@@ -227,7 +238,8 @@ private fun ComicReaderScreen(
     var rtl by remember { mutableStateOf(initialRtl) }
     var chromeVisible by remember { mutableStateOf(true) }
     var zoomed by remember { mutableStateOf(false) }
-    val pagerState = rememberPagerState(initialPage = startPage.coerceIn(0, pages.lastIndex)) { pages.size }
+    val lastIndex = (pageCount - 1).coerceAtLeast(0)
+    val pagerState = rememberPagerState(initialPage = startPage.coerceIn(0, lastIndex)) { pageCount }
     val scope = rememberCoroutineScope()
     val view = LocalView.current
     val activity = LocalContext.current as? Activity
@@ -248,7 +260,7 @@ private fun ComicReaderScreen(
     }
 
     fun turn(delta: Int) {
-        val target = (pagerState.currentPage + delta).coerceIn(0, pages.lastIndex)
+        val target = (pagerState.currentPage + delta).coerceIn(0, lastIndex)
         if (target != pagerState.currentPage) scope.launch { pagerState.animateScrollToPage(target) }
     }
 
@@ -263,9 +275,9 @@ private fun ComicReaderScreen(
             beyondViewportPageCount = 1,
             modifier = Modifier.fillMaxSize()
         ) { index ->
-            ComicPage(
+            DocumentPage(
                 loader = loader,
-                name = pages[index],
+                index = index,
                 active = pagerState.currentPage == index,
                 onZoomChanged = { isZoomed -> if (pagerState.currentPage == index) zoomed = isZoomed },
                 onTap = { fraction ->
@@ -284,7 +296,7 @@ private fun ComicReaderScreen(
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter)
         ) {
-            ReaderTopBar(title, pagerState.currentPage + 1, pages.size, onBack)
+            ReaderTopBar(title, pagerState.currentPage + 1, pageCount, onBack)
         }
 
         AnimatedVisibility(
@@ -295,7 +307,7 @@ private fun ComicReaderScreen(
         ) {
             ReaderBottomBar(
                 page = pagerState.currentPage,
-                total = pages.size,
+                total = pageCount,
                 rtl = rtl,
                 onSeek = { scope.launch { pagerState.scrollToPage(it) } },
                 onToggleRtl = {
@@ -387,19 +399,25 @@ private fun ReaderBottomBar(
     }
 }
 
+private sealed class PageState {
+    object Loading : PageState()
+    class Ready(val bitmap: Bitmap) : PageState()
+    object Failed : PageState()
+}
+
 @Composable
-private fun ComicPage(
-    loader: ComicPageLoader,
-    name: String,
+private fun DocumentPage(
+    loader: PageLoader,
+    index: Int,
     active: Boolean,
     onZoomChanged: (Boolean) -> Unit,
     onTap: (Float) -> Unit
 ) {
-    val bitmap by produceState<Bitmap?>(initialValue = null, name) {
-        value = loader.load(name)
+    val state by produceState<PageState>(initialValue = PageState.Loading, index) {
+        value = loader.load(index)?.let { PageState.Ready(it) } ?: PageState.Failed
     }
-    var scale by remember(name) { mutableFloatStateOf(1f) }
-    var offset by remember(name) { mutableStateOf(Offset.Zero) }
+    var scale by remember(index) { mutableFloatStateOf(1f) }
+    var offset by remember(index) { mutableStateOf(Offset.Zero) }
     var size by remember { mutableStateOf(IntSize.Zero) }
     val activeState by rememberUpdatedState(active)
     val onZoomState by rememberUpdatedState(onZoomChanged)
@@ -428,7 +446,7 @@ private fun ComicPage(
             .onSizeChanged { size = it }
             // One finger belongs to the pager until a pinch starts; after zooming,
             // this detector takes the drags so the page can be panned.
-            .pointerInput(name) {
+            .pointerInput(index) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
                     var event: PointerEvent
@@ -446,7 +464,7 @@ private fun ComicPage(
                     } while (event.changes.any { it.pressed })
                 }
             }
-            .pointerInput(name) {
+            .pointerInput(index) {
                 detectTapGestures(
                     onTap = { position ->
                         if (scale <= 1.01f && size.width > 0) onTapState(position.x / size.width)
@@ -466,10 +484,9 @@ private fun ComicPage(
             },
         contentAlignment = Alignment.Center
     ) {
-        val pageBitmap = bitmap
-        if (pageBitmap != null) {
-            androidx.compose.foundation.Image(
-                bitmap = pageBitmap.asImageBitmap(),
+        when (val current = state) {
+            is PageState.Ready -> androidx.compose.foundation.Image(
+                bitmap = current.bitmap.asImageBitmap(),
                 contentDescription = null,
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
@@ -481,11 +498,15 @@ private fun ComicPage(
                         translationY = offset.y
                     }
             )
-        } else {
-            CircularProgressIndicator(
+            PageState.Loading -> CircularProgressIndicator(
                 color = Color.White.copy(alpha = 0.6f),
                 strokeWidth = 2.dp,
                 modifier = Modifier.size(28.dp)
+            )
+            PageState.Failed -> Text(
+                "This page could not be read.",
+                color = Color.White.copy(alpha = 0.7f),
+                style = MaterialTheme.typography.bodyMedium
             )
         }
     }
@@ -498,7 +519,7 @@ private fun ErrorScreen(message: String, onBack: () -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("Could not open this comic", color = Color.White, style = MaterialTheme.typography.titleLarge)
+        Text("Could not open this file", color = Color.White, style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(8.dp))
         Text(
             message,

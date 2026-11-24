@@ -7,8 +7,14 @@ For the current app version.
 ### Add a folder
 Open the library menu (the three lines), tap Add Folder, choose a folder in Android's file picker and grant access. The app scans its subfolders, excluding hidden folders. Scanning can take time; a progress banner appears in the library, and a notification keeps the scan running while the app is in the background. You can pause, resume or stop from the banner. An unreadable book is kept with basic details instead of blocking the rest of the scan.
 
+### Add a file
+Open the library menu and tap Add File, then choose one or more EPUB, CBZ, PDF, MOBI or AZW3 files. The app copies them into its own storage and adds them to the library. You can select several files at once. Files added this way are not tied to a folder; remove their library entry as usual.
+
 ### Supported files
-The folder scanner finds EPUB, CBZ, MOBI, AZW, AZW3 and PRC files. EPUBs and CBZ comics can be read in the app; MOBI, AZW, AZW3 and PRC appear in To Convert. Other formats are not added by this scanner.
+The folder scanner finds EPUB, CBZ, PDF, MOBI, AZW, AZW3 and PRC files. EPUBs, CBZ comics and PDFs can be read in the app; MOBI, AZW, AZW3 and PRC appear in To Convert. Other formats are not added by this scanner.
+
+### Open from another app
+Tap a downloaded EPUB, CBZ or PDF and choose MyEbookApp. The app copies the file into its own storage and opens it, so it keeps working even if the other app is closed. MOBI and AZW3 files are added to the library and appear in To Convert. Files opened this way are not tied to a folder; remove their library entry as usual.
 
 ### Add more or rescan
 Use Add Folder again for another folder. After adding files to a saved folder, open the menu and tap Rescan Folders. The app stores access to selected folders; if a folder is moved or access expires, choose it again.
@@ -31,7 +37,7 @@ You can change the reading shelf yourself without changing saved progress. When 
 In the library menu, tap + Create shelf and give it a name. Open a book and tap Custom shelves to add or remove it; the button appears once at least one shelf exists. A book can belong to multiple custom shelves as well as a reading shelf. Delete beside a custom shelf removes the shelf, not its books or reading progress.
 
 ### All Books, Recent and To Convert
-All Books shows visible library entries. Recent shows the books you opened most recently, newest first, including finished books and comics, plus newly converted EPUBs at their conversion time. To Convert lists visible MOBI, AZW, AZW3 and PRC entries. Counts in the menu exclude hidden originals and are independent of search.
+All Books shows visible library entries. Recent shows the books you opened most recently, newest first, including finished books, comics and PDFs, plus newly converted EPUBs at their conversion time. To Convert lists visible MOBI, AZW, AZW3 and PRC entries. Counts in the menu exclude hidden originals and are independent of search.
 
 ### Details and path
 Book details show available metadata and a Path. Tap the path to try opening its folder in a file manager. If that is not possible, the app copies a readable path instead.
@@ -74,7 +80,21 @@ Pinch to zoom in, drag to move around a zoomed page, and double-tap to zoom in o
 When the comic includes a ComicInfo.xml file, its title, writer, series, number, publisher, year, language and genre are used; the first page becomes the cover. Otherwise the file name is the title. The app remembers the last page and marks the comic Reading, then Finished when you reach the last page. Favorites, shelves, search and Recent work like they do for books.
 
 ### Sharing and formats
-Share sends the original CBZ file. Comics are not sent to Kindle from this app. CBZ is a ZIP archive of images; CBR (RAR) and PDF comics are not supported yet.
+Share sends the original CBZ file. Comics are not sent to Kindle from this app. CBZ is a ZIP archive of images; CBR (RAR) comics are not supported yet.
+
+## Reading PDFs
+
+### Open a PDF
+PDF files are added by the folder scanner or opened from another app. Tap a PDF, then Read PDF or Continue. Pages open full screen, one at a time. Swipe left or right, or tap the left and right edges, to turn pages; tap the middle to show or hide the controls.
+
+### Controls and zoom
+The top bar shows Back, the title and the current page out of the total. The bottom bar has a page slider and the Left to right / Right to left switch. Pinch to zoom, drag to move around a zoomed page, and double-tap to zoom in or back out.
+
+### Limits
+Pages are shown as images. Text inside a PDF cannot be selected, searched, defined or read aloud, and the PDF's own title and author are not read; the file name is used as the title and the first page becomes the cover. Password-protected or damaged PDFs may not open.
+
+### Progress
+The app remembers the last page and marks the PDF Reading, then Finished when you reach the last page. Favorites, shelves, search and Recent work like they do for books. Share sends the original PDF file.
 
 ## Reading appearance
 

@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.provider.DocumentsContract
 import android.util.LruCache
 import android.util.Xml
 import kotlinx.coroutines.Dispatchers
@@ -16,7 +15,6 @@ import java.io.BufferedInputStream
 import java.io.Closeable
 import java.io.File
 import java.io.InputStream
-import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
@@ -257,8 +255,8 @@ class ComicArchive private constructor(
 
     companion object {
         fun open(context: Context, uriString: String, fileSize: Long, lastModified: Long): ComicArchive {
-            val (currentSize, currentModified) = queryVersion(context, Uri.parse(uriString), fileSize, lastModified)
-            val file = archiveFile(context, uriString, currentSize, currentModified)
+            val (currentSize, currentModified) = queryDocumentVersion(context, Uri.parse(uriString), fileSize, lastModified)
+            val file = cachedDocumentCopy(context, uriString, currentSize, currentModified, "comics", "cbz")
             val zip = try {
                 ZipFile(file)
             } catch (e: Exception) {
@@ -280,98 +278,48 @@ class ComicArchive private constructor(
             }
         }
 
-        /** Read the current provider version so a replaced file never reuses an old copy. */
-        private fun queryVersion(context: Context, uri: Uri, fallbackSize: Long, fallbackModified: Long): Pair<Long, Long> {
-            if (uri.scheme == "file") {
-                val file = uri.path?.let { File(it) }
-                if (file != null && file.isFile) return file.length() to file.lastModified()
-            }
-            return runCatching {
-                context.contentResolver.query(
-                    uri,
-                    arrayOf(DocumentsContract.Document.COLUMN_SIZE, DocumentsContract.Document.COLUMN_LAST_MODIFIED),
-                    null, null, null
-                )?.use { cursor ->
-                    if (!cursor.moveToFirst()) return@use null
-                    val size = cursor.getLong(0).takeIf { it > 0 } ?: fallbackSize
-                    val modified = cursor.getLong(1).takeIf { it > 0 } ?: fallbackModified
-                    size to modified
-                }
-            }.getOrNull() ?: (fallbackSize to fallbackModified)
-        }
+    }
+}
 
-        /**
-         * SAF documents have no usable file path, but a ZIP needs random access.
-         * Keep one cached copy per file version and reuse it on reopen.
-         */
-        private fun archiveFile(context: Context, uriString: String, fileSize: Long, lastModified: Long): File {
-            val uri = Uri.parse(uriString)
-            if (uri.scheme == "file") {
-                val direct = uri.path?.let { File(it) }
-                if (direct != null && direct.isFile) return direct
-            }
-            val dir = File(context.cacheDir, "comics").apply { mkdirs() }
-            val key = sha256("$uriString|$fileSize|$lastModified").take(24)
-            val target = File(dir, "$key.cbz")
-            if (target.isFile && (fileSize <= 0 || target.length() == fileSize)) {
-                target.setLastModified(System.currentTimeMillis())
-                return target
-            }
-            val temp = File(dir, "$key.tmp")
-            val input = context.contentResolver.openInputStream(uri)
-                ?: throw IllegalStateException("Permission expired or the file moved — add the folder again.")
-            try {
-                input.use { source -> temp.outputStream().buffered().use { out -> source.copyTo(out) } }
-                if (fileSize > 0 && temp.length() != fileSize) {
-                    throw IllegalStateException("The comic file changed while it was being opened.")
-                }
-                if (target.exists() && !target.delete()) {
-                    throw IllegalStateException("Could not replace the cached comic.")
-                }
-                if (!temp.renameTo(target)) throw IllegalStateException("Could not prepare the comic file.")
-                prune(dir, target)
-                return target
-            } catch (e: Exception) {
-                temp.delete()
-                throw e
-            }
-        }
+/** A document whose pages are images, such as a CBZ archive or a PDF. */
+interface PagedImageSource : Closeable {
+    val pageCount: Int
+    suspend fun decode(index: Int, maxWidth: Int, maxHeight: Int): Bitmap?
+}
 
-        private fun prune(dir: File, keep: File) {
-            val now = System.currentTimeMillis()
-            val cached = dir.listFiles()?.filter {
-                it.isFile && it.absolutePath != keep.absolutePath && it.name.endsWith(".cbz")
-            } ?: return
-            cached.sortedByDescending { it.lastModified() }.forEachIndexed { index, file ->
-                if (index >= 2 || now - file.lastModified() > 30L * 24 * 60 * 60 * 1000) file.delete()
-            }
-            dir.listFiles()?.filter {
-                it.isFile && it.name.endsWith(".tmp") && now - it.lastModified() > 24L * 60 * 60 * 1000
-            }?.forEach { it.delete() }
-        }
+class ComicPageSource private constructor(private val archive: ComicArchive) : PagedImageSource {
+    override val pageCount: Int get() = archive.pages.size
 
-        private fun sha256(value: String): String =
-            MessageDigest.getInstance("SHA-256").digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
+    override suspend fun decode(index: Int, maxWidth: Int, maxHeight: Int): Bitmap? {
+        if (index !in archive.pages.indices) return null
+        return withContext(Dispatchers.IO) {
+            archive.decode(archive.pages[index].name, maxWidth, maxHeight)
+        }
+    }
+
+    override fun close() = archive.close()
+
+    companion object {
+        fun open(context: Context, uriString: String, fileSize: Long, lastModified: Long): ComicPageSource =
+            ComicPageSource(ComicArchive.open(context, uriString, fileSize, lastModified))
     }
 }
 
 /** Decodes nearby pages on demand and keeps a few of them in memory. */
-class ComicPageLoader(
-    private val archive: ComicArchive,
+class PageLoader(
+    private val source: PagedImageSource,
     private val maxWidth: Int,
     private val maxHeight: Int
 ) {
     private val mutex = Mutex()
-    private val cache = object : LruCache<String, Bitmap>(cacheBytes()) {
-        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+    private val cache = object : LruCache<Int, Bitmap>(cacheBytes()) {
+        override fun sizeOf(key: Int, value: Bitmap): Int = value.byteCount
     }
 
-    suspend fun load(name: String): Bitmap? {
-        cache.get(name)?.let { return it }
+    suspend fun load(index: Int): Bitmap? {
+        cache.get(index)?.let { return it }
         return mutex.withLock {
-            cache.get(name) ?: withContext(Dispatchers.IO) {
-                archive.decode(name, maxWidth, maxHeight)?.also { cache.put(name, it) }
-            }
+            cache.get(index) ?: source.decode(index, maxWidth, maxHeight)?.also { cache.put(index, it) }
         }
     }
 

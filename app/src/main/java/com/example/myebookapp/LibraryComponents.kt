@@ -46,7 +46,7 @@ fun HamburgerIcon() {
 
 fun openInReader(context: Context, book: BookEntity) {
     val uri = Uri.parse(book.uriString)
-    val target = if (book.format == "CBZ") ComicReaderActivity::class.java else ReaderActivity::class.java
+    val target = if (book.format == "CBZ" || book.format == "PDF") PageReaderActivity::class.java else ReaderActivity::class.java
     val intent = Intent(context, target).apply {
         putExtra("book_uri", book.uriString)
         if (uri.scheme == "content") {

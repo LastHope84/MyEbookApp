@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
 import androidx.paging.*
 import androidx.paging.compose.*
 import kotlinx.coroutines.*
@@ -39,23 +40,56 @@ data class ConversionFailure(val book: BookEntity, val reason: String)
 
 class MainActivity : ComponentActivity() {
 companion object { var didAutoOpen = false }
-private var incUri by mutableStateOf<Uri?>(null)
 override fun onCreate(s: Bundle?) { super.onCreate(s); handleI(intent)
 setContent {
 val c = LocalContext.current; var m by remember { mutableStateOf(ThemePrefs.getMode(c)) }
 var a by remember { mutableStateOf(ThemePrefs.getAccent(c)) }; var am by remember { mutableStateOf(ThemePrefs.isAmoled(c)) }
 MyEbookTheme(mode=m, accent=a, amoledDark=am) {
-LibraryScreen(m, a, am, incUri, { incUri = null }, { m=it; ThemePrefs.saveMode(c,it) }, { a=it; ThemePrefs.saveAccent(c,it) }, { am=it; ThemePrefs.saveAmoled(c,it) })
+LibraryScreen(m, a, am, { m=it; ThemePrefs.saveMode(c,it) }, { a=it; ThemePrefs.saveAccent(c,it) }, { am=it; ThemePrefs.saveAmoled(c,it) })
 }
 }
 }
 override fun onNewIntent(i: Intent) { super.onNewIntent(i); setIntent(i); handleI(i) }
-private fun handleI(i: Intent?) { if (i?.action == Intent.ACTION_VIEW && i.data != null) { incUri = i.data; didAutoOpen = true } }
+
+private fun handleI(i: Intent?) {
+    val uri = when (i?.action) {
+        Intent.ACTION_VIEW -> i.data
+        Intent.ACTION_SEND -> sentFile(i)
+        else -> null
+    } ?: return
+    didAutoOpen = true
+    lifecycleScope.launch {
+        try {
+            val book = withContext(Dispatchers.IO) { ExternalImport.import(applicationContext, uri) }
+            when (book.format) {
+                "EPUB", "CBZ", "PDF" -> openInReader(this@MainActivity, book)
+                else -> Toast.makeText(
+                    this@MainActivity,
+                    "${book.title} added to your library.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Toast.makeText(
+                this@MainActivity,
+                e.localizedMessage ?: "Could not open the file.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+}
+
+@Suppress("DEPRECATION")
+private fun sentFile(i: Intent): Uri? =
+    if (android.os.Build.VERSION.SDK_INT >= 33) i.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+    else i.getParcelableExtra(Intent.EXTRA_STREAM)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LibraryScreen(tm: AppThemeMode, acc: AppAccent, am: Boolean, incU: Uri?, onCons: () -> Unit, onT: (AppThemeMode)->Unit, onA: (AppAccent)->Unit, onAm: (Boolean)->Unit) {
+fun LibraryScreen(tm: AppThemeMode, acc: AppAccent, am: Boolean, onT: (AppThemeMode)->Unit, onA: (AppAccent)->Unit, onAm: (Boolean)->Unit) {
 val ctx = LocalContext.current; val scp = rememberCoroutineScope(); val dao = remember { AppDatabase.getInstance(ctx).bookDao() }
 val visibilityPrefs = remember { ctx.getSharedPreferences("library_visibility", Context.MODE_PRIVATE) }
 var showConvertedOriginals by remember { mutableStateOf(visibilityPrefs.getBoolean("show_converted_originals", false)) }
@@ -137,7 +171,6 @@ LaunchedEffect(Unit) {
         }
     }
 }
-
 fun sendToKindle(book: BookEntity) {
 if (preparingKindle) return
 val email = ThemePrefs.getKindleEmail(ctx)
@@ -332,6 +365,42 @@ val folderP = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocu
         }
     }
 }
+var importingFiles by remember { mutableStateOf(false) }
+val fileP = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+    if (uris.isNullOrEmpty() || importingFiles) return@rememberLauncherForActivityResult
+    importingFiles = true
+    scp.launch {
+        val added = mutableListOf<BookEntity>()
+        var failed = 0
+        try {
+            for (uri in uris) {
+                try {
+                    added += withContext(Dispatchers.IO) { ExternalImport.import(ctx, uri) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    failed++
+                }
+            }
+            when {
+                added.isEmpty() -> Toast.makeText(ctx, "No files could be added.", Toast.LENGTH_LONG).show()
+                else -> {
+                    Toast.makeText(
+                        ctx,
+                        "Added ${added.size} file${if (added.size == 1) "" else "s"}${if (failed > 0) "; $failed failed" else ""}.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    if (added.size == 1) {
+                        val book = added.first()
+                        if (book.format in setOf("EPUB", "CBZ", "PDF")) openInReader(ctx, book) else selB = book
+                    }
+                }
+            }
+        } finally {
+            importingFiles = false
+        }
+    }
+}
 if (showFolders) {
     FolderManagementScreen(onClose = { showFolders = false })
     return
@@ -380,6 +449,7 @@ customShelvesWithCounts.forEach { shelf ->
 NavigationDrawerItem(label={Text("+ Create shelf")}, selected=false, onClick={showCreateShelf=true})
 Spacer(Modifier.height(8.dp)); HorizontalDivider(); Spacer(Modifier.height(8.dp))
 NavigationDrawerItem(label={Text("Add Folder")}, selected=false, onClick={scp.launch{drw.close()}; folderP.launch(null)})
+NavigationDrawerItem(label={Text("Add File")}, selected=false, onClick={scp.launch{drw.close()}; fileP.launch(arrayOf("*/*"))})
 NavigationDrawerItem(label={Text("Manage folders")}, selected=false, onClick={scp.launch{drw.close()}; showFolders=true})
 if (folders.isNotEmpty()) NavigationDrawerItem(label={Text("Rescan Folders")}, selected=false, onClick={scp.launch{drw.close()}; requestScan("rescan")})
 NavigationDrawerItem(label={Text("Settings")}, selected=false, onClick={scp.launch{drw.close()}; showSet=true})

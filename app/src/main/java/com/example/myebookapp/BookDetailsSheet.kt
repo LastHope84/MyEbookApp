@@ -58,14 +58,15 @@ fun BookDetailsBottomSheet(
                 )
             }
             Spacer(Modifier.height(16.dp))
-            val isComic = b.format == "CBZ"
+            val isPaged = b.format == "CBZ" || b.format == "PDF"
             val convertible = b.format == "MOBI" || b.format == "AZW3"
-            if (b.format == "EPUB" || isComic) {
+            if (b.format == "EPUB" || isPaged) {
                 Button(onClick = onR, Modifier.fillMaxWidth()) {
                     Text(
                         when {
                             pct > 0 -> "Continue ($pct%)"
-                            isComic -> "Read Comic"
+                            b.format == "CBZ" -> "Read Comic"
+                            b.format == "PDF" -> "Read PDF"
                             else -> "Read Book"
                         }
                     )
@@ -74,7 +75,7 @@ fun BookDetailsBottomSheet(
                 Button(onClick = onC, Modifier.fillMaxWidth()) { Text("Convert ${b.format} to EPUB") }
             }
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), Arrangement.spacedBy(8.dp)) {
-                if (!isComic) OutlinedButton(onClick = onE, Modifier.weight(1f)) { Text("Edit") }
+                if (!isPaged) OutlinedButton(onClick = onE, Modifier.weight(1f)) { Text("Edit") }
                 OutlinedButton(onClick = onS, Modifier.weight(1f)) { Text("Share") }
             }
             if (b.format == "EPUB") {

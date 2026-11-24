@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <files-path name="converted_epubs" path="converted_epubs/" />
+    <files-path name="imports" path="imports/" />
     <cache-path name="shared_books" path="shared_books/" />
 </paths>

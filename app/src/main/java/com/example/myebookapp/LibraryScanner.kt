@@ -500,6 +500,7 @@ object LibraryScanner {
                     val format = when (name.substringAfterLast('.', "").lowercase()) {
                         "epub" -> "EPUB"
                         "cbz" -> "CBZ"
+                        "pdf" -> "PDF"
                         "mobi" -> "MOBI"
                         "azw3", "azw", "prc" -> "AZW3"
                         else -> null
@@ -521,7 +522,7 @@ object LibraryScanner {
                             lastLocatorJson = null,
                             progressPercent = 0.0,
                             lastOpenedAt = 0L,
-                            metadataExtracted = format != "EPUB" && format != "CBZ",
+                            metadataExtracted = format !in setOf("EPUB", "CBZ", "PDF"),
                             scanRootUri = treeUri.toString(),
                             scanParentId = parentId
                         )
@@ -568,6 +569,9 @@ object LibraryScanner {
                                 tags = it.tags
                             )
                         }
+                        "PDF" -> PdfParser.parse(
+                            context, book.uriString, book.fileName, book.fileSize, book.lastModified
+                        )
                         else -> EpubParser.parseEpub(context, uri, book.fileName)
                     }
                     checkpoint()
