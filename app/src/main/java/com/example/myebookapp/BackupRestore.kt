@@ -222,7 +222,7 @@ object BackupRestore {
             language = optString("language", ""),
             coverPath = optStringOrNull("coverPath"),
             lastLocatorJson = optStringOrNull("lastLocatorJson"),
-            progressPercent = optDouble("progressPercent", 0.0).coerceIn(0.0, 100.0),
+            progressPercent = optDouble("progressPercent", 0.0).coerceIn(0.0, 1.0),
             lastOpenedAt = optLong("lastOpenedAt", 0L),
             metadataExtracted = optBoolean("metadataExtracted", true),
             series = optStringOrNull("series"),

@@ -124,14 +124,22 @@ fun BookGridTile(book: BookEntity, inSelectionMode: Boolean, isSelected: Boolean
                     if (isSelected) Text("✓", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 }
             }
-            val badge = when { book.format != "EPUB" -> book.format; pct > 0 -> "$pct%"; else -> null }
-            if (badge != null) {
+            if (book.format != "EPUB") {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(0.92f),
+                    shape = RoundedCornerShape(4.dp),
+                    modifier = Modifier.align(Alignment.BottomStart).padding(4.dp)
+                ) {
+                    Text(book.format, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp))
+                }
+            }
+            if (pct > 0) {
                 Surface(
                     color = MaterialTheme.colorScheme.primaryContainer.copy(0.92f),
                     shape = RoundedCornerShape(4.dp),
                     modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)
                 ) {
-                    Text(badge, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp))
+                    Text("$pct%", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp))
                 }
             }
         }
