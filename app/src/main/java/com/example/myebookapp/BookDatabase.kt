@@ -128,6 +128,9 @@ interface BookDao {
     @Query("DELETE FROM custom_shelf_books") suspend fun deleteAllShelfBooks()
     @Query("DELETE FROM custom_shelves") suspend fun deleteAllCustomShelves()
     @Query("DELETE FROM books") suspend fun deleteAllBooks()
+
+    // FTS4 merges its index segments; prefix searches get faster after scans.
+    @Query("INSERT INTO books_fts(books_fts) VALUES('optimize')") suspend fun optimizeSearchIndex()
     @Query("SELECT * FROM books WHERE id = :id LIMIT 1") fun observeById(id: Long): Flow<BookEntity?>
     @Query("UPDATE books SET isFavorite = :favorite WHERE id = :id") suspend fun setFavorite(id: Long, favorite: Boolean): Int
     @Query("UPDATE books SET isFavorite = :favorite WHERE id IN (:ids)") suspend fun setFavoriteForIdsChunk(ids: List<Long>, favorite: Boolean): Int

@@ -90,6 +90,33 @@ private fun sentFile(i: Intent): Uri? =
     else i.getParcelableExtra(Intent.EXTRA_STREAM)
 }
 
+@Composable
+private fun LibrarySearchField(onCommit: (String) -> Unit) {
+    var text by remember { mutableStateOf("") }
+    LaunchedEffect(text) {
+        delay(300)
+        val q = text.trim()
+        // A one-letter prefix would scan a huge part of the search index.
+        onCommit(if (q.length >= 2) q else "")
+    }
+    Column {
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it },
+            placeholder = { Text("Search...") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        if (text.trim().length == 1) {
+            Text(
+                "Type at least 2 letters",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(tm: AppThemeMode, acc: AppAccent, am: Boolean, onT: (AppThemeMode)->Unit, onA: (AppAccent)->Unit, onAm: (Boolean)->Unit) {
@@ -102,7 +129,7 @@ val favoriteCount by remember(showConvertedOriginals) { dao.observeFavoriteCount
 val readingCount by remember(showConvertedOriginals) { dao.observeStatusCount("READING", showConvertedOriginals) }.collectAsState(0)
 val toReadCount by remember(showConvertedOriginals) { dao.observeStatusCount("TBR", showConvertedOriginals) }.collectAsState(0)
 val finishedCount by remember(showConvertedOriginals) { dao.observeStatusCount("FINISHED", showConvertedOriginals) }.collectAsState(0)
-var tab by remember { mutableStateOf(LibraryTab.ALL) }; var qry by remember { mutableStateOf("") }; var dbQry by remember { mutableStateOf("") }
+var tab by remember { mutableStateOf(LibraryTab.ALL) }; var dbQry by remember { mutableStateOf("") }
 var selB by remember { mutableStateOf<BookEntity?>(null) }; var edtB by remember { mutableStateOf<BookEntity?>(null) }
 var deleteFileBook by remember { mutableStateOf<BookEntity?>(null) }
 var showSet by remember { mutableStateOf(false) }; var showVisibility by remember { mutableStateOf(false) }; var showFolders by remember { mutableStateOf(false) }; var showGuide by rememberSaveable { mutableStateOf(false) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
@@ -174,6 +201,7 @@ var preparingKindle by remember { mutableStateOf(false) }
 val folders = LibraryScanner.getSavedFolders(ctx)
 LaunchedEffect(Unit) {
     LibraryScanner.restore(ctx)
+    withContext(Dispatchers.IO) { runCatching { dao.optimizeSearchIndex() } }
     if (ThemePrefs.isAutoScanOnOpen(ctx)) {
         val folders = LibraryScanner.getSavedFolders(ctx)
         val now = System.currentTimeMillis()
@@ -492,7 +520,6 @@ BackHandler(drw.isOpen || selMode || selectedCustomId != null) {
         else -> { cancelSelectAll(); selectedCustomId = null; tab = LibraryTab.ALL; selIds = emptySet(); selMode = false }
     }
 }
-LaunchedEffect(qry) { delay(250); if (dbQry != qry) { cancelSelectAll(); dbQry = qry } }
 
 val customId = selectedCustomId
 val paged = remember(dbQry, tab, customId, showConvertedOriginals, sortMode, scp) { Pager(PagingConfig(60, 180, true)) {
@@ -514,7 +541,7 @@ ModalNavigationDrawer(drawerState=drw, gesturesEnabled=!selMode, drawerContent={
 ModalDrawerSheet(Modifier.width(300.dp)) {
 Column(Modifier.fillMaxHeight().verticalScroll(rememberScrollState()).padding(16.dp)) {
 Text("My Ebook Library", style=MaterialTheme.typography.titleLarge, fontWeight=FontWeight.Bold); Text("$total books", style=MaterialTheme.typography.labelMedium)
-Spacer(Modifier.height(12.dp)); OutlinedTextField(value=qry, onValueChange={cancelSelectAll(); qry=it}, placeholder={Text("Search...")}, singleLine=true, modifier=Modifier.fillMaxWidth())
+Spacer(Modifier.height(12.dp)); LibrarySearchField(onCommit = { q -> cancelSelectAll(); dbQry = q })
 Spacer(Modifier.height(12.dp)); LibraryTab.entries.forEach { t ->
     val count = when (t) { LibraryTab.ALL -> total; LibraryTab.RECENT -> minOf(total, 50); LibraryTab.FAV -> favoriteCount; LibraryTab.READING -> readingCount; LibraryTab.TBR -> toReadCount; LibraryTab.DONE -> finishedCount; LibraryTab.CONV -> toConv }
     NavigationDrawerItem(label={Text(t.title)}, badge={Text("$count")}, selected=selectedCustomId == null && tab==t, onClick={cancelSelectAll(); selectedCustomId=null; tab=t; selIds=emptySet(); selMode=false; scp.launch{drw.close()}})

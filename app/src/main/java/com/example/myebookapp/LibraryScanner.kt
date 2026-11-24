@@ -322,7 +322,12 @@ object LibraryScanner {
                                 true
                             } else false
                         }
-                        if (complete) break
+                        if (complete) {
+                            try {
+                                AppDatabase.getInstance(context).bookDao().optimizeSearchIndex()
+                            } catch (_: Exception) { }
+                            break
+                        }
                         checkpoint()
                     }
                 }
