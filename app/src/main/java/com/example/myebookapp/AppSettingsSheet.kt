@@ -51,7 +51,6 @@ fun AppSettingsBottomSheet(
     var cacheClearedMsg by remember { mutableStateOf<String?>(null) }
     var translationEnabled by remember { mutableStateOf(ThemePrefs.isOfflineTranslationEnabled(context)) }
     var autoScan by remember { mutableStateOf(ThemePrefs.isAutoScanOnOpen(context)) }
-    var iconVariant by remember { mutableStateOf(ThemePrefs.getIconVariant(context)) }
 
     LaunchedEffect(Unit) {
         storageSummary = withContext(Dispatchers.IO) { computeStorageSummary(context) }
@@ -120,38 +119,6 @@ fun AppSettingsBottomSheet(
                 }
             }
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-            SectionLabel("App Icon")
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                listOf(
-                    AppIcon.CHARCOAL to "Charcoal",
-                    AppIcon.CREAM to "Cream",
-                    AppIcon.PURPLE to "Purple",
-                    AppIcon.LAVENDER to "Lavender"
-                ).forEach { (key, label) ->
-                    FilterChip(
-                        selected = iconVariant == key,
-                        onClick = {
-                            AppIcon.apply(context, key)
-                            iconVariant = key
-                            android.widget.Toast.makeText(
-                                context,
-                                "Icon changed. Your launcher may take a moment to show it.",
-                                android.widget.Toast.LENGTH_LONG
-                            ).show()
-                        },
-                        label = { Text(label) }
-                    )
-                }
-            }
-            Text(
-                "Launchers sometimes keep the old icon until they refresh.",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
 
             Spacer(modifier = Modifier.height(8.dp))
             Row(

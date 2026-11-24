@@ -20,6 +20,10 @@
             android:exported="true"
             android:launchMode="singleTask">
             <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -43,58 +47,6 @@
                 <data android:pathPattern=".*\\.AZW3" />
             </intent-filter>
         </activity>
-        <activity-alias
-            android:name=".IconCharcoal"
-            android:targetActivity=".MainActivity"
-            android:exported="true"
-            android:enabled="true"
-            android:icon="@mipmap/ic_launcher_charcoal"
-            android:roundIcon="@mipmap/ic_launcher_charcoal_round"
-            android:label="MyEbookApp">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-        <activity-alias
-            android:name=".IconCream"
-            android:targetActivity=".MainActivity"
-            android:exported="true"
-            android:enabled="false"
-            android:icon="@mipmap/ic_launcher_cream"
-            android:roundIcon="@mipmap/ic_launcher_cream_round"
-            android:label="MyEbookApp">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-        <activity-alias
-            android:name=".IconPurple"
-            android:targetActivity=".MainActivity"
-            android:exported="true"
-            android:enabled="false"
-            android:icon="@mipmap/ic_launcher"
-            android:roundIcon="@mipmap/ic_launcher_round"
-            android:label="MyEbookApp">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-        <activity-alias
-            android:name=".IconLavender"
-            android:targetActivity=".MainActivity"
-            android:exported="true"
-            android:enabled="false"
-            android:icon="@mipmap/ic_launcher_lavender"
-            android:roundIcon="@mipmap/ic_launcher_lavender_round"
-            android:label="MyEbookApp">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
         <service
             android:name=".ScanService"
             android:exported="false"
