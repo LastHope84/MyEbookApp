@@ -21,7 +21,9 @@ class GuideContractTest(unittest.TestCase):
 
     def test_drawer_and_two_level_back_navigation(self):
         self.assertIn('Text("User Guide")', MAIN)
-        self.assertIn('UserGuideScreen(onClose = { showGuide = false })', MAIN)
+        self.assertIn('UserGuideScreen(initialTopic = guideTopic, onClose = { showGuide = false; guideTopic = null })', MAIN)
+        self.assertIn('guideTopic = "licenses"', MAIN)
+        self.assertIn('"Credits" to', GUIDE)
         self.assertIn('BackHandler { goBack() }', GUIDE)
         self.assertIn('if (topicId != null) topicId = null else onClose()', GUIDE)
         self.assertIn('rememberSaveable', GUIDE)

@@ -44,6 +44,7 @@ fun AppSettingsBottomSheet(
     onConvertedVisibility: () -> Unit,
     onBackup: () -> Unit,
     onRestore: () -> Unit,
+    onCredits: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -311,11 +312,18 @@ fun AppSettingsBottomSheet(
             val versionName = runCatching {
                 context.packageManager.getPackageInfo(context.packageName, 0).versionName
             }.getOrNull()
-            Text(
-                "Version $versionName",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Version $versionName",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                TextButton(onClick = onCredits) { Text("Credits") }
+            }
         }
     }
 }

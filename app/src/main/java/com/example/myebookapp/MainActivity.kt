@@ -140,7 +140,7 @@ val finishedCount by remember(showConvertedOriginals) { dao.observeStatusCount("
 var tab by remember { mutableStateOf(LibraryTab.ALL) }; var dbQry by remember { mutableStateOf("") }
 var selB by remember { mutableStateOf<BookEntity?>(null) }; var edtB by remember { mutableStateOf<BookEntity?>(null) }
 var deleteFileBook by remember { mutableStateOf<BookEntity?>(null) }
-var showSet by remember { mutableStateOf(false) }; var showVisibility by remember { mutableStateOf(false) }; var showFolders by remember { mutableStateOf(false) }; var showGuide by rememberSaveable { mutableStateOf(false) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+var showSet by remember { mutableStateOf(false) }; var showVisibility by remember { mutableStateOf(false) }; var showFolders by remember { mutableStateOf(false) }; var showGuide by rememberSaveable { mutableStateOf(false) }; var guideTopic by remember { mutableStateOf<String?>(null) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
 var showBulkActions by remember { mutableStateOf(false) }
 var showScanLog by remember { mutableStateOf(false) }
 var showBulkMove by remember { mutableStateOf(false) }
@@ -527,7 +527,7 @@ if (showFolders) {
     return
 }
 if (showGuide) {
-    UserGuideScreen(onClose = { showGuide = false })
+    UserGuideScreen(initialTopic = guideTopic, onClose = { showGuide = false; guideTopic = null })
     return
 }
 BackHandler(drw.isOpen || selMode || selectedCustomId != null || tab != LibraryTab.ALL) {
@@ -592,7 +592,7 @@ NavigationDrawerItem(label={Text("Add File")}, selected=false, onClick={scp.laun
 NavigationDrawerItem(label={Text("Manage folders")}, selected=false, onClick={scp.launch{drw.close()}; showFolders=true})
 if (folders.isNotEmpty()) NavigationDrawerItem(label={Text("Rescan Folders")}, selected=false, onClick={scp.launch{drw.close()}; requestScan("rescan")})
 NavigationDrawerItem(label={Text("Settings")}, selected=false, onClick={scp.launch{drw.close()}; showSet=true})
-NavigationDrawerItem(label={Text("User Guide")}, selected=false, onClick={scp.launch { drw.close(); showGuide=true }})
+NavigationDrawerItem(label={Text("User Guide")}, selected=false, onClick={scp.launch { drw.close(); guideTopic = null; showGuide=true }})
 }
 }
 }) {
@@ -729,6 +729,7 @@ if (showSet) AppSettingsBottomSheet(
     { showSet = false; showVisibility = true },
     { showSet = false; showBackupOptions = true },
     { showSet = false; restorePickP.launch(arrayOf("*/*")) },
+    { showSet = false; guideTopic = "licenses"; showGuide = true },
     { showSet = false }
 )
 if (showVisibility) AlertDialog(

@@ -109,7 +109,8 @@ private val guideTopics = listOf(
         "Online search or dictionary fails" to "Check your connection and try again. For metadata, try a shorter title or author and check the edition before saving. No results can also mean the catalogues are unavailable. For dictionary lookup, try a single word or the browser option.",
         "Kindle or sharing fails" to "Check that the file is still accessible and a suitable sharing or email app is installed. For Kindle, save the correct Kindle address, check the attachment and recipient in your mail app, send the message, and review Amazon's sender and delivery requirements."
     )),
-    GuideTopic("licenses", "Licenses", "Third-party components", listOf(
+    GuideTopic("licenses", "Licenses and credits", "Third-party components and thanks", listOf(
+        "Credits" to "MyEbookApp is built with open-source software. Thanks to libmobi by Bartek Fabiszewski; the Readium Kotlin Toolkit and Readium CSS; Apache PDFBox; junrar and the UnRAR authors; Foxlet Translate by yinvoker, the Bergamot project, Marian, SentencePiece and ruy; Mozilla Firefox Translations and the model authors; AndroidX, Jetpack Compose, Material Components, Room, Paging, Coil, Kotlin and kotlinx.coroutines; and the font authors: Abbie Gonzalez (OpenDyslexic), Orange (Accessible DfA) and IBM (iA Writer Duospace / IBM Plex). Full licence details are in the repository's THIRD_PARTY_NOTICES.md and licenses folder.",
         "CBR (RAR)" to "CBR support uses the UnRAR decompression code by Alexander Roshal. The code is free to use in software that handles RAR archives, but may not be used to develop a RAR-compatible archiver. MyEbookApp only reads comics and never creates RAR archives.",
         "PDF text" to "PDF text extraction uses Apache PDFBox, licensed under the Apache License 2.0.",
         "MOBI conversion" to "MOBI and AZW3 conversion uses libmobi, licensed under the GNU Lesser General Public License v3.0 or later. libmobi is loaded as a separate shared library; its source is available at https://github.com/bfabiszewski/libmobi.",
@@ -122,8 +123,8 @@ private val guideTopics = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UserGuideScreen(onClose: () -> Unit) {
-    var topicId by rememberSaveable { mutableStateOf<String?>(null) }
+fun UserGuideScreen(onClose: () -> Unit, initialTopic: String? = null) {
+    var topicId by rememberSaveable { mutableStateOf(initialTopic) }
     var query by rememberSaveable { mutableStateOf("") }
     val topic = guideTopics.firstOrNull { it.id == topicId }
     val normalizedQuery = query.trim().lowercase()
