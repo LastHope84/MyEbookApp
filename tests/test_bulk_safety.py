@@ -95,6 +95,10 @@ class BulkSafety(unittest.TestCase):
         self.assertIn('dao.addBooksToCustomShelf(shelf.id, ids)', UI)
         self.assertIn('dao.removeBooksFromCustomShelf(shelf.id, ids)', UI)
 
+    def test_conversion_action_only_for_convertible_selection(self):
+        self.assertIn('selectedConvertibleCount = selected.count { it.format == "MOBI" || it.format == "AZW3" }', UI)
+        self.assertIn('if ((selectedConvertibleCount ?: 0) > 0) TextButton', UI)
+
     def test_intent_is_handled_once_per_launch(self):
         self.assertIn('if (s == null) {', UI)
         self.assertIn('didAutoOpen = false', UI)

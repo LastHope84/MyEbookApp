@@ -183,6 +183,7 @@ var showBulkMove by remember { mutableStateOf(false) }
 var showBulkShelves by remember { mutableStateOf(false) }
 var bulkFavoriteAction by remember { mutableStateOf<Boolean?>(null) }
 var selectedFavoriteCount by remember { mutableStateOf<Int?>(null) }
+var selectedConvertibleCount by remember { mutableStateOf<Int?>(null) }
 var showBulkShareConfirm by remember { mutableStateOf(false) }
 var preparingBulkShare by remember { mutableStateOf(false) }
 var sortMode by remember { mutableStateOf(ThemePrefs.getSort(ctx)) }
@@ -657,9 +658,12 @@ Scaffold(topBar={ TopAppBar(navigationIcon={ IconButton(enabled=!bulkSaving, onC
     TextButton(enabled=!bulkSaving && !selectingAll && selIds.isNotEmpty(), onClick={
         showBulkActions=true
         selectedFavoriteCount=null
+        selectedConvertibleCount=null
         val ids = selIds.toList()
         scp.launch {
-            selectedFavoriteCount = withContext(Dispatchers.IO) { dao.getByIds(ids).count { it.isFavorite } }
+            val selected = withContext(Dispatchers.IO) { dao.getByIds(ids) }
+            selectedFavoriteCount = selected.count { it.isFavorite }
+            selectedConvertibleCount = selected.count { it.format == "MOBI" || it.format == "AZW3" }
         }
     }) { Text("Actions") }
 } else {
@@ -1114,7 +1118,7 @@ showBulkActions.let { if (it) {
             }
         }
         TextButton(onClick={showBulkActions=false; showBulkShareConfirm=true}, modifier=Modifier.fillMaxWidth()) { Text("Share selected files") }
-        TextButton(enabled=!converting,onClick={
+        if ((selectedConvertibleCount ?: 0) > 0) TextButton(enabled=!converting,onClick={
             val ids=selIds.toList(); showBulkActions=false; bulkSaving=true
             scp.launch {
                 try {
