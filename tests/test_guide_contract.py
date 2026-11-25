@@ -43,7 +43,7 @@ class GuideContractTest(unittest.TestCase):
             self.assertIn('may miss some layouts', text)
             self.assertIn('current shelf matching the active search', text)
             self.assertIn('books not yet loaded on screen', text)
-            self.assertIn('Actions lets you move books', text)
+            self.assertIn('Actions lets you change reading status', text)
             self.assertNotIn('no bulk-action buttons', text)
             self.assertNotIn('does not automatically move it', text)
         self.assertIn('markStarted(bookUri.toString())', READER)
@@ -51,7 +51,7 @@ class GuideContractTest(unittest.TestCase):
         self.assertIn("readingStatus IN ('NEW', 'TBR')", DAO)
         self.assertIn("readingStatus = 'READING'\")\n    suspend fun markFinished", DAO)
         self.assertIn('selectAllOnShelf()', MAIN)
-        for label in ('Move to reading shelf', 'Move to custom shelf',
+        for label in ('Change reading status', 'Move to custom shelf',
                       'Share selected files', 'Convert MOBI / AZW3 books'):
             self.assertIn('Text("' + label + '")', MAIN)
 

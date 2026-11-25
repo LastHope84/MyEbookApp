@@ -1101,7 +1101,7 @@ shelfToDelete?.let { shelf ->
 }
 showBulkActions.let { if (it) {
     AlertDialog(onDismissRequest={showBulkActions=false}, title={Text("${selIds.size} selected")}, text={ Column {
-        TextButton(onClick={showBulkActions=false; showBulkMove=true}, modifier=Modifier.fillMaxWidth()) { Text("Move to reading shelf") }
+        TextButton(onClick={showBulkActions=false; showBulkMove=true}, modifier=Modifier.fillMaxWidth()) { Text("Change reading status") }
         if (customShelves.isNotEmpty()) TextButton(onClick={showBulkActions=false; showBulkShelves=true}, modifier=Modifier.fillMaxWidth()) { Text("Move to custom shelf") }
         val favCount = selectedFavoriteCount
         when {
@@ -1133,8 +1133,8 @@ showBulkActions.let { if (it) {
     } }, confirmButton={TextButton(onClick={showBulkActions=false}){Text("Done")}})
 } }
 showBulkMove.let { if (it) {
-    AlertDialog(onDismissRequest={ if (!bulkSaving) showBulkMove=false }, title={Text("Move ${selIds.size} books")}, text={ Column {
-        Text("Choose a reading shelf. This keeps files, progress and custom-shelf memberships unchanged.", style=MaterialTheme.typography.bodySmall)
+    AlertDialog(onDismissRequest={ if (!bulkSaving) showBulkMove=false }, title={Text("Change reading status")}, text={ Column {
+        Text("Choose a status for the ${selIds.size} selected books. This keeps files, progress and custom-shelf memberships unchanged.", style=MaterialTheme.typography.bodySmall)
         listOf("NEW" to "Unclassified", "TBR" to "To Read", "READING" to "Reading", "FINISHED" to "Finished").forEach { (status,label) ->
             TextButton(enabled=!bulkSaving, onClick={ val ids=selIds.toList(); bulkSaving=true; scp.launch { try { withContext(Dispatchers.IO){dao.setReadingStatusForIds(ids,status)}; showBulkMove=false; selIds=emptySet(); selMode=false } catch (e: CancellationException) { throw e } catch (e: Exception) { Toast.makeText(ctx,"Could not update reading shelf.",Toast.LENGTH_LONG).show() } finally { bulkSaving=false } } }, modifier=Modifier.fillMaxWidth()) { Text(label) }
         }
