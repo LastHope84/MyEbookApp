@@ -10,6 +10,7 @@ MAIN = (SRC / 'MainActivity.kt').read_text()
 READER = (SRC / 'ReaderActivity.kt').read_text()
 DAO = (SRC / 'BookDatabase.kt').read_text()
 DETAILS = (SRC / 'BookDetailsSheet.kt').read_text()
+COMPONENTS = (SRC / 'LibraryComponents.kt').read_text()
 DOC = (ROOT / 'docs/USER_GUIDE.md').read_text()
 
 
@@ -52,8 +53,8 @@ class GuideContractTest(unittest.TestCase):
         self.assertIn("readingStatus IN ('NEW', 'TBR')", DAO)
         self.assertIn("readingStatus = 'READING'\")\n    suspend fun markFinished", DAO)
         self.assertIn('selectAllOnShelf()', MAIN)
-        self.assertIn('Icons.Filled.SelectAll', MAIN)
-        self.assertIn('contentDescription = "Select all"', MAIN)
+        self.assertIn('SelectAllIcon()', MAIN)
+        self.assertIn('contentDescription = "Select all"', COMPONENTS)
         self.assertIn('Text("Mark as read")', DETAILS)
         self.assertIn('onStatusChange("FINISHED")', DETAILS)
         self.assertIn('Mark as read', GUIDE)

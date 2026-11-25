@@ -3,6 +3,7 @@ package com.example.myebookapp
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -19,9 +20,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,6 +45,21 @@ fun HamburgerIcon() {
     ) {
         repeat(3) { 
             Box(Modifier.fillMaxWidth().height(2.5.dp).clip(RoundedCornerShape(2.dp)).background(barColor)) 
+        }
+    }
+}
+
+@Composable
+fun SelectAllIcon() {
+    val color = LocalContentColor.current
+    Canvas(Modifier.size(22.dp).semantics { contentDescription = "Select all" }) {
+        val stroke = 2.dp.toPx()
+        val rowHeight = size.height / 3f
+        repeat(3) { row ->
+            val y = rowHeight * row + rowHeight / 2f
+            drawLine(color, Offset(1.dp.toPx(), y), Offset(4.dp.toPx(), y + 3.dp.toPx()), stroke, cap = StrokeCap.Round)
+            drawLine(color, Offset(4.dp.toPx(), y + 3.dp.toPx()), Offset(9.dp.toPx(), y - 3.dp.toPx()), stroke, cap = StrokeCap.Round)
+            drawLine(color, Offset(12.dp.toPx(), y), Offset(size.width - 1.dp.toPx(), y), stroke, cap = StrokeCap.Round)
         }
     }
 }
