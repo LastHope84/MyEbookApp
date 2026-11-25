@@ -51,7 +51,7 @@ class GuideContractTest(unittest.TestCase):
         self.assertIn("readingStatus IN ('NEW', 'TBR')", DAO)
         self.assertIn("readingStatus = 'READING'\")\n    suspend fun markFinished", DAO)
         self.assertIn('selectAllOnShelf()', MAIN)
-        for label in ('Move to reading shelf', 'Manage custom shelves',
+        for label in ('Move to reading shelf', 'Move to custom shelf',
                       'Share selected files', 'Convert MOBI / AZW3 books'):
             self.assertIn('Text("' + label + '")', MAIN)
 

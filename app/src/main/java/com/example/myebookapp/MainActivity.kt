@@ -1102,7 +1102,7 @@ shelfToDelete?.let { shelf ->
 showBulkActions.let { if (it) {
     AlertDialog(onDismissRequest={showBulkActions=false}, title={Text("${selIds.size} selected")}, text={ Column {
         TextButton(onClick={showBulkActions=false; showBulkMove=true}, modifier=Modifier.fillMaxWidth()) { Text("Move to reading shelf") }
-        if (customShelves.isNotEmpty()) TextButton(onClick={showBulkActions=false; showBulkShelves=true}, modifier=Modifier.fillMaxWidth()) { Text("Manage custom shelves") }
+        if (customShelves.isNotEmpty()) TextButton(onClick={showBulkActions=false; showBulkShelves=true}, modifier=Modifier.fillMaxWidth()) { Text("Move to custom shelf") }
         val favCount = selectedFavoriteCount
         when {
             favCount == null -> TextButton(enabled=false, onClick={}, modifier=Modifier.fillMaxWidth()) { Text("Checking favorites…") }
