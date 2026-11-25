@@ -95,5 +95,10 @@ class BulkSafety(unittest.TestCase):
         self.assertIn('dao.addBooksToCustomShelf(shelf.id, ids)', UI)
         self.assertIn('dao.removeBooksFromCustomShelf(shelf.id, ids)', UI)
 
+    def test_intent_is_handled_once_per_launch(self):
+        self.assertIn('if (s == null) {', UI)
+        self.assertIn('didAutoOpen = false', UI)
+        self.assertIn('didAutoOpenLastBook = false', UI)
+
 if __name__ == '__main__':
     unittest.main()

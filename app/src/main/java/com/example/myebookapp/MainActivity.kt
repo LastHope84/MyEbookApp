@@ -50,8 +50,14 @@ data class ConversionFailure(val book: BookEntity, val reason: String)
 
 class MainActivity : ComponentActivity() {
 companion object { var didAutoOpen = false; var didAutoOpenLastBook = false }
-override fun onCreate(s: Bundle?) { super.onCreate(s); handleI(intent)
-setContent {
+override fun onCreate(s: Bundle?) {
+    super.onCreate(s)
+    if (s == null) {
+        didAutoOpen = false
+        didAutoOpenLastBook = false
+        handleI(intent)
+    }
+    setContent {
 val c = LocalContext.current; var m by remember { mutableStateOf(ThemePrefs.getMode(c)) }
 var a by remember { mutableStateOf(ThemePrefs.getAccent(c)) }; var am by remember { mutableStateOf(ThemePrefs.isAmoled(c)) }
 MyEbookTheme(mode=m, accent=a, amoledDark=am) {
