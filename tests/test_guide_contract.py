@@ -9,6 +9,7 @@ GUIDE = (SRC / 'UserGuideScreen.kt').read_text()
 MAIN = (SRC / 'MainActivity.kt').read_text()
 READER = (SRC / 'ReaderActivity.kt').read_text()
 DAO = (SRC / 'BookDatabase.kt').read_text()
+DETAILS = (SRC / 'BookDetailsSheet.kt').read_text()
 DOC = (ROOT / 'docs/USER_GUIDE.md').read_text()
 
 
@@ -51,6 +52,10 @@ class GuideContractTest(unittest.TestCase):
         self.assertIn("readingStatus IN ('NEW', 'TBR')", DAO)
         self.assertIn("readingStatus = 'READING'\")\n    suspend fun markFinished", DAO)
         self.assertIn('selectAllOnShelf()', MAIN)
+        self.assertIn('Text("Mark as read")', DETAILS)
+        self.assertIn('onStatusChange("FINISHED")', DETAILS)
+        self.assertIn('Mark as read', GUIDE)
+        self.assertIn('Mark as read', DOC)
         for label in ('Change reading status', 'Move to custom shelf',
                       'Share selected files', 'Convert MOBI / AZW3 books'):
             self.assertIn('Text("' + label + '")', MAIN)

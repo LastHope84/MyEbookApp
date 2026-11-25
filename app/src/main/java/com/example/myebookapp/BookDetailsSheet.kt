@@ -76,6 +76,13 @@ fun BookDetailsBottomSheet(
             } else if (convertible) {
                 Button(onClick = onC, Modifier.fillMaxWidth()) { Text("Convert ${b.format} to EPUB") }
             }
+            if (b.readingStatus != "FINISHED") {
+                OutlinedButton(
+                    onClick = { onStatusChange("FINISHED") },
+                    enabled = statusChangeEnabled,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                ) { Text("Mark as read") }
+            }
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), Arrangement.spacedBy(8.dp)) {
                 if (!isPaged) OutlinedButton(onClick = onE, Modifier.weight(1f)) { Text("Edit") }
                 OutlinedButton(onClick = onS, Modifier.weight(1f)) { Text("Share") }
