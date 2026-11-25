@@ -197,11 +197,13 @@ var bulkSaving by remember { mutableStateOf(false) }
 var selectingAll by remember { mutableStateOf(false) }
 var selectAllJob by remember { mutableStateOf<Job?>(null) }
 var selectAllGeneration by remember { mutableIntStateOf(0) }
+var selectAllPrevious by remember { mutableStateOf<Set<Long>?>(null) }
 fun cancelSelectAll() {
     selectAllGeneration++
     selectAllJob?.cancel()
     selectAllJob = null
     selectingAll = false
+    selectAllPrevious = null
 }
 val customShelves by dao.observeCustomShelves().collectAsState(initial = emptyList())
 val customShelvesWithCounts by remember(showConvertedOriginals) { dao.observeCustomShelvesWithCounts(showConvertedOriginals) }.collectAsState(initial = emptyList())
@@ -373,6 +375,7 @@ suspend fun idsOnShelf(tab: LibraryTab, custom: Long?, f: String?): List<Long> {
 
 fun selectAllOnShelf() {
     cancelSelectAll()
+    val previous = selIds
     val generation = selectAllGeneration
     val selectedTab = tab
     val custom = selectedCustomId
@@ -381,7 +384,10 @@ fun selectAllOnShelf() {
     selectAllJob = scp.launch {
         try {
             val ids = withContext(Dispatchers.IO) { idsOnShelf(selectedTab, custom, search) }
-            if (generation == selectAllGeneration && selMode) selIds = ids.toSet()
+            if (generation == selectAllGeneration && selMode) {
+                selIds = ids.toSet()
+                selectAllPrevious = previous
+            }
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) {
             if (generation == selectAllGeneration) Toast.makeText(ctx, "Could not select books on this shelf.", Toast.LENGTH_LONG).show()
@@ -654,9 +660,16 @@ NavigationDrawerItem(label={Text("User Guide")}, selected=false, onClick={scp.la
 }
 }) {
 Scaffold(topBar={ TopAppBar(navigationIcon={ IconButton(enabled=!bulkSaving, onClick={ if (selMode) { cancelSelectAll(); selIds=emptySet(); selMode=false } else scp.launch{drw.open()} }) { if (selMode) Text("×", style=MaterialTheme.typography.headlineSmall) else HamburgerIcon() } }, title={ Text(if (selMode) "${selIds.size} selected" else customShelves.firstOrNull { it.id == selectedCustomId }?.name ?: tab.title) }, actions={ if (selMode) {
-    IconButton(enabled=!bulkSaving && !selectingAll, onClick={ selectAllOnShelf() }) {
+    IconButton(enabled=!bulkSaving && !selectingAll, onClick={
+        val previous = selectAllPrevious
+        if (previous != null) {
+            cancelSelectAll()
+            selIds = previous
+            if (selIds.isEmpty()) selMode = false
+        } else selectAllOnShelf()
+    }) {
         if (selectingAll) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-        else SelectAllIcon()
+        else SelectAllIcon(if (selectAllPrevious != null) "Restore previous selection" else "Select all")
     }
     TextButton(enabled=!bulkSaving && !selectingAll && selIds.isNotEmpty(), onClick={
         showBulkActions=true

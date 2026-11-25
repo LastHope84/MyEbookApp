@@ -50,9 +50,9 @@ fun HamburgerIcon() {
 }
 
 @Composable
-fun SelectAllIcon() {
+fun SelectAllIcon(description: String = "Select all") {
     val color = LocalContentColor.current
-    Canvas(Modifier.size(22.dp).semantics { contentDescription = "Select all" }) {
+    Canvas(Modifier.size(22.dp).semantics { contentDescription = description }) {
         val stroke = 2.dp.toPx()
         val rowHeight = size.height / 3f
         repeat(3) { row ->
