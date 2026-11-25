@@ -217,23 +217,36 @@ fun AppSettingsBottomSheet(
             if (TranslationAvailability.isAvailable) TranslationPackSettings(enabled = translationEnabled)
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-            SectionLabel("Converted EPUBs Output Folder (SD Card)")
+            SectionLabel("Converted EPUB folder")
 
             Text(
                 text = convertedOutputUri?.let { FileOpener.formatReadablePath(it) }
-                    ?: "App Storage (default)",
+                    ?: "App storage (default)",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                "Converted books are saved here. If the folder becomes unavailable, app storage is used.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.height(8.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onPickConvertedFolder, modifier = Modifier.weight(1f)) {
-                    Text("Pick SD / Folder")
+                    Text("Choose folder")
                 }
                 if (convertedOutputUri != null) {
-                    TextButton(onClick = onResetConvertedFolder) { Text("Reset") }
+                    TextButton(onClick = onResetConvertedFolder) { Text("Use app storage") }
                 }
             }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+            SectionLabel("Added files")
+            Text(
+                "Files added with Add File or opened from another app are copied into the app and also saved in Downloads/MyEbookApp.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
             SectionLabel("Send to Kindle Email")

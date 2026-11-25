@@ -8,13 +8,13 @@ For the current app version.
 Open the library menu (the three lines), tap Add Folder, choose a folder in Android's file picker and grant access. The app scans its subfolders, excluding hidden folders. Scanning can take time; a progress banner appears in the library, and a notification keeps the scan running while the app is in the background. You can pause, resume or stop from the banner. An unreadable book is kept with basic details instead of blocking the rest of the scan.
 
 ### Add a file
-Open the library menu and tap Add File, then choose one or more EPUB, CBZ, CBR, PDF, MOBI or AZW3 files. The app copies them into its own storage and adds them to the library. You can select several files at once. Files added this way are not tied to a folder; remove their library entry as usual.
+Open the library menu and tap Add File, then choose one or more EPUB, CBZ, CBR, PDF, MOBI or AZW3 files. The app copies them into its own storage, also saves a copy in Downloads/MyEbookApp, and adds them to the library. You can select several files at once. Files added this way are not tied to a folder; remove their library entry as usual.
 
 ### Supported files
 The folder scanner finds EPUB, CBZ, CBR, PDF, MOBI, AZW, AZW3 and PRC files. EPUBs, CBZ/CBR comics and PDFs can be read in the app; MOBI, AZW, AZW3 and PRC appear in To Convert. Other formats are not added by this scanner.
 
 ### Open from another app
-Tap a downloaded EPUB, CBZ, CBR or PDF and choose MyEbookApp. The app copies the file into its own storage and opens it, so it keeps working even if the other app is closed. MOBI and AZW3 files are added to the library and appear in To Convert. Files opened this way are not tied to a folder; remove their library entry as usual.
+Tap a downloaded EPUB, CBZ, CBR or PDF and choose MyEbookApp. The app copies the file into its own storage, also saves a copy in Downloads/MyEbookApp, and opens it, so it keeps working even if the other app is closed. MOBI and AZW3 files are added to the library and appear in To Convert. Files opened this way are not tied to a folder; remove their library entry as usual.
 
 ### Add more or rescan
 Use Add Folder again for another folder. After adding files to a saved folder, open the menu and tap Rescan Folders. The app stores access to selected folders; if a folder is moved or access expires, choose it again.
@@ -46,7 +46,7 @@ Comics (CBR/CBZ) collects comic archives, Documents (PDF) collects PDFs, and Not
 Book details show available metadata and a Path. Tap the path to try opening its folder in a file manager. If that is not possible, the app copies a readable path instead.
 
 ### Remove from Library
-In book details, tap Remove from Library. This removes the library entry, not the source file, and does not ask for confirmation. Its app-only edits, favorite, status and library progress entry are removed too. A rescan can add the file again; keep a separate backup of anything important. If the book was added with Add File or opened from another app, book details also offer Delete file from device: that deletes the app's copy and the library entry. Your original download or source folder file is not touched, and folder books never show this option.
+In book details, tap Remove from Library. This removes the library entry, not the source file, and does not ask for confirmation. Its app-only edits, favorite, status and library progress entry are removed too. A rescan can add the file again; keep a separate backup of anything important. If the book was added with Add File or opened from another app, book details also offer Delete file from device: that deletes the app's working copy and the library entry. A copy saved in Downloads/MyEbookApp is not removed. Your original download or source folder file is not touched, and folder books never show this option.
 
 ### Selection
 Long-press a cover to enter selection mode; tap covers to select or deselect them. All selects every book on the current shelf matching the active search, including books not yet loaded on screen. Actions lets you move books to a reading shelf, manage custom shelves, change Favorites, share files, or convert MOBI and AZW3 books. If none of the selected books are favorites it offers Add to favorites, if all are it offers Remove from favorites, and with a mix it offers both. Favorite changes apply to every selected book after confirmation. In Manage custom shelves, Remove is available for the currently open custom shelf. Press Android Back or tap × to leave selection mode.
@@ -139,7 +139,7 @@ Choose To Convert in the menu, tap a MOBI or AZW3 book and tap Convert to EPUB. 
 Open Settings and tap Converted original visibility. Switch on Show converted originals to reveal linked originals on shelves and include them in counts; switch it off to hide them again. Previously converted books cannot be linked automatically, so their originals remain visible. Hiding an entry never deletes its file.
 
 ### Where it goes
-By default, converted EPUBs are in the app's private storage. In Settings, Pick SD / Folder saves converted EPUBs in a folder you choose, and Reset returns to app storage. If the chosen folder becomes unavailable, the EPUB is saved in app storage instead. App storage can be lost if the app is uninstalled or its data is cleared, so share important books to save a copy elsewhere.
+By default, converted EPUBs are in the app's private storage. In Settings, Choose folder saves converted EPUBs in a folder you choose, and Use app storage returns to app storage. If the chosen folder becomes unavailable, the EPUB is saved in app storage instead. App storage can be lost if the app is uninstalled or its data is cleared, so share important books to save a copy elsewhere.
 
 ## Share and Send to Kindle
 
@@ -163,7 +163,7 @@ The storage summary shows app covers, converted EPUBs and temporary cache. Clear
 ## Storage, safety and troubleshooting
 
 ### What is stored
-The app keeps library records, metadata edits, favorites, reading statuses, progress and preferences on this device. Folder books remain in their original locations; access depends on Android's folder permission. Files added with Add File or opened from another app are copied into app storage, so they are lost if the app is uninstalled or its data is cleared. Back up your original files separately, and use Back up in Settings to save library edits, shelves, progress and settings.
+The app keeps library records, metadata edits, favorites, reading statuses, progress and preferences on this device. Folder books remain in their original locations; access depends on Android's folder permission. Files added with Add File or opened from another app are copied into app storage and also saved in Downloads/MyEbookApp; the app's working copy is lost if the app is uninstalled or its data is cleared, while the Downloads copy stays. Back up your original files separately, and use Back up in Settings to save library edits, shelves, progress and settings.
 
 ### Backup and restore
 In Settings, Back up saves library entries, reading progress, favorites, shelves, covers and settings to a .zip file you choose. Include book files stored in the app to also save imported and converted books; books in your own folders are not copied. Restore replaces the library on this device after confirmation and never touches source files in your folders. On a new phone, re-add your folders so folder books can open again. The backup contains your Kindle email and library details, so keep it somewhere safe.

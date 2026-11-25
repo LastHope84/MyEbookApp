@@ -927,8 +927,8 @@ deleteFileBook?.let { target ->
         title = { Text("Delete file?") },
         text = {
             Text(
-                "This permanently deletes the app's copy of \"${target.title}\" and removes its library entry. " +
-                    "Your original download or source folder file is not touched. This cannot be undone."
+                "This permanently deletes the app's working copy of \"${target.title}\" and removes its library entry. " +
+                    "A copy saved in Downloads/MyEbookApp is not removed. Your original download or source folder file is not touched. This cannot be undone."
             )
         },
         confirmButton = {

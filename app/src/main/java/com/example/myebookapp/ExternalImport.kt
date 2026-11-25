@@ -44,6 +44,7 @@ object ExternalImport {
             if (created) dest.delete()
             throw IllegalStateException("The file is empty.")
         }
+        if (created) ImportCopies.save(context, dest)
 
         val fileUri = Uri.fromFile(dest)
         val meta = try {

@@ -4,7 +4,7 @@ MyEbookApp is a personal Android ebook reader and library. It is built for one
 reader's shelves rather than as a store product: the library lives on the
 device, there is no account, and there is no analytics.
 
-Current release: **1.13.7** (Android 8.0 or later, arm64-v8a).
+Current release: **1.14.0** (Android 8.0 or later, arm64-v8a).
 
 ## Features
 
@@ -14,7 +14,8 @@ Current release: **1.13.7** (Android 8.0 or later, arm64-v8a).
   foreground service so scans can continue in the background. Pause, resume or
   stop from the scan banner.
 - Add one or more files with **Add File**, or open EPUB, CBZ, CBR, PDF, MOBI or
-  AZW3 files from a file manager, Downloads or another app.
+  AZW3 files from a file manager, Downloads or another app. A visible copy is
+  also saved in `Downloads/MyEbookApp`.
 - Search an on-device index of title, author, publisher, series and tags.
   Search needs at least two letters.
 - Cover grid or detailed list, sorted by title, author or recently opened.
@@ -56,8 +57,8 @@ Current release: **1.13.7** (Android 8.0 or later, arm64-v8a).
 
 - Convert MOBI, AZW, AZW3 and PRC files to EPUB with libmobi. Conversion
   quality depends on the source; encrypted or DRM-protected files are refused.
-- Converted EPUBs go to app storage by default. **Pick SD / Folder** in
-  Settings chooses another folder; **Reset** returns to app storage. If the
+- Converted EPUBs go to app storage by default. **Choose folder** in Settings
+  picks another folder; **Use app storage** returns to app storage. If the
   chosen folder is unavailable, the EPUB is saved in app storage instead.
 - Successfully converted originals are hidden by default, not deleted.
 
@@ -138,6 +139,9 @@ tests/                      Python source-level regression tests
 
 - Library records, reading progress, favorites, shelves and settings are stored
   on the device. The app has no account and sends no telemetry.
+- Files added with Add File or opened from another app are copied into app
+  storage and also saved in `Downloads/MyEbookApp`, so you can find them outside
+  the app.
 - Online metadata lookup sends the title and author you enter to catalogue
   services. Dictionary lookups send the selected word to online sources.
 - Language packs are downloaded from the model provider only when you choose

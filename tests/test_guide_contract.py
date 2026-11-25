@@ -75,6 +75,12 @@ class GuideContractTest(unittest.TestCase):
         for token in ('bookDao(', 'contentResolver', 'deleteById(', 'openOutputStream('):
             self.assertNotIn(token, GUIDE)
 
+    def test_imported_files_get_a_visible_copy(self):
+        import_src = (SRC / 'ExternalImport.kt').read_text()
+        self.assertIn('ImportCopies.save(context, dest)', import_src)
+        self.assertIn('Downloads/MyEbookApp', GUIDE)
+        self.assertIn('Downloads/MyEbookApp', DOC)
+
 
 if __name__ == '__main__':
     unittest.main()
