@@ -4,7 +4,7 @@ MyEbookApp is a personal Android ebook reader and library. It is built for one
 reader's shelves rather than as a store product: the library lives on the
 device, there is no account, and there is no analytics.
 
-Current release: **1.14.0** (Android 8.0 or later, arm64-v8a).
+Current release: **1.14.1** (Android 8.0 or later, arm64-v8a).
 
 ## Features
 
@@ -20,8 +20,8 @@ Current release: **1.14.0** (Android 8.0 or later, arm64-v8a).
   Search needs at least two letters.
 - Cover grid or detailed list, sorted by title, author or recently opened.
 - Favorites, To Read / Reading / Finished shelves and custom shelves.
-- Built-in shelves: **Comics (CBR/CBZ)**, **Documents (PDF)** and **Not in a
-  custom shelf**.
+- Built-in shelves: **Comics (CBR/CBZ)**, **PDF** and **Not in a custom
+  shelf**.
 - Edit metadata and covers locally, or look for matching editions online.
 - Clean duplicate library entries (same file name and size), keeping the most
   recently used copy; files are not deleted.

@@ -40,7 +40,7 @@ import java.util.Locale
 enum class LibraryTab(val title: String) {
     ALL("All Books"), RECENT("Recent"), FAV("Favorites"), READING("Reading"),
     TBR("To Read"), DONE("Finished"), CONV("To Convert"),
-    COMICS("Comics (CBR/CBZ)"), PDFS("Documents (PDF)"), UNFILED("Not in a custom shelf")
+    COMICS("Comics (CBR/CBZ)"), PDFS("PDF"), UNFILED("Not in a custom shelf")
 }
 data class PendingConvertTarget(val uri: Uri, val fileName: String, val existingBookId: Long? = null)
 data class ConversionFailure(val book: BookEntity, val reason: String)
