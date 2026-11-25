@@ -49,7 +49,7 @@ class RecentAndFavorites(unittest.TestCase):
     def test_counts_and_ui_wiring(self):
         self.assertEqual(self.db.execute(query_for('observeFavoriteCount'), {'showConvertedOriginals': 0}).fetchone()[0], 35)
         self.assertEqual(self.db.execute(query_for('observeStatusCount'), {'status':'READING', 'showConvertedOriginals': 0}).fetchone()[0], 23)
-        for token in ('badge={Text("$count")}', 'badge={Text("${shelf.bookCount}")}', 'dao.setFavoriteForIds(ids, add)', 'dao.searchRecentlyAddedIds(f, showConvertedOriginals)', 'dao.searchRecentPaged(f, showConvertedOriginals)'):
+        for token in ('badge = { Text("$count") }', 'badge={Text("${shelf.bookCount}")}', 'dao.setFavoriteForIds(ids, add)', 'dao.searchRecentlyAddedIds(f, showConvertedOriginals)', 'dao.searchRecentPaged(f, showConvertedOriginals, sortReversed)'):
             self.assertIn(token, MAIN)
 
 if __name__ == '__main__':

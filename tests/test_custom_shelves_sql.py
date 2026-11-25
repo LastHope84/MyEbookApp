@@ -44,9 +44,9 @@ class CustomShelvesSqlTests(unittest.TestCase):
     def test_membership_search_and_independence(self):
         self.db.executemany('INSERT INTO custom_shelves(id, name) VALUES (?, ?)', [(1, 'ew'), (2, 'Loved')])
         self.db.executemany('INSERT INTO custom_shelf_books VALUES (?, ?)', [(1, 1), (2, 1), (1, 2)])
-        self.assertEqual([r[0] for r in self.db.execute(query('customShelfPaged'), {'shelfId': 1, 'showConvertedOriginals': 0, 'sort': 'title'})], [1, 2])
-        self.assertEqual([r[0] for r in self.db.execute(query('searchCustomShelfPaged'), {'shelfId': 1, 'q': 'Alpha*', 'showConvertedOriginals': 0, 'sort': 'title'})], [1])
-        self.assertEqual(list(self.db.execute(query('searchCustomShelfPaged'), {'shelfId': 2, 'q': 'Beta*', 'showConvertedOriginals': 0, 'sort': 'title'})), [])
+        self.assertEqual([r[0] for r in self.db.execute(query('customShelfPaged'), {'shelfId': 1, 'showConvertedOriginals': 0, 'sort': 'title', 'reverse': 0})], [1, 2])
+        self.assertEqual([r[0] for r in self.db.execute(query('searchCustomShelfPaged'), {'shelfId': 1, 'q': 'Alpha*', 'showConvertedOriginals': 0, 'sort': 'title', 'reverse': 0})], [1])
+        self.assertEqual(list(self.db.execute(query('searchCustomShelfPaged'), {'shelfId': 2, 'q': 'Beta*', 'showConvertedOriginals': 0, 'sort': 'title', 'reverse': 0})), [])
         self.db.execute('DELETE FROM custom_shelf_books WHERE shelfId=1 AND bookId=1')
         self.assertEqual(self.db.execute('SELECT * FROM custom_shelf_books WHERE bookId=1').fetchall(), [(2, 1)])
         self.assertEqual(self.db.execute('SELECT * FROM books ORDER BY id').fetchall(), self.before)

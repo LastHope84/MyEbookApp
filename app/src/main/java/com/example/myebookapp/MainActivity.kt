@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -19,6 +20,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -121,6 +124,33 @@ private fun LibrarySearchField(onCommit: (String) -> Unit) {
     }
 }
 
+@Composable
+private fun DrawerSectionHeader(title: String, expanded: Boolean, onToggle: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle)
+            .padding(top = 12.dp, bottom = 4.dp, start = 4.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        Icon(
+            imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+            contentDescription = if (expanded) "Collapse $title" else "Expand $title"
+        )
+    }
+}
+
+@Composable
+private fun DrawerTabItem(tab: LibraryTab, count: Int, selected: Boolean, onClick: () -> Unit) {
+    NavigationDrawerItem(
+        label = { Text(tab.title) },
+        badge = { Text("$count") },
+        selected = selected,
+        onClick = onClick
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(tm: AppThemeMode, acc: AppAccent, am: Boolean, onT: (AppThemeMode)->Unit, onA: (AppAccent)->Unit, onAm: (Boolean)->Unit) {
@@ -150,7 +180,11 @@ var selectedFavoriteCount by remember { mutableStateOf<Int?>(null) }
 var showBulkShareConfirm by remember { mutableStateOf(false) }
 var preparingBulkShare by remember { mutableStateOf(false) }
 var sortMode by remember { mutableStateOf(ThemePrefs.getSort(ctx)) }
+var sortReversed by remember { mutableStateOf(ThemePrefs.isSortReversed(ctx)) }
 var showSortMenu by remember { mutableStateOf(false) }
+var statusExpanded by rememberSaveable { mutableStateOf(false) }
+var formatsExpanded by rememberSaveable { mutableStateOf(true) }
+var customExpanded by rememberSaveable { mutableStateOf(true) }
 var listMode by remember { mutableStateOf(ThemePrefs.getLibraryView(ctx) == "list") }
 var bulkSaving by remember { mutableStateOf(false) }
 var selectingAll by remember { mutableStateOf(false) }
@@ -539,46 +573,62 @@ BackHandler(drw.isOpen || selMode || selectedCustomId != null || tab != LibraryT
 }
 
 val customId = selectedCustomId
-val paged = remember(dbQry, tab, customId, showConvertedOriginals, sortMode, scp) { Pager(PagingConfig(60, 180, true)) {
+val paged = remember(dbQry, tab, customId, showConvertedOriginals, sortMode, sortReversed, scp) { Pager(PagingConfig(60, 180, true)) {
 val f = toFtsQuery(dbQry)
 if (customId != null) {
-if (f == null) dao.customShelfPaged(customId, showConvertedOriginals, sortMode) else dao.searchCustomShelfPaged(customId, f, showConvertedOriginals, sortMode)
+if (f == null) dao.customShelfPaged(customId, showConvertedOriginals, sortMode, sortReversed) else dao.searchCustomShelfPaged(customId, f, showConvertedOriginals, sortMode, sortReversed)
 } else when (tab) {
-LibraryTab.ALL -> if (f == null) dao.allPaged(showConvertedOriginals, sortMode) else dao.searchAllPaged(f, showConvertedOriginals, sortMode)
-LibraryTab.RECENT -> if (f == null) dao.recentPaged(showConvertedOriginals) else dao.searchRecentPaged(f, showConvertedOriginals)
-LibraryTab.FAV -> if (f == null) dao.favoritePaged(showConvertedOriginals, sortMode) else dao.searchFavoritePaged(f, showConvertedOriginals, sortMode)
-LibraryTab.READING -> if (f == null) dao.statusPaged("READING", showConvertedOriginals, sortMode) else dao.searchStatusPaged("READING", f, showConvertedOriginals, sortMode)
-LibraryTab.TBR -> if (f == null) dao.statusPaged("TBR", showConvertedOriginals, sortMode) else dao.searchStatusPaged("TBR", f, showConvertedOriginals, sortMode)
-LibraryTab.DONE -> if (f == null) dao.statusPaged("FINISHED", showConvertedOriginals, sortMode) else dao.searchStatusPaged("FINISHED", f, showConvertedOriginals, sortMode)
-LibraryTab.CONV -> if (f == null) dao.toConvertPaged(showConvertedOriginals, sortMode) else dao.searchToConvertPaged(f, showConvertedOriginals, sortMode)
-LibraryTab.COMICS -> { val formats = listOf("CBZ", "CBR"); if (f == null) dao.formatPaged(formats, showConvertedOriginals, sortMode) else dao.searchFormatPaged(f, formats, showConvertedOriginals, sortMode) }
-LibraryTab.PDFS -> { val formats = listOf("PDF"); if (f == null) dao.formatPaged(formats, showConvertedOriginals, sortMode) else dao.searchFormatPaged(f, formats, showConvertedOriginals, sortMode) }
-LibraryTab.UNFILED -> if (f == null) dao.unshelvedPaged(showConvertedOriginals, sortMode) else dao.searchUnshelvedPaged(f, showConvertedOriginals, sortMode)
+LibraryTab.ALL -> if (f == null) dao.allPaged(showConvertedOriginals, sortMode, sortReversed) else dao.searchAllPaged(f, showConvertedOriginals, sortMode, sortReversed)
+LibraryTab.RECENT -> if (f == null) dao.recentPaged(showConvertedOriginals, sortReversed) else dao.searchRecentPaged(f, showConvertedOriginals, sortReversed)
+LibraryTab.FAV -> if (f == null) dao.favoritePaged(showConvertedOriginals, sortMode, sortReversed) else dao.searchFavoritePaged(f, showConvertedOriginals, sortMode, sortReversed)
+LibraryTab.READING -> if (f == null) dao.statusPaged("READING", showConvertedOriginals, sortMode, sortReversed) else dao.searchStatusPaged("READING", f, showConvertedOriginals, sortMode, sortReversed)
+LibraryTab.TBR -> if (f == null) dao.statusPaged("TBR", showConvertedOriginals, sortMode, sortReversed) else dao.searchStatusPaged("TBR", f, showConvertedOriginals, sortMode, sortReversed)
+LibraryTab.DONE -> if (f == null) dao.statusPaged("FINISHED", showConvertedOriginals, sortMode, sortReversed) else dao.searchStatusPaged("FINISHED", f, showConvertedOriginals, sortMode, sortReversed)
+LibraryTab.CONV -> if (f == null) dao.toConvertPaged(showConvertedOriginals, sortMode, sortReversed) else dao.searchToConvertPaged(f, showConvertedOriginals, sortMode, sortReversed)
+LibraryTab.COMICS -> { val formats = listOf("CBZ", "CBR"); if (f == null) dao.formatPaged(formats, showConvertedOriginals, sortMode, sortReversed) else dao.searchFormatPaged(f, formats, showConvertedOriginals, sortMode, sortReversed) }
+LibraryTab.PDFS -> { val formats = listOf("PDF"); if (f == null) dao.formatPaged(formats, showConvertedOriginals, sortMode, sortReversed) else dao.searchFormatPaged(f, formats, showConvertedOriginals, sortMode, sortReversed) }
+LibraryTab.UNFILED -> if (f == null) dao.unshelvedPaged(showConvertedOriginals, sortMode, sortReversed) else dao.searchUnshelvedPaged(f, showConvertedOriginals, sortMode, sortReversed)
 }
 }.flow.cachedIn(scp) }.collectAsLazyPagingItems()
+
+fun tabCount(t: LibraryTab): Int = when (t) {
+    LibraryTab.ALL -> total; LibraryTab.RECENT -> recentCount
+    LibraryTab.FAV -> favoriteCount; LibraryTab.READING -> readingCount
+    LibraryTab.TBR -> toReadCount; LibraryTab.DONE -> finishedCount
+    LibraryTab.CONV -> toConv; LibraryTab.COMICS -> comicsCount
+    LibraryTab.PDFS -> pdfCount; LibraryTab.UNFILED -> unshelvedCount
+}
+fun selectTab(t: LibraryTab) {
+    cancelSelectAll(); selectedCustomId = null; tab = t
+    selIds = emptySet(); selMode = false
+    scp.launch { drw.close() }
+}
 
 ModalNavigationDrawer(drawerState=drw, gesturesEnabled=!selMode, drawerContent={
 ModalDrawerSheet(Modifier.width(300.dp)) {
 Column(Modifier.fillMaxHeight().verticalScroll(rememberScrollState()).padding(16.dp)) {
 Text("My Ebook Library", style=MaterialTheme.typography.titleLarge, fontWeight=FontWeight.Bold); Text("$total books", style=MaterialTheme.typography.labelMedium)
 Spacer(Modifier.height(12.dp)); LibrarySearchField(onCommit = { q -> cancelSelectAll(); dbQry = q })
-Spacer(Modifier.height(12.dp)); LibraryTab.entries.forEach { t ->
-    if (t == LibraryTab.COMICS) {
-        Spacer(Modifier.height(8.dp)); HorizontalDivider()
-        Text("Built-in shelves", style=MaterialTheme.typography.titleSmall, modifier=Modifier.padding(top=12.dp, bottom=4.dp))
-    }
-    val count = when (t) {
-        LibraryTab.ALL -> total; LibraryTab.RECENT -> recentCount
-        LibraryTab.FAV -> favoriteCount; LibraryTab.READING -> readingCount
-        LibraryTab.TBR -> toReadCount; LibraryTab.DONE -> finishedCount
-        LibraryTab.CONV -> toConv; LibraryTab.COMICS -> comicsCount
-        LibraryTab.PDFS -> pdfCount; LibraryTab.UNFILED -> unshelvedCount
-    }
-    NavigationDrawerItem(label={Text(t.title)}, badge={Text("$count")}, selected=selectedCustomId == null && tab==t, onClick={cancelSelectAll(); selectedCustomId=null; tab=t; selIds=emptySet(); selMode=false; scp.launch{drw.close()}})
+Spacer(Modifier.height(12.dp))
+listOf(LibraryTab.ALL, LibraryTab.RECENT, LibraryTab.FAV).forEach { t ->
+    DrawerTabItem(t, tabCount(t), selectedCustomId == null && tab == t) { selectTab(t) }
 }
+
 Spacer(Modifier.height(8.dp)); HorizontalDivider()
-Text("Custom shelves", style=MaterialTheme.typography.titleSmall, modifier=Modifier.padding(top=12.dp, bottom=4.dp))
-customShelvesWithCounts.forEach { shelf ->
+DrawerSectionHeader("Reading status", statusExpanded) { statusExpanded = !statusExpanded }
+if (statusExpanded) listOf(LibraryTab.READING, LibraryTab.TBR, LibraryTab.DONE).forEach { t ->
+    DrawerTabItem(t, tabCount(t), selectedCustomId == null && tab == t) { selectTab(t) }
+}
+
+Spacer(Modifier.height(8.dp)); HorizontalDivider()
+DrawerSectionHeader("Formats & collections", formatsExpanded) { formatsExpanded = !formatsExpanded }
+if (formatsExpanded) listOf(LibraryTab.CONV, LibraryTab.COMICS, LibraryTab.PDFS, LibraryTab.UNFILED).forEach { t ->
+    DrawerTabItem(t, tabCount(t), selectedCustomId == null && tab == t) { selectTab(t) }
+}
+
+Spacer(Modifier.height(8.dp)); HorizontalDivider()
+DrawerSectionHeader("Custom shelves", customExpanded) { customExpanded = !customExpanded }
+if (customExpanded) customShelvesWithCounts.forEach { shelf ->
     Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
         NavigationDrawerItem(label={Text(shelf.name, maxLines=1)}, badge={Text("${shelf.bookCount}")}, selected=selectedCustomId==shelf.id,
             onClick={cancelSelectAll(); selectedCustomId=shelf.id; selIds=emptySet(); selMode=false; scp.launch{drw.close()}}, modifier=Modifier.weight(1f))
@@ -619,12 +669,29 @@ Scaffold(topBar={ TopAppBar(navigationIcon={ IconButton(enabled=!bulkSaving, onC
     }
     Box {
         val sortLabel = when (sortMode) { "author" -> "Author"; "recent" -> "Recent"; else -> "Title" }
-        TextButton(onClick = { showSortMenu = true }) { Text(sortLabel) }
+        val sortDescending = if (sortMode == "recent") !sortReversed else sortReversed
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { showSortMenu = true }) { Text(sortLabel) }
+            IconButton(
+                onClick = {
+                    sortReversed = !sortReversed
+                    ThemePrefs.saveSortReversed(ctx, sortReversed)
+                },
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = if (sortDescending) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
+                    contentDescription = if (sortDescending) "Sort descending" else "Sort ascending"
+                )
+            }
+        }
         DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
             listOf("title" to "Title", "author" to "Author", "recent" to "Recently opened").forEach { (key, label) ->
                 DropdownMenuItem(text = { Text(label) }, onClick = {
                     sortMode = key
+                    sortReversed = false
                     ThemePrefs.saveSort(ctx, key)
+                    ThemePrefs.saveSortReversed(ctx, false)
                     showSortMenu = false
                 })
             }

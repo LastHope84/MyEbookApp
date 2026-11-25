@@ -54,6 +54,7 @@ object ThemePrefs {
     private const val KEY_AUTO_RESUME = "open_last_book_on_launch"
     private const val KEY_OFFLINE_TRANSLATION = "offline_translation_enabled"
     private const val KEY_SORT = "library_sort"
+    private const val KEY_SORT_REVERSED = "library_sort_reversed"
     private const val KEY_VIEW = "library_view"
     private const val KEY_AUTO_SCAN = "auto_scan_on_open"
     private const val KEY_LAST_AUTO_SCAN = "last_auto_scan"
@@ -107,6 +108,14 @@ object ThemePrefs {
     fun saveSort(context: Context, sort: String) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit().putString(KEY_SORT, sort).apply()
+    }
+
+    fun isSortReversed(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY_SORT_REVERSED, false)
+
+    fun saveSortReversed(context: Context, reversed: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_SORT_REVERSED, reversed).apply()
     }
 
     fun isAutoScanOnOpen(context: Context): Boolean =

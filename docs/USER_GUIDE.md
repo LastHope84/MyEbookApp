@@ -23,7 +23,10 @@ Use Add Folder again for another folder. After adding files to a saved folder, o
 Open the menu and tap Manage folders to see saved folders, add more, remove a folder, or open its subfolders. Adding a parent folder includes all its subfolders. Removing a folder removes its library entries, not the ebook files; reading progress and edits for those entries are lost. Removing a subfolder also skips it in future scans so its books do not come back; tap Include again on the same screen, then Rescan Folders, to restore them.
 
 ### Search the library
-Type at least 2 letters in Search in the menu, then choose a shelf. Search applies to that shelf and matches indexed title, author, publisher, series and tags. Clear the search to see the full shelf. The view button in the top bar switches between the cover grid and a detailed list; the choice is remembered. The sort button orders a shelf by Title, Author or Recently opened; the Recent shelf keeps its own order. Tap a cover for its details and actions.
+Type at least 2 letters in Search in the menu, then choose a shelf. Search applies to that shelf and matches indexed title, author, publisher, series and tags. Clear the search to see the full shelf. The view button in the top bar switches between the cover grid and a detailed list; the choice is remembered. The sort button orders a shelf by Title, Author or Recently opened; the small arrow beside it flips the order (A to Z or Z to A, newest or oldest). Tap a cover for its details and actions.
+
+### Menu sections
+The library menu groups shelves into collapsible sections. Tap Reading status, Formats & collections or Custom shelves to expand or collapse them. All Books, Recent and Favorites stay visible above the sections.
 
 ## Shelves and book details
 

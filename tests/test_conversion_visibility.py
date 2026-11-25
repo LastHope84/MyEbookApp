@@ -47,7 +47,7 @@ class VisibilityTests(unittest.TestCase):
 
     def run_query(self, name, show=False, **kwargs):
         args = dict(showConvertedOriginals=int(show), q='shared*', status='READING',
-                    shelfId=1, sort='title')
+                    shelfId=1, sort='title', reverse=0)
         args.update(kwargs)
         sql = QUERIES[name]
         # Room expands list parameters before SQLite sees them; do the same here.
