@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -654,7 +655,10 @@ NavigationDrawerItem(label={Text("User Guide")}, selected=false, onClick={scp.la
 }
 }) {
 Scaffold(topBar={ TopAppBar(navigationIcon={ IconButton(enabled=!bulkSaving, onClick={ if (selMode) { cancelSelectAll(); selIds=emptySet(); selMode=false } else scp.launch{drw.open()} }) { if (selMode) Text("×", style=MaterialTheme.typography.headlineSmall) else HamburgerIcon() } }, title={ Text(if (selMode) "${selIds.size} selected" else customShelves.firstOrNull { it.id == selectedCustomId }?.name ?: tab.title) }, actions={ if (selMode) {
-    TextButton(enabled=!bulkSaving && !selectingAll, onClick={ selectAllOnShelf() }) { Text(if (selectingAll) "Selecting…" else "All") }
+    IconButton(enabled=!bulkSaving && !selectingAll, onClick={ selectAllOnShelf() }) {
+        if (selectingAll) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+        else Icon(Icons.Filled.SelectAll, contentDescription = "Select all")
+    }
     TextButton(enabled=!bulkSaving && !selectingAll && selIds.isNotEmpty(), onClick={
         showBulkActions=true
         selectedFavoriteCount=null
