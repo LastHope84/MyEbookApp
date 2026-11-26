@@ -126,7 +126,7 @@ fun AlphabetIndexRail(
                 Surface(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
-                        .wrapContentWidth(unbounded = true, align = Alignment.CenterEnd)
+                        .wrapContentWidth(unbounded = true, align = Alignment.End)
                         .offset(x = (-34).dp),
                     shape = RoundedCornerShape(50),
                     color = MaterialTheme.colorScheme.primary,
