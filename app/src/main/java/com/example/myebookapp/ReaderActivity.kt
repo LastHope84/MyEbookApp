@@ -766,7 +766,7 @@ class ReaderActivity : FragmentActivity() {
             nav?.clearSelection()
             val saved = withContext(Dispatchers.IO) {
                 val dao = AppDatabase.getInstance(this@ReaderActivity).bookDao()
-                val book = dao.getByUri(currentBookUriString) ?: return@withContext false
+                val book = currentBookUriString?.let { dao.getByUri(it) } ?: return@withContext false
                 dao.insertQuote(
                     QuoteEntity(
                         bookId = book.id,
