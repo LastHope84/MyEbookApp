@@ -4,8 +4,7 @@ MyEbookApp is a personal Android ebook reader and library. It is built for one
 reader's shelves rather than as a store product: the library lives on the
 device, there is no account, and there is no analytics.
 
-Stable release: **1.16.0** (Android 8.0 or later, arm64-v8a), confirmed on-device.
-Latest build: **1.18.2**, which adds saved quotes, quote browsing inside the reader, keeps removed books removed, adds Remove to the selection actions, and makes the A–Z rail show and hide immediately.
+Stable release: **1.18.2** (Android 8.0 or later, arm64-v8a), confirmed on-device.
 
 ## Features
 
