@@ -34,7 +34,6 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import java.io.File
-import kotlin.math.roundToInt
 
 @Composable
 fun HamburgerIcon() {
@@ -92,7 +91,7 @@ fun BookPlaceholderTile() {
 @Composable
 fun BookGridTile(book: BookEntity, inSelectionMode: Boolean, isSelected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, onToggleFavorite: () -> Unit) {
     val context = LocalContext.current
-    val pct = (book.progressPercent * 100).roundToInt()
+    val pct = displayedProgressPercent(book)
     Column(Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
         Box(
             modifier = Modifier
@@ -201,7 +200,7 @@ fun BookListRow(
     onToggleFavorite: () -> Unit
 ) {
     val context = LocalContext.current
-    val pct = (book.progressPercent * 100).roundToInt()
+    val pct = displayedProgressPercent(book)
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 5.dp),
         colors = CardDefaults.cardColors(
@@ -280,7 +279,7 @@ fun BookListRow(
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     LinearProgressIndicator(
-                        progress = { book.progressPercent.toFloat().coerceIn(0f, 1f) },
+                        progress = { displayedProgressFraction(book) },
                         modifier = Modifier.weight(1f).height(4.dp)
                     )
                     Spacer(Modifier.width(8.dp))

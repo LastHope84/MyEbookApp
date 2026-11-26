@@ -22,7 +22,6 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import java.io.File
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,7 +39,7 @@ fun BookDetailsBottomSheet(
 ) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val sheetS = rememberModalBottomSheetState(true)
-    val pct = (b.progressPercent * 100).roundToInt()
+    val pct = displayedProgressPercent(b)
     var pathMsg by remember(b.id) { mutableStateOf<String?>(null) }
 
     ModalBottomSheet(onDismissRequest = onD, sheetState = sheetS) {
