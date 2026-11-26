@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -123,17 +124,20 @@ fun AlphabetIndexRail(
             }
             active?.let { letter ->
                 Surface(
-                    modifier = Modifier.align(Alignment.CenterStart).offset(x = (-64).dp),
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .wrapContentWidth(unbounded = true, align = Alignment.CenterEnd)
+                        .offset(x = (-34).dp),
                     shape = RoundedCornerShape(50),
                     color = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shadowElevation = 4.dp
+                    shadowElevation = 3.dp
                 ) {
                     Column(
-                        Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(letter.toString(), style = MaterialTheme.typography.titleLarge)
+                        Text(letter.toString(), style = MaterialTheme.typography.labelLarge)
                         val count = index.counts[letter] ?: 0
                         if (count > 0) Text("$count", style = MaterialTheme.typography.labelSmall)
                     }
