@@ -77,7 +77,7 @@ class ReaderActivity : FragmentActivity() {
 
     companion object {
         private const val NAV_TAG = "epub_navigator"
-        private const val AUTO_HIDE_MS = 4000L
+        private const val AUTO_HIDE_MS = 6000L
         private const val MENU_DEFINE_ID = 9001
         private const val MENU_TRANSLATE_ID = 9002
         private const val MENU_QUOTE_ID = 9003
