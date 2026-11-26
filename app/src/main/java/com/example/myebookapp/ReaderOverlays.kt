@@ -36,6 +36,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.Color as ReadiumColor
 import org.readium.r2.navigator.preferences.FontFamily
@@ -285,15 +286,35 @@ fun ReaderBottomScrubberBar(
 ) {
     var sliderPos by remember(progressPercent) { mutableFloatStateOf(progressPercent / 100f) }
     var isDragging by remember { mutableStateOf(false) }
+    // A tap on the track ends the gesture before the new position is reported, so
+    // keep showing the chosen spot until the reader confirms it.
+    var pendingSeek by remember { mutableStateOf<Float?>(null) }
+    val reported = (progressPercent / 100f).coerceIn(0f, 1f)
+    LaunchedEffect(reported) { pendingSeek = null }
+    LaunchedEffect(pendingSeek) {
+        if (pendingSeek != null) {
+            delay(1500)
+            pendingSeek = null
+        }
+    }
+    val shown = when {
+        isDragging -> sliderPos
+        pendingSeek != null -> pendingSeek ?: reported
+        else -> reported
+    }
 
     Surface(tonalElevation = 6.dp, shadowElevation = 6.dp) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onPrevPage) { Text("‹", style = MaterialTheme.typography.titleLarge) }
                 Slider(
-                    value = if (isDragging) sliderPos else (progressPercent / 100f).coerceIn(0f, 1f),
+                    value = shown,
                     onValueChange = { isDragging = true; sliderPos = it },
-                    onValueChangeFinished = { isDragging = false; onSeekFraction(sliderPos) },
+                    onValueChangeFinished = {
+                        isDragging = false
+                        pendingSeek = sliderPos
+                        onSeekFraction(sliderPos)
+                    },
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(onClick = onNextPage) { Text("›", style = MaterialTheme.typography.titleLarge) }
@@ -303,7 +324,7 @@ fun ReaderBottomScrubberBar(
                     "Page $currentPosition / $totalPositions"
                 } else "Reading"
                 Text(pageLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                val displayPct = if (isDragging) (sliderPos * 100).roundToInt() else progressPercent
+                val displayPct = (shown * 100).roundToInt()
                 Text("$displayPct%", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
             }
         }

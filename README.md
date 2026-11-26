@@ -5,7 +5,7 @@ reader's shelves rather than as a store product: the library lives on the
 device, there is no account, and there is no analytics.
 
 Stable release: **1.18.2** (Android 8.0 or later, arm64-v8a), confirmed on-device.
-Latest build: **1.18.3**, which shows a book on the Finished shelf as 100% read.
+Latest build: **1.18.4**, which shows Finished books as 100% read and makes the reader's progress slider follow taps immediately.
 
 ## Features
 

@@ -99,6 +99,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
@@ -858,7 +859,22 @@ private fun ReaderBottomBar(
 ) {
     var dragging by remember { mutableStateOf(false) }
     var sliderValue by remember(page) { mutableFloatStateOf(page.toFloat()) }
+    // Keep the tapped page until the pager reports it, so the thumb does not
+    // snap back to the old position on a tap.
+    var pendingPage by remember { mutableStateOf<Float?>(null) }
     val lastIndex = (total - 1).coerceAtLeast(1)
+    LaunchedEffect(page) { pendingPage = null }
+    LaunchedEffect(pendingPage) {
+        if (pendingPage != null) {
+            delay(1200)
+            pendingPage = null
+        }
+    }
+    val shown = when {
+        dragging -> sliderValue
+        pendingPage != null -> pendingPage ?: page.toFloat()
+        else -> page.toFloat()
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -867,13 +883,14 @@ private fun ReaderBottomBar(
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         Slider(
-            value = if (dragging) sliderValue else page.toFloat(),
+            value = shown,
             onValueChange = {
                 sliderValue = it
                 dragging = true
             },
             onValueChangeFinished = {
                 dragging = false
+                pendingPage = sliderValue
                 onSeek(sliderValue.roundToInt())
             },
             valueRange = 0f..lastIndex.toFloat(),
@@ -889,7 +906,7 @@ private fun ReaderBottomBar(
             }
             Spacer(Modifier.weight(1f))
             Text(
-                "${page + 1} / $total",
+                "${shown.roundToInt().coerceIn(0, (total - 1).coerceAtLeast(0)) + 1} / $total",
                 color = Color.White.copy(alpha = 0.8f),
                 style = MaterialTheme.typography.labelLarge
             )
