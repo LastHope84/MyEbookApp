@@ -134,6 +134,7 @@ class ReaderActivity : FragmentActivity() {
     private var allPositions: List<Locator> = emptyList()
     private var containerId: Int = View.NO_ID
     private var currentBookUriString: String? = null
+    private var bookEntity: BookEntity? = null
     private var bookLanguage: String = "it"
     private var lastPreferenceChangeAt: Long = 0L
 
@@ -146,6 +147,7 @@ class ReaderActivity : FragmentActivity() {
     private var errorMessage by mutableStateOf<String?>(null)
     private var showControls by mutableStateOf(true)
     private var showToc by mutableStateOf(false)
+    private var showQuotes by mutableStateOf(false)
     private var showAppearance by mutableStateOf(false)
     private var showSearch by mutableStateOf(false)
     private var tocEntries by mutableStateOf<List<TocEntry>>(emptyList())
@@ -224,7 +226,7 @@ class ReaderActivity : FragmentActivity() {
                     mode = if (forceDark) AppThemeMode.DARK else AppThemeMode.LIGHT,
                     forceDark = forceDark
                 ) {
-                    val anySheetOpen = showToc || showAppearance || showSearch || dictWord != null
+                    val anySheetOpen = showToc || showAppearance || showSearch || showQuotes || dictWord != null
 
                     LaunchedEffect(showControls, anySheetOpen, isLoading, errorMessage, interactionTick) {
                         applyImmersiveSystemBars()
@@ -269,8 +271,33 @@ class ReaderActivity : FragmentActivity() {
                                 interactionTick++
                                 showAppearance = true
                             },
+                            onOpenQuotes = if (bookEntity != null) ({ interactionTick++; showQuotes = true }) else null,
                             ttsState = ttsState,
                             onToggleTts = { toggleTts() }
+                        )
+                    }
+
+                    val savedBook = bookEntity
+                    if (showQuotes && savedBook != null) {
+                        val quotes by remember(savedBook.id) {
+                            AppDatabase.getInstance(this@ReaderActivity).bookDao().observeQuotes(savedBook.id)
+                        }.collectAsState(initial = emptyList())
+                        QuotesBottomSheet(
+                            book = savedBook,
+                            quotes = quotes,
+                            onOpen = { quote ->
+                                showQuotes = false
+                                jumpToQuote(quote)
+                            },
+                            onDelete = { quote ->
+                                lifecycleScope.launch(Dispatchers.IO) {
+                                    AppDatabase.getInstance(this@ReaderActivity).bookDao().deleteQuote(quote.id)
+                                }
+                            },
+                            onDismiss = {
+                                showQuotes = false
+                                interactionTick++
+                            }
                         )
                     }
 
@@ -439,6 +466,7 @@ class ReaderActivity : FragmentActivity() {
 
                     val dao = AppDatabase.getInstance(this@ReaderActivity).bookDao()
                     val dbBook = dao.getByUri(bookUri.toString())
+                    bookEntity = dbBook
                     if (dbBook != null && !dbBook.language.equals("Unknown", ignoreCase = true)) {
                         bookLanguage = dbBook.language
                     }
@@ -744,6 +772,16 @@ class ReaderActivity : FragmentActivity() {
             isSearchingBook = false
             searchResults = found
         }
+    }
+
+    private fun jumpToQuote(quote: QuoteEntity) {
+        val nav = supportFragmentManager.findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment ?: return
+        val locator = quote.locatorJson?.let { json ->
+            runCatching { Locator.fromJSON(JSONObject(json)) }.getOrNull()
+        } ?: return
+        nav.go(locator)
+        showControls = false
+        applyImmersiveSystemBars()
     }
 
     private fun saveSelectionQuote(mode: ActionMode) {

@@ -59,6 +59,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -86,6 +87,8 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -170,6 +173,7 @@ class PageReaderActivity : FragmentActivity() {
                             textSource = textSource,
                             language = book?.language ?: "Unknown",
                             initialRtl = ThemePrefs.isComicRtl(this@PageReaderActivity),
+                            book = book,
                             onRtlChange = { ThemePrefs.saveComicRtl(this@PageReaderActivity, it) },
                             onPageSettled = {
                                 currentPage = it
@@ -334,6 +338,7 @@ private fun PageReaderScreen(
     textSource: PdfTextSource?,
     language: String,
     initialRtl: Boolean,
+    book: BookEntity?,
     onRtlChange: (Boolean) -> Unit,
     onPageSettled: (Int) -> Unit,
     onSaveQuote: (String, Int) -> Unit,
@@ -352,6 +357,7 @@ private fun PageReaderScreen(
     var speechRange by remember { mutableStateOf<IntRange?>(null) }
     var autoAdvance by remember { mutableStateOf(false) }
     var selectionSpeech by remember { mutableStateOf(false) }
+    var showQuotes by remember { mutableStateOf(false) }
 
     var showSearch by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
@@ -529,6 +535,7 @@ private fun PageReaderScreen(
                 total = pageCount,
                 onBack = onBack,
                 onSearch = if (textSource != null) ({ showSearch = true }) else null,
+                onOpenQuotes = if (book != null) ({ showQuotes = true }) else null,
                 speechState = if (canSpeak) speechState else null,
                 onToggleSpeech = if (canSpeak) ({ toggleSpeech() }) else null
             )
@@ -653,6 +660,21 @@ private fun PageReaderScreen(
             }
         )
     }
+
+    if (showQuotes && book != null) {
+        val dao = remember { AppDatabase.getInstance(context).bookDao() }
+        val quotes by remember(book.id) { dao.observeQuotes(book.id) }.collectAsState(initial = emptyList())
+        QuotesBottomSheet(
+            book = book,
+            quotes = quotes,
+            onOpen = { quote ->
+                showQuotes = false
+                quote.pageIndex?.let { target -> scope.launch { pagerState.scrollToPage(target) } }
+            },
+            onDelete = { quote -> scope.launch(Dispatchers.IO) { dao.deleteQuote(quote.id) } },
+            onDismiss = { showQuotes = false }
+        )
+    }
 }
 
 @Composable
@@ -762,6 +784,7 @@ private fun ReaderTopBar(
     total: Int,
     onBack: () -> Unit,
     onSearch: (() -> Unit)?,
+    onOpenQuotes: (() -> Unit)?,
     speechState: TtsState?,
     onToggleSpeech: (() -> Unit)?
 ) {
@@ -787,6 +810,14 @@ private fun ReaderTopBar(
         if (onSearch != null) {
             IconButton(onClick = onSearch) {
                 Icon(Icons.Filled.Search, contentDescription = "Find", tint = Color.White)
+            }
+        }
+        if (onOpenQuotes != null) {
+            IconButton(
+                onClick = onOpenQuotes,
+                modifier = Modifier.semantics { contentDescription = "Quotes" }
+            ) {
+                Text("❝", color = Color.White, style = MaterialTheme.typography.titleMedium)
             }
         }
         if (onToggleSpeech != null) {

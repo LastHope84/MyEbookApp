@@ -45,10 +45,10 @@ class QuotesSchemaTest(unittest.TestCase):
 
     def test_database_version_and_migration_registered(self):
         self.assertIn('QuoteEntity::class', DB)
-        self.assertIn('version = 9', DB)
+        self.assertIn('version = 10', DB)
         self.assertIn('Migration(8, 9)', DB)
         self.assertIn('M89', DB)
-        self.assertIn('addMigrations(M12, M23, M34, M45, M56, M67, M78, M89)', DB)
+        self.assertIn('addMigrations(M12, M23, M34, M45, M56, M67, M78, M89, M910)', DB)
         self.assertIn('CREATE INDEX IF NOT EXISTS `index_quotes_bookId`', DB)
 
     def test_deleting_a_book_removes_its_quotes(self):

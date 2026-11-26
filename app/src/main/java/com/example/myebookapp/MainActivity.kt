@@ -180,7 +180,7 @@ var tab by remember { mutableStateOf(LibraryTab.ALL) }; var dbQry by remember { 
 var selB by remember { mutableStateOf<BookEntity?>(null) }; var edtB by remember { mutableStateOf<BookEntity?>(null) }
 var deleteFileBook by remember { mutableStateOf<BookEntity?>(null) }
 var quotesBook by remember { mutableStateOf<BookEntity?>(null) }
-var showSet by remember { mutableStateOf(false) }; var showVisibility by remember { mutableStateOf(false) }; var showFolders by remember { mutableStateOf(false) }; var showGuide by rememberSaveable { mutableStateOf(false) }; var guideTopic by remember { mutableStateOf<String?>(null) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+var showSet by remember { mutableStateOf(false) }; var showVisibility by remember { mutableStateOf(false) }; var showFolders by remember { mutableStateOf(false) }; var showRemoved by remember { mutableStateOf(false) }; var showGuide by rememberSaveable { mutableStateOf(false) }; var guideTopic by remember { mutableStateOf<String?>(null) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
 var showBulkActions by remember { mutableStateOf(false) }
 var showScanLog by remember { mutableStateOf(false) }
 var showBulkMove by remember { mutableStateOf(false) }
@@ -594,6 +594,10 @@ if (showFolders) {
     FolderManagementScreen(onClose = { showFolders = false })
     return
 }
+if (showRemoved) {
+    RemovedBooksScreen(onClose = { showRemoved = false })
+    return
+}
 if (showGuide) {
     UserGuideScreen(initialTopic = guideTopic, onClose = { showGuide = false; guideTopic = null })
     return
@@ -898,6 +902,7 @@ if (showSet) AppSettingsBottomSheet(
     },
     { showSet = false; showCleanDuplicates = true },
     { showSet = false; showScanLog = true },
+    { showSet = false; showRemoved = true },
     { showSet = false; showVisibility = true },
     { showSet = false; showBackupOptions = true },
     { showSet = false; restorePickP.launch(arrayOf("*/*")) },
@@ -1080,7 +1085,15 @@ onR = { selB = null; openInReader(ctx, b) },
 onE = { if (!b.metadataExtracted) { Toast.makeText(ctx, "Wait for this book's metadata scan to finish before editing.", Toast.LENGTH_LONG).show() } else { selB = null; edtB = b } },
 onS = { val i = FileOpener.prepareShareIntent(ctx, listOf(b)); ctx.startActivity(i) },
 onK = { sendToKindle(b) }, onC = { convertBook(b) },
-onDel = { scp.launch(Dispatchers.IO) { dao.deleteById(b.id) }; selB = null },
+onDel = {
+    scp.launch(Dispatchers.IO) {
+        dao.removeBooks(
+            listOf(RemovedBook(b.uriString, bookIdentity(b.uriString), b.fileName, System.currentTimeMillis())),
+            listOf(b.id)
+        )
+    }
+    selB = null
+},
 onFavoriteChange = { updateShelf(b.id, favorite = it) },
 onStatusChange = { updateShelf(b.id, status = it) },
 onCustomShelves = { membershipBook = b },

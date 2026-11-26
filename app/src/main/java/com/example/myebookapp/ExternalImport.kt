@@ -96,6 +96,8 @@ object ExternalImport {
             tags = meta.tags
         )
         val dao = AppDatabase.getInstance(context).bookDao()
+        // Adding the file again is an explicit request to keep it.
+        dao.clearRemoved(entry.uriString)
         dao.insertIgnore(entry)
         dao.getByUri(entry.uriString)
             ?: throw IllegalStateException("Could not add the file to the library.")

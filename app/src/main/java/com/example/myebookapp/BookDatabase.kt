@@ -1,5 +1,7 @@
 package com.example.myebookapp
 import android.content.Context
+import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.paging.PagingSource
 import androidx.room.*
 import androidx.room.migration.Migration
@@ -76,8 +78,25 @@ data class QuoteEntity(
     val createdAt: Long = System.currentTimeMillis()
 )
 
+// A library entry the user removed. Folder scans skip it until it is restored
+// or added again, so "Remove from Library" stays removed.
+@Entity(tableName = "removed_books", indices = [Index("identity")])
+data class RemovedBook(
+    @PrimaryKey val uriString: String,
+    val identity: String,
+    val fileName: String,
+    val removedAt: Long
+)
+
+// A document ID identifies the file even when it is reachable through another root.
+fun bookIdentity(uriString: String): String = runCatching {
+    val uri = Uri.parse(uriString)
+    val authority = uri.authority ?: return@runCatching uriString
+    "$authority|${DocumentsContract.getDocumentId(uri)}"
+}.getOrDefault(uriString)
+
 data class ExtractedBookMeta(val id: Long, val title: String, val author: String, val publishingDate: String, val publisher: String, val language: String, val coverPath: String?, val series: String?, val seriesIndex: Double?, val tags: String?)
-data class BookDuplicateRow(val id: Long, val fileName: String, val fileSize: Long, val lastOpenedAt: Long, val progressPercent: Double, val hasCover: Boolean)
+data class BookDuplicateRow(val id: Long, val uriString: String, val fileName: String, val fileSize: Long, val lastOpenedAt: Long, val progressPercent: Double, val hasCover: Boolean)
 
 // Leaves room for other query parameters on SQLite builds with a 999-variable limit.
 private const val BULK_ID_CHUNK_SIZE = 500
@@ -192,7 +211,7 @@ interface BookDao {
     @Query("SELECT id FROM books WHERE isFavorite = 1 AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun getFavoriteIds(showConvertedOriginals: Boolean = false): List<Long>
     @Query("SELECT id FROM books WHERE readingStatus = :status AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun getStatusIds(status: String, showConvertedOriginals: Boolean = false): List<Long>
     @Query("SELECT books.id FROM books JOIN custom_shelf_books ON books.id = custom_shelf_books.bookId WHERE custom_shelf_books.shelfId = :shelfId AND (:showConvertedOriginals OR NOT EXISTS (SELECT 1 FROM conversion_links cl WHERE cl.sourceBookId = books.id))") suspend fun getCustomShelfBookIds(shelfId: Long, showConvertedOriginals: Boolean = false): List<Long>
-    @Query("SELECT id, fileName, fileSize, lastOpenedAt, progressPercent, (coverPath IS NOT NULL) AS hasCover FROM books WHERE fileSize > 0") suspend fun getDuplicateCandidates(): List<BookDuplicateRow>
+    @Query("SELECT id, uriString, fileName, fileSize, lastOpenedAt, progressPercent, (coverPath IS NOT NULL) AS hasCover FROM books WHERE fileSize > 0") suspend fun getDuplicateCandidates(): List<BookDuplicateRow>
     @Query("SELECT LOWER(fileName) || '|' || fileSize FROM books WHERE fileSize > 0") suspend fun getAllNameSizeKeys(): List<String>
     @Query("SELECT COUNT(*) FROM books WHERE format IN ('EPUB', 'CBZ', 'CBR', 'PDF') AND metadataExtracted = 0") suspend fun countPendingMetadata(): Int
     @Query("SELECT * FROM books WHERE format IN ('EPUB', 'CBZ', 'CBR', 'PDF') AND metadataExtracted = 0 AND id > :afterId ORDER BY id ASC LIMIT :limit") suspend fun getPendingMetadataAfter(afterId: Long, limit: Int): List<BookEntity>
@@ -294,9 +313,21 @@ interface BookDao {
     @Query("SELECT * FROM quotes ORDER BY id") suspend fun getAllQuotesOnce(): List<QuoteEntity>
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun restoreQuotes(quotes: List<QuoteEntity>)
     @Query("DELETE FROM quotes") suspend fun deleteAllQuotes()
+
+    // Removed books: tombstones keep folder scans from re-adding them.
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun markRemoved(entries: List<RemovedBook>)
+    @Query("SELECT identity FROM removed_books") suspend fun getRemovedIdentities(): List<String>
+    @Query("SELECT * FROM removed_books ORDER BY removedAt DESC") suspend fun getRemovedBooks(): List<RemovedBook>
+    @Query("DELETE FROM removed_books WHERE uriString = :uriString") suspend fun clearRemoved(uriString: String): Int
+    @Query("DELETE FROM removed_books") suspend fun clearAllRemoved(): Int
+    @Transaction suspend fun removeBooks(entries: List<RemovedBook>, ids: List<Long>) {
+        if (ids.isEmpty()) return
+        markRemoved(entries)
+        deleteByIds(ids)
+    }
 }
 
-@Database(entities = [BookEntity::class, BookFtsEntity::class, CustomShelf::class, CustomShelfBook::class, ConversionLink::class, QuoteEntity::class], version = 9, exportSchema = false)
+@Database(entities = [BookEntity::class, BookFtsEntity::class, CustomShelf::class, CustomShelfBook::class, ConversionLink::class, QuoteEntity::class, RemovedBook::class], version = 10, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao
     companion object {
@@ -338,7 +369,11 @@ abstract class AppDatabase : RoomDatabase() {
             db.execSQL("CREATE TABLE IF NOT EXISTS `quotes` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `bookId` INTEGER NOT NULL, `text` TEXT NOT NULL, `locatorJson` TEXT, `pageIndex` INTEGER, `label` TEXT, `createdAt` INTEGER NOT NULL, FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)")
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_quotes_bookId` ON `quotes` (`bookId`)")
         } }
-        fun getInstance(context: Context): AppDatabase = INSTANCE ?: synchronized(this) { INSTANCE ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "my_ebook_library.db").addMigrations(M12, M23, M34, M45, M56, M67, M78, M89).build().also { INSTANCE = it } }
+        internal val M910 = object : Migration(9, 10) { override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `removed_books` (`uriString` TEXT NOT NULL, `identity` TEXT NOT NULL, `fileName` TEXT NOT NULL, `removedAt` INTEGER NOT NULL, PRIMARY KEY(`uriString`))")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_removed_books_identity` ON `removed_books` (`identity`)")
+        } }
+        fun getInstance(context: Context): AppDatabase = INSTANCE ?: synchronized(this) { INSTANCE ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "my_ebook_library.db").addMigrations(M12, M23, M34, M45, M56, M67, M78, M89, M910).build().also { INSTANCE = it } }
     }
 }
 fun toFtsQuery(raw: String): String? {
@@ -347,8 +382,13 @@ fun toFtsQuery(raw: String): String? {
 }
 suspend fun removeDuplicateBooks(dao: BookDao): Int {
     val rows = dao.getDuplicateCandidates(); val grouped = rows.groupBy { it.fileName.lowercase() to it.fileSize }
-    val toDelete = mutableListOf<Long>()
+    val toDelete = mutableListOf<BookDuplicateRow>()
     for ((_, g) in grouped) { if (g.size <= 1) continue; val s = g.sortedWith(compareByDescending<BookDuplicateRow> { it.lastOpenedAt }.thenByDescending { it.progressPercent }.thenByDescending { it.hasCover }.thenBy { it.id })
-        for (i in 1 until s.size) toDelete.add(s[i].id) }
-    toDelete.chunked(500).forEach { dao.deleteByIds(it) }; return toDelete.size
+        for (i in 1 until s.size) toDelete.add(s[i]) }
+    val now = System.currentTimeMillis()
+    dao.removeBooks(
+        toDelete.map { RemovedBook(it.uriString, bookIdentity(it.uriString), it.fileName, now) },
+        toDelete.map { it.id }
+    )
+    return toDelete.size
 }

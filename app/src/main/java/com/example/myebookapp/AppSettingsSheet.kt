@@ -41,6 +41,7 @@ fun AppSettingsBottomSheet(
     onResetConvertedFolder: () -> Unit,
     onCleanDuplicates: () -> Unit,
     onActivityLog: () -> Unit,
+    onRemovedBooks: () -> Unit,
     onConvertedVisibility: () -> Unit,
     onBackup: () -> Unit,
     onRestore: () -> Unit,
@@ -296,6 +297,10 @@ fun AppSettingsBottomSheet(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(onClick = onRemovedBooks, modifier = Modifier.fillMaxWidth()) {
+                Text("Removed books")
+            }
+            Spacer(modifier = Modifier.height(6.dp))
             OutlinedButton(onClick = onActivityLog, modifier = Modifier.fillMaxWidth()) {
                 Text("Activity log")
             }

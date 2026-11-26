@@ -52,7 +52,7 @@ Comics (CBR/CBZ) collects comic archives, PDF shows PDF files, and Not in a cust
 Book details show available metadata and a Path. Tap the path to try opening its folder in a file manager. If that is not possible, the app copies a readable path instead.
 
 ### Remove from Library
-In book details, tap Remove from Library. This removes the library entry, not the source file, and does not ask for confirmation. Its app-only edits, favorite, status and library progress entry are removed too. A rescan can add the file again; keep a separate backup of anything important. If the book was added with Add File or opened from another app, book details also offer Delete file from device: that deletes the app's working copy and the library entry. A copy saved in Downloads/MyEbookApp is not removed. Your original download or source folder file is not touched, and folder books never show this option.
+In book details, tap Remove from Library. This removes the library entry, not the source file, and does not ask for confirmation. Its app-only edits, favorite, status and library progress entry are removed too. The app remembers the removal, so folder scans skip the file; restore it in Settings, under Removed books, or add the file again with Add File. If the book was added with Add File or opened from another app, book details also offer Delete file from device: that deletes the app's working copy and the library entry. A copy saved in Downloads/MyEbookApp is not removed. Your original download or source folder file is not touched, and folder books never show this option.
 
 ### Selection
 Long-press a cover to enter selection mode; tap covers to select or deselect them. The select-all icon selects every book on the current shelf matching the active search, including books not yet loaded on screen; tap it again to return to the selection you had before. Actions lets you change reading status, move books to a custom shelf, change Favorites, share files, or convert MOBI and AZW3 books; the conversion action appears only when the selection includes one of those formats. If none of the selected books are favorites it offers Add to favorites, if all are it offers Remove from favorites, and with a mix it offers both. Favorite changes apply to every selected book after confirmation. In Move to custom shelf, Remove is available for the currently open custom shelf. Press Android Back or tap × to leave selection mode.
@@ -69,7 +69,7 @@ Tap the reading area to show or hide the controls. They also hide automatically 
 Tap TOC and choose an entry to jump there. If the book has no table of contents, the app offers reading-order sections instead. Tap Find, enter a word or name, tap Find and select a result. Results depend on the book's searchable text.
 
 ### Save quotes
-Select a passage and choose Save quote in the selection menu. The app keeps the text, its chapter and the date. Open the book's details and tap Quotes to read, copy, share, reopen or delete saved passages. Reopening a quote returns to the place it came from. Quotes are included in backups and are removed with the book's library entry.
+Select a passage and choose Save quote in the selection menu. The app keeps the text, its chapter and the date. Tap ❝ in the reader top bar to open the book's saved quotes without leaving it. Open the book's details and tap Quotes to read, copy, share, reopen or delete saved passages. Reopening a quote returns to the place it came from. Quotes are included in backups and are removed with the book's library entry.
 
 ### Dictionary
 Select a word in the book and choose Define in the selection menu. The app looks it up online, preferring Italian or English according to the book language. Search / Translate in Browser opens Wiktionary. Availability and definitions depend on the online sources.
@@ -164,7 +164,7 @@ In the library menu, open Settings, enter your Send to Kindle email and tap Save
 Open the library menu and tap Settings. Choose the app theme mode and accent; the accent row scrolls sideways. AMOLED Pitch-Black applies to dark app UI. Tap Done to close Settings.
 
 ### Other settings
-Save your Kindle email here. Check for new books on open scans your folders when you open the app, at most once a day. Reopen Last Book on Launch opens the last book you were reading when the app starts. Clean Duplicates removes duplicate library entries that have the same file name and size, keeping the one with the most recent activity; no ebook files are deleted.
+Save your Kindle email here. Check for new books on open scans your folders when you open the app, at most once a day. Reopen Last Book on Launch opens the last book you were reading when the app starts. Clean Duplicates removes duplicate library entries that have the same file name and size, keeping the one with the most recent activity; no ebook files are deleted. Removed books lists the entries you removed from the library so you can restore them.
 
 ### Storage
 The storage summary shows app covers, converted EPUBs and temporary cache. Clear Temp Cache removes temporary working, share and reader copies, not the original source ebooks or the app's converted EPUB folder. Avoid clearing it while an attachment is still being used by another app.

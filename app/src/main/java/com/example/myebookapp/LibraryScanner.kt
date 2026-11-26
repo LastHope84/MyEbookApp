@@ -446,6 +446,8 @@ object LibraryScanner {
             }
         }
         val knownIdentities = storedUriByIdentity.keys.toMutableSet()
+        // Books the user removed stay removed until restored or added again.
+        val removedIdentities = dao.getRemovedIdentities().toHashSet()
 
         suspend fun flush() {
             if (batch.isEmpty()) return
@@ -494,6 +496,7 @@ object LibraryScanner {
                         continue
                     }
                     val identity = "${treeUri.authority}|$documentId"
+                    if (identity in removedIdentities) continue
                     if (!knownIdentities.add(identity)) {
                         // Already in the library. A rescan still records which root and
                         // folder it came from so subfolder removal can find it later.

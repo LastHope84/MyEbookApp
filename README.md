@@ -5,7 +5,7 @@ reader's shelves rather than as a store product: the library lives on the
 device, there is no account, and there is no analytics.
 
 Stable release: **1.16.0** (Android 8.0 or later, arm64-v8a), confirmed on-device.
-Latest build: **1.17.0**, which adds saved quotes and the A–Z bubble fixes.
+Latest build: **1.18.0**, which adds saved quotes, quote browsing inside the reader, and keeps removed books removed.
 
 ## Features
 
@@ -29,6 +29,8 @@ Latest build: **1.17.0**, which adds saved quotes and the A–Z bubble fixes.
 - Built-in shelves: **Comics (CBR/CBZ)**, **PDF** and **Not in a custom
   shelf**.
 - Edit metadata and covers locally, or look for matching editions online.
+- Remove a book and it stays removed: folder scans skip it until you restore
+  it in Settings, under Removed books.
 - Clean duplicate library entries (same file name and size), keeping the most
   recently used copy; files are not deleted.
 - Back up the library, covers and settings to a `.zip`, optionally including

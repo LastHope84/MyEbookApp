@@ -26,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily as ComposeFontFamily
@@ -181,6 +183,7 @@ fun ReaderMinimalTopBar(
     onOpenToc: () -> Unit,
     onToggleOrientation: () -> Unit,
     onOpenAppearance: () -> Unit,
+    onOpenQuotes: (() -> Unit)? = null,
     ttsState: TtsState = TtsState.IDLE,
     onToggleTts: () -> Unit = {}
 ) {
@@ -221,6 +224,14 @@ fun ReaderMinimalTopBar(
                 }
                 IconButton(onClick = onToggleOrientation, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Filled.Refresh, contentDescription = "Rotate", modifier = Modifier.size(22.dp))
+                }
+                if (onOpenQuotes != null) {
+                    IconButton(
+                        onClick = onOpenQuotes,
+                        modifier = Modifier.size(36.dp).semantics { contentDescription = "Quotes" }
+                    ) {
+                        Text("❝", style = MaterialTheme.typography.titleMedium)
+                    }
                 }
                 IconButton(onClick = onToggleTts, modifier = Modifier.size(36.dp)) {
                     if (ttsState == TtsState.PLAYING) {
