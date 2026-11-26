@@ -94,8 +94,9 @@ fun AlphabetIndexRail(
     }
 
     BoxWithConstraints(modifier = modifier.fillMaxHeight().systemGestureExclusion()) {
-        if (maxHeight < 360.dp) return@BoxWithConstraints
-        val slot = maxHeight / letters.size
+        val railHeight = maxHeight
+        if (railHeight < 360.dp) return@BoxWithConstraints
+        val slot = railHeight / letters.size
         val fontSize = with(LocalDensity.current) { (slot.toSp().value * 0.62f).coerceIn(7f, 10f).sp }
         Box(
             modifier = Modifier
@@ -129,7 +130,7 @@ fun AlphabetIndexRail(
                 val centerY = slot * (letters.indexOf(letter) + 0.5f)
                 val measured = with(LocalDensity.current) { bubbleHeight.toDp() }
                 val half = if (bubbleHeight > 0) measured / 2 else 24.dp
-                val y = (centerY - maxHeight / 2).coerceIn(half - maxHeight / 2, maxHeight / 2 - half)
+                val y = (centerY - railHeight / 2).coerceIn(half - railHeight / 2, railHeight / 2 - half)
                 Surface(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
