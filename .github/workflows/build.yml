@@ -66,6 +66,9 @@ jobs:
           (cd "$RUNNER_TEMP/foxlet-source" && ./gradlew :foxlet:assembleRelease)
           cp "$RUNNER_TEMP/foxlet-source/foxlet/build/outputs/aar/foxlet-release.aar" "$RUNNER_TEMP/foxlet.aar"
 
+      - name: Run unit tests
+        run: gradle testDebugUnitTest
+
       - name: Build Debug APK
         run: gradle assembleDebug -PfoxletAar="$RUNNER_TEMP/foxlet.aar"
 
