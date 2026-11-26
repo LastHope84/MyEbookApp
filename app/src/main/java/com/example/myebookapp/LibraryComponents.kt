@@ -64,11 +64,13 @@ fun SelectAllIcon(description: String = "Select all") {
     }
 }
 
-fun openInReader(context: Context, book: BookEntity) {
+fun openInReader(context: Context, book: BookEntity, quote: QuoteEntity? = null) {
     val uri = Uri.parse(book.uriString)
     val target = if (book.format == "CBZ" || book.format == "CBR" || book.format == "PDF") PageReaderActivity::class.java else ReaderActivity::class.java
     val intent = Intent(context, target).apply {
         putExtra("book_uri", book.uriString)
+        quote?.locatorJson?.let { putExtra("quote_locator", it) }
+        quote?.pageIndex?.let { putExtra("book_page", it) }
         if (uri.scheme == "content") {
             data = uri
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)

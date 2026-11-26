@@ -5,6 +5,7 @@ reader's shelves rather than as a store product: the library lives on the
 device, there is no account, and there is no analytics.
 
 Stable release: **1.16.0** (Android 8.0 or later, arm64-v8a), confirmed on-device.
+Latest build: **1.17.0**, which adds saved quotes and the A–Z bubble fixes.
 
 ## Features
 
@@ -41,6 +42,9 @@ Stable release: **1.16.0** (Android 8.0 or later, arm64-v8a), confirmed on-devic
   table of contents, in-book search, rotation, and appearance controls for
   theme, font, size, spacing and margins. The OpenDyslexic, Accessible DfA and
   iA Writer Duospace fonts are included.
+- **Save quotes**: select a passage in an EPUB or PDF and keep it with its
+  chapter and date. Open the book's details to read, copy, share, reopen or
+  delete saved quotes; quotes travel in backups.
 - **Read aloud** with the phone's text-to-speech engine, including a media
   notification with Play/Pause/Stop and page following while the voice reads.
 - **CBZ and CBR comics**: page swiping, tap zones, pinch and double-tap zoom

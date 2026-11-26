@@ -179,6 +179,7 @@ val finishedCount by remember(showConvertedOriginals) { dao.observeStatusCount("
 var tab by remember { mutableStateOf(LibraryTab.ALL) }; var dbQry by remember { mutableStateOf("") }
 var selB by remember { mutableStateOf<BookEntity?>(null) }; var edtB by remember { mutableStateOf<BookEntity?>(null) }
 var deleteFileBook by remember { mutableStateOf<BookEntity?>(null) }
+var quotesBook by remember { mutableStateOf<BookEntity?>(null) }
 var showSet by remember { mutableStateOf(false) }; var showVisibility by remember { mutableStateOf(false) }; var showFolders by remember { mutableStateOf(false) }; var showGuide by rememberSaveable { mutableStateOf(false) }; var guideTopic by remember { mutableStateOf<String?>(null) }; var selMode by remember { mutableStateOf(false) }; var selIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
 var showBulkActions by remember { mutableStateOf(false) }
 var showScanLog by remember { mutableStateOf(false) }
@@ -1070,6 +1071,7 @@ backupBusy?.let { msg ->
 selB?.let { selected ->
 key(selected.id) {
 val liveBook by remember(selected.id) { dao.observeById(selected.id) }.collectAsState(initial = selected)
+val quoteCount by remember(selected.id) { dao.observeQuoteCount(selected.id) }.collectAsState(initial = 0)
 liveBook?.let { b ->
 BookDetailsBottomSheet(
 b = b, hasK = ThemePrefs.getKindleEmail(ctx).isNotBlank(),
@@ -1087,10 +1089,22 @@ hasCustomShelves = customShelves.isNotEmpty(),
 translationEnabled = ThemePrefs.isOfflineTranslationEnabled(ctx) && translationJob == null,
 onTranslate = { translatingSource = ""; translatingTarget = ""; translatingBook = b },
 canDeleteFile = AppFiles.isAppOwned(ctx, b.uriString),
-onDeleteFile = { selB = null; deleteFileBook = b }
+onDeleteFile = { selB = null; deleteFileBook = b },
+quoteCount = quoteCount,
+onQuotes = { selB = null; quotesBook = b }
 )
 }
 }
+}
+quotesBook?.let { qb ->
+    val quotes by remember(qb.id) { dao.observeQuotes(qb.id) }.collectAsState(initial = emptyList())
+    QuotesBottomSheet(
+        book = qb,
+        quotes = quotes,
+        onOpen = { q -> quotesBook = null; openInReader(ctx, qb, q) },
+        onDelete = { q -> scp.launch(Dispatchers.IO) { dao.deleteQuote(q.id) } },
+        onDismiss = { quotesBook = null }
+    )
 }
 deleteFileBook?.let { target ->
     AlertDialog(

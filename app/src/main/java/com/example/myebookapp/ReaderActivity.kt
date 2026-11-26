@@ -80,6 +80,7 @@ class ReaderActivity : FragmentActivity() {
         private const val AUTO_HIDE_MS = 4000L
         private const val MENU_DEFINE_ID = 9001
         private const val MENU_TRANSLATE_ID = 9002
+        private const val MENU_QUOTE_ID = 9003
 
         // Readium calls pagination after the resource is ready, but images/fonts can
         // still change its layout. An uncertain rendering must not finish the book.
@@ -442,7 +443,9 @@ class ReaderActivity : FragmentActivity() {
                         bookLanguage = dbBook.language
                     }
 
-                    val savedLocatorJson = dbBook?.lastLocatorJson
+                    // A saved quote reopens at its exact passage instead of the last position.
+                    val savedLocatorJson = intent?.getStringExtra("quote_locator")
+                        ?: dbBook?.lastLocatorJson
                         ?: BookHistoryStore.getLocatorJson(this@ReaderActivity, bookUri.toString())
                     val savedLocator = savedLocatorJson?.let { json ->
                         runCatching { Locator.fromJSON(JSONObject(json)) }.getOrNull()
@@ -508,8 +511,9 @@ class ReaderActivity : FragmentActivity() {
                 val selectionCallback = object : ActionMode.Callback {
                     override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
                         menu.add(0, MENU_DEFINE_ID, 0, "Define")
+                        menu.add(0, MENU_QUOTE_ID, 1, "Save quote")
                         if (ThemePrefs.isOfflineTranslationEnabled(this@ReaderActivity) && TranslationRuntime.isAvailable()) {
-                            menu.add(0, MENU_TRANSLATE_ID, 1, "Translate offline")
+                            menu.add(0, MENU_TRANSLATE_ID, 2, "Translate offline")
                         }
                         return true
                     }
@@ -524,6 +528,10 @@ class ReaderActivity : FragmentActivity() {
                         if (item.itemId == MENU_DEFINE_ID) {
                             lookupSelectedWord()
                             mode.finish()
+                            return true
+                        }
+                        if (item.itemId == MENU_QUOTE_ID) {
+                            saveSelectionQuote(mode)
                             return true
                         }
                         if (item.itemId == MENU_TRANSLATE_ID) {
@@ -735,6 +743,46 @@ class ReaderActivity : FragmentActivity() {
             }
             isSearchingBook = false
             searchResults = found
+        }
+    }
+
+    private fun saveSelectionQuote(mode: ActionMode) {
+        lifecycleScope.launch {
+            val nav = supportFragmentManager.findFragmentByTag(NAV_TAG) as? EpubNavigatorFragment
+            val locator = try {
+                nav?.currentSelection()?.locator
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            } finally {
+                mode.finish()
+            }
+            val text = QuoteText.normalize(locator?.text?.highlight ?: "")
+            if (locator == null || text == null) {
+                android.widget.Toast.makeText(this@ReaderActivity, "Could not read the selected text.", android.widget.Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            nav?.clearSelection()
+            val saved = withContext(Dispatchers.IO) {
+                val dao = AppDatabase.getInstance(this@ReaderActivity).bookDao()
+                val book = dao.getByUri(currentBookUriString) ?: return@withContext false
+                dao.insertQuote(
+                    QuoteEntity(
+                        bookId = book.id,
+                        text = text,
+                        locatorJson = locator.toJSON().toString(),
+                        label = locator.title?.takeIf { it.isNotBlank() }
+                            ?: chapterTitle.takeIf { it.isNotBlank() }
+                    )
+                )
+                true
+            }
+            android.widget.Toast.makeText(
+                this@ReaderActivity,
+                if (saved) "Quote saved" else "This book is not in the library anymore.",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
         }
     }
 

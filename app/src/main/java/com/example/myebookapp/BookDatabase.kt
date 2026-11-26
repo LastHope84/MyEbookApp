@@ -60,6 +60,22 @@ data class InitialCount(val initial: String, val bookCount: Int)
 ], indices = [Index("outputBookId")])
 data class ConversionLink(@PrimaryKey val sourceBookId: Long, val outputBookId: Long)
 
+// Saved passages. locatorJson reopens an EPUB quote; pageIndex reopens a PDF one.
+@Entity(
+    tableName = "quotes",
+    foreignKeys = [ForeignKey(entity = BookEntity::class, parentColumns = ["id"], childColumns = ["bookId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("bookId")]
+)
+data class QuoteEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val bookId: Long,
+    val text: String,
+    val locatorJson: String? = null,
+    val pageIndex: Int? = null,
+    val label: String? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
 data class ExtractedBookMeta(val id: Long, val title: String, val author: String, val publishingDate: String, val publisher: String, val language: String, val coverPath: String?, val series: String?, val seriesIndex: Double?, val tags: String?)
 data class BookDuplicateRow(val id: Long, val fileName: String, val fileSize: Long, val lastOpenedAt: Long, val progressPercent: Double, val hasCover: Boolean)
 
@@ -269,9 +285,18 @@ interface BookDao {
         return count
     }
     @Query("DELETE FROM books WHERE id = :id") suspend fun deleteById(id: Long)
+
+    // Quotes belong to a library entry and are removed with it.
+    @Insert suspend fun insertQuote(quote: QuoteEntity): Long
+    @Query("SELECT * FROM quotes WHERE bookId = :bookId ORDER BY createdAt DESC, id DESC") fun observeQuotes(bookId: Long): Flow<List<QuoteEntity>>
+    @Query("SELECT COUNT(*) FROM quotes WHERE bookId = :bookId") fun observeQuoteCount(bookId: Long): Flow<Int>
+    @Query("DELETE FROM quotes WHERE id = :id") suspend fun deleteQuote(id: Long): Int
+    @Query("SELECT * FROM quotes ORDER BY id") suspend fun getAllQuotesOnce(): List<QuoteEntity>
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun restoreQuotes(quotes: List<QuoteEntity>)
+    @Query("DELETE FROM quotes") suspend fun deleteAllQuotes()
 }
 
-@Database(entities = [BookEntity::class, BookFtsEntity::class, CustomShelf::class, CustomShelfBook::class, ConversionLink::class], version = 8, exportSchema = false)
+@Database(entities = [BookEntity::class, BookFtsEntity::class, CustomShelf::class, CustomShelfBook::class, ConversionLink::class, QuoteEntity::class], version = 9, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao
     companion object {
@@ -309,7 +334,11 @@ abstract class AppDatabase : RoomDatabase() {
         internal val M78 = object : Migration(7, 8) { override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("ALTER TABLE books ADD COLUMN exportCoverPath TEXT")
         } }
-        fun getInstance(context: Context): AppDatabase = INSTANCE ?: synchronized(this) { INSTANCE ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "my_ebook_library.db").addMigrations(M12, M23, M34, M45, M56, M67, M78).build().also { INSTANCE = it } }
+        internal val M89 = object : Migration(8, 9) { override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS `quotes` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `bookId` INTEGER NOT NULL, `text` TEXT NOT NULL, `locatorJson` TEXT, `pageIndex` INTEGER, `label` TEXT, `createdAt` INTEGER NOT NULL, FOREIGN KEY(`bookId`) REFERENCES `books`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_quotes_bookId` ON `quotes` (`bookId`)")
+        } }
+        fun getInstance(context: Context): AppDatabase = INSTANCE ?: synchronized(this) { INSTANCE ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "my_ebook_library.db").addMigrations(M12, M23, M34, M45, M56, M67, M78, M89).build().also { INSTANCE = it } }
     }
 }
 fun toFtsQuery(raw: String): String? {

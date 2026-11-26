@@ -26,7 +26,7 @@ Open the menu and tap Manage folders to see saved folders, add more, remove a fo
 Type at least 2 letters in Search in the menu, then choose a shelf. Search applies to that shelf and matches indexed title, author, publisher, series and tags. Clear the search to see the full shelf. The view button in the top bar switches between the cover grid and a detailed list; the choice is remembered. The sort button orders a shelf by Title, Author or Recently opened; the small arrow beside it flips the order (A to Z or Z to A, newest or oldest). Tap a cover for its details and actions.
 
 ### Alphabet index
-With 100 or more books on a shelf in Title or Author order, an A–Z rail appears at the right edge. Tap or drag a letter to jump there; the bubble shows how many books start with that letter. # jumps to numbers and symbols, and a letter with no books jumps to where it would begin. Accented titles are grouped under their base letter, such as É under E, but they appear after Z in the list. The rail is hidden during search, on Recent, and while selecting books. With TalkBack, swipe to the Alphabet index and use its jump actions.
+With 100 or more books on a shelf in Title or Author order, an A–Z rail appears at the right edge. Tap or drag a letter to jump there; a bubble beside your finger shows the letter and how many books start with it. # jumps to numbers and symbols, and a letter with no books jumps to where it would begin. Accented titles are grouped under their base letter, such as É under E, but they appear after Z in the list. The rail is hidden during search, on Recent, and while selecting books. With TalkBack, swipe to the Alphabet index and use its jump actions.
 
 ### Menu sections
 The library menu groups shelves into collapsible sections. Tap Reading status, Formats & collections or Custom shelves to expand or collapse them. All Books, Recent and Favorites stay visible above the sections.
@@ -68,6 +68,9 @@ Tap the reading area to show or hide the controls. They also hide automatically 
 ### Chapters and search
 Tap TOC and choose an entry to jump there. If the book has no table of contents, the app offers reading-order sections instead. Tap Find, enter a word or name, tap Find and select a result. Results depend on the book's searchable text.
 
+### Save quotes
+Select a passage and choose Save quote in the selection menu. The app keeps the text, its chapter and the date. Open the book's details and tap Quotes to read, copy, share, reopen or delete saved passages. Reopening a quote returns to the place it came from. Quotes are included in backups and are removed with the book's library entry.
+
 ### Dictionary
 Select a word in the book and choose Define in the selection menu. The app looks it up online, preferring Italian or English according to the book language. Search / Translate in Browser opens Wiktionary. Availability and definitions depend on the online sources.
 
@@ -100,7 +103,7 @@ PDF files are added by the folder scanner or opened from another app. Tap a PDF,
 The top bar shows Back, the title and the current page out of the total, with Find and read-aloud icons when the PDF has text. The bottom bar has a page slider and the Left to right / Right to left switch. Pinch to zoom, drag to move around a zoomed page, and double-tap to zoom in or back out.
 
 ### Select text
-Press and hold a word to select it. The action bar offers Copy, Define, Sentence, Translate (when offline translation is enabled) and Speak; tap Sentence to expand the selection to the whole sentence. Tap elsewhere to clear the selection. Selection works while the page is not zoomed.
+Press and hold a word to select it. The action bar offers Copy, Define, Sentence, Quote, Translate (when offline translation is enabled) and Speak; tap Sentence to expand the selection to the whole sentence. Tap elsewhere to clear the selection. Selection works while the page is not zoomed.
 
 ### Find and listen
 Tap the search icon in the top bar to search the whole PDF. Results show the page and a short snippet; tap one to jump there, and matches are highlighted on the page. Tap the play icon to read the current page aloud; the current sentence is highlighted and the reader advances to the next page automatically. Tap again to pause. A selected passage can also be spoken from the action bar.

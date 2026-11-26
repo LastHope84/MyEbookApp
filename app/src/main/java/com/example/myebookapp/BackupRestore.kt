@@ -36,7 +36,7 @@ data class RestoreSummary(
 /**
  * A backup is a plain .zip:
  *  - manifest.json: format, schema version, date, app version, whether books are included
- *  - library.json: books, shelves, shelf membership and conversion links
+ *  - library.json: books, shelves, shelf membership, conversion links and saved quotes
  *  - prefs.json: app settings
  *  - covers/ and covers_export/: app-generated cover images
  *  - books/imports/ and books/converted_epubs/: optional app-owned book files
@@ -69,12 +69,14 @@ object BackupRestore {
         val shelves = dao.getAllCustomShelvesOnce()
         val shelfBooks = dao.getAllShelfBooksOnce()
         val links = dao.getAllConversionLinksOnce()
+        val quotes = dao.getAllQuotesOnce()
 
         val library = JSONObject().apply {
             put("books", JSONArray().apply { books.forEach { put(it.toJson()) } })
             put("shelves", JSONArray().apply { shelves.forEach { put(it.toJson()) } })
             put("shelfBooks", JSONArray().apply { shelfBooks.forEach { put(it.toJson()) } })
             put("conversionLinks", JSONArray().apply { links.forEach { put(it.toJson()) } })
+            put("quotes", JSONArray().apply { quotes.forEach { put(it.toJson()) } })
         }
         val manifest = JSONObject().apply {
             put("format", FORMAT)
@@ -146,6 +148,9 @@ object BackupRestore {
             val links = library.optJSONArray("conversionLinks").toObjects().mapNotNull { it.toConversionLink() }
                 .filter { it.sourceBookId in bookIds && it.outputBookId in bookIds && it.sourceBookId != it.outputBookId }
                 .distinctBy { it.sourceBookId }
+            val quotes = library.optJSONArray("quotes").toObjects().mapNotNull { it.toQuote() }
+                .filter { it.bookId in bookIds }
+                .distinctBy { it.id }
 
             // Files first: if extraction fails, the old library stays intact.
             val bookFiles = extractFiles(context, uri, manifest.optBoolean("includeBooks", false))
@@ -155,11 +160,13 @@ object BackupRestore {
                 dao.deleteAllConversionLinks()
                 dao.deleteAllShelfBooks()
                 dao.deleteAllCustomShelves()
+                dao.deleteAllQuotes()
                 dao.deleteAllBooks()
                 if (shelves.isNotEmpty()) dao.restoreCustomShelves(shelves)
                 if (books.isNotEmpty()) dao.restoreBooks(books)
                 if (links.isNotEmpty()) dao.restoreConversionLinks(links)
                 if (shelfBooks.isNotEmpty()) dao.restoreShelfBooks(shelfBooks)
+                if (quotes.isNotEmpty()) dao.restoreQuotes(quotes)
             }
 
             runCatching {
@@ -268,6 +275,33 @@ object BackupRestore {
         val source = optLong("sourceBookId", -1L)
         val output = optLong("outputBookId", -1L)
         return if (source > 0 && output > 0) ConversionLink(source, output) else null
+    }
+
+    private fun QuoteEntity.toJson(): JSONObject = JSONObject().apply {
+        put("id", id)
+        put("bookId", bookId)
+        put("text", text)
+        put("locatorJson", locatorJson ?: JSONObject.NULL)
+        put("pageIndex", pageIndex ?: JSONObject.NULL)
+        put("label", label ?: JSONObject.NULL)
+        put("createdAt", createdAt)
+    }
+
+    private fun JSONObject.toQuote(): QuoteEntity? {
+        val id = optLong("id", -1L)
+        val bookId = optLong("bookId", -1L)
+        val text = optString("text", "").trim()
+        if (id <= 0 || bookId <= 0 || text.isEmpty()) return null
+        val page = optInt("pageIndex", -1)
+        return QuoteEntity(
+            id = id,
+            bookId = bookId,
+            text = text,
+            locatorJson = optStringOrNull("locatorJson"),
+            pageIndex = page.takeIf { it >= 0 },
+            label = optStringOrNull("label"),
+            createdAt = optLong("createdAt", 0L)
+        )
     }
 
     private fun JSONObject.optStringOrNull(key: String): String? =

@@ -34,7 +34,9 @@ fun BookDetailsBottomSheet(
     hasCustomShelves: Boolean = true,
     onTranslate: () -> Unit = {},
     canDeleteFile: Boolean = false,
-    onDeleteFile: () -> Unit = {}
+    onDeleteFile: () -> Unit = {},
+    quoteCount: Int = 0,
+    onQuotes: () -> Unit = {}
 ) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val sheetS = rememberModalBottomSheetState(true)
@@ -86,6 +88,11 @@ fun BookDetailsBottomSheet(
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), Arrangement.spacedBy(8.dp)) {
                 if (!isPaged) OutlinedButton(onClick = onE, Modifier.weight(1f)) { Text("Edit") }
                 OutlinedButton(onClick = onS, Modifier.weight(1f)) { Text("Share") }
+            }
+            if (b.format == "EPUB" || b.format == "PDF") {
+                OutlinedButton(onClick = onQuotes, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    Text(if (quoteCount > 0) "Quotes ($quoteCount)…" else "Quotes…")
+                }
             }
             if (b.format == "EPUB") {
                 if (translationEnabled) OutlinedButton(onClick = onTranslate, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("Translate EPUB offline…") }

@@ -15,7 +15,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      APP_FEATURES: "Folder library with search, favorites, reading shelves and custom shelves; built-in Comics, PDFs and unshelved shelves; A–Z index rail for large shelves; EPUB reader with themes and read-aloud; comic and PDF readers with zoom, text selection, search and read-aloud; offline translation packs; MOBI/AZW3 to EPUB conversion; metadata editing and covers; backup and restore."
+      APP_FEATURES: "Folder library with search, favorites, reading shelves and custom shelves; built-in Comics, PDFs and unshelved shelves; A–Z index rail for large shelves; saved quotes with copy, share and reopen; EPUB reader with themes and read-aloud; comic and PDF readers with zoom, text selection, search and read-aloud; offline translation packs; MOBI/AZW3 to EPUB conversion; metadata editing and covers; backup and restore."
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

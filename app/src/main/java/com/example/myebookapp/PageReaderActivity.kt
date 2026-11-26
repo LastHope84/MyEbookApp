@@ -128,6 +128,7 @@ class PageReaderActivity : FragmentActivity() {
     private var loader: PageLoader? = null
     private var pageCount = 0
     private var startPage = 0
+    private var requestedPage = -1
     private var currentPage = 0
     private var lastSavedPage = -1
     private val dao by lazy { AppDatabase.getInstance(this).bookDao() }
@@ -143,6 +144,7 @@ class PageReaderActivity : FragmentActivity() {
         window.decorView.setBackgroundColor(android.graphics.Color.BLACK)
 
         val uriString = intent.getStringExtra("book_uri")
+        requestedPage = intent.getIntExtra("book_page", -1)
         if (uriString.isNullOrBlank()) {
             loadError.value = "No document was selected."
             loading.value = false
@@ -173,6 +175,7 @@ class PageReaderActivity : FragmentActivity() {
                                 currentPage = it
                                 savePage(it)
                             },
+                            onSaveQuote = { text, page -> saveQuote(text, page) },
                             onBack = { finish() }
                         )
                     }
@@ -225,6 +228,7 @@ class PageReaderActivity : FragmentActivity() {
                         throw IllegalStateException("This document has no readable pages.")
                     }
                     val start = when {
+                        requestedPage in 0 until total -> requestedPage
                         saved in 0 until total -> saved
                         stored.progressPercent > 0.0 -> ((stored.progressPercent * total).toInt() - 1).coerceIn(0, total - 1)
                         else -> 0
@@ -275,6 +279,24 @@ class PageReaderActivity : FragmentActivity() {
         }
     }
 
+    private fun saveQuote(raw: String, pageIndex: Int) {
+        val stored = book ?: return
+        val text = QuoteText.normalize(raw) ?: return
+        saveScope.launch {
+            dao.insertQuote(
+                QuoteEntity(
+                    bookId = stored.id,
+                    text = text,
+                    pageIndex = pageIndex,
+                    label = "Page ${pageIndex + 1}"
+                )
+            )
+            withContext(Dispatchers.Main) {
+                Toast.makeText(this@PageReaderActivity, "Quote saved", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     override fun onPause() {
         savePage(currentPage)
         super.onPause()
@@ -314,6 +336,7 @@ private fun PageReaderScreen(
     initialRtl: Boolean,
     onRtlChange: (Boolean) -> Unit,
     onPageSettled: (Int) -> Unit,
+    onSaveQuote: (String, Int) -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -567,6 +590,10 @@ private fun PageReaderScreen(
                             )
                         }
                     },
+                    onQuote = {
+                        onSaveQuote(selected.text, selected.pageIndex)
+                        selection = null
+                    },
                     onSentence = {
                         val text = currentText
                         if (text != null) {
@@ -636,6 +663,7 @@ private fun SelectionActions(
     onTranslate: () -> Unit,
     onSpeak: () -> Unit,
     onSentence: () -> Unit,
+    onQuote: () -> Unit,
     onDismiss: () -> Unit
 ) {
     Surface(
@@ -650,6 +678,7 @@ private fun SelectionActions(
             TextButton(onClick = onCopy) { Text("Copy") }
             TextButton(onClick = onDefine) { Text("Define") }
             TextButton(onClick = onSentence) { Text("Sentence") }
+            TextButton(onClick = onQuote) { Text("Quote") }
             if (canTranslate) TextButton(onClick = onTranslate) { Text("Translate") }
             TextButton(onClick = onSpeak) { Text("Speak") }
             TextButton(onClick = onDismiss) { Text("×") }
