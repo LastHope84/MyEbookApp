@@ -25,6 +25,9 @@ Open the menu and tap Manage folders to see saved folders, add more, remove a fo
 ### Search the library
 Type at least 2 letters in Search in the menu, then choose a shelf. Search applies to that shelf and matches indexed title, author, publisher, series and tags. Clear the search to see the full shelf. The view button in the top bar switches between the cover grid and a detailed list; the choice is remembered. The sort button orders a shelf by Title, Author or Recently opened; the small arrow beside it flips the order (A to Z or Z to A, newest or oldest). Tap a cover for its details and actions.
 
+### Alphabet index
+With 100 or more books on a shelf in Title or Author order, an A–Z rail appears at the right edge. Tap or drag a letter to jump there; the bubble shows how many books start with that letter. # jumps to numbers and symbols, and a letter with no books jumps to where it would begin. Accented titles are grouped under their base letter, such as É under E, but they appear after Z in the list. The rail is hidden during search, on Recent, and while selecting books. With TalkBack, swipe to the Alphabet index and use its jump actions.
+
 ### Menu sections
 The library menu groups shelves into collapsible sections. Tap Reading status, Formats & collections or Custom shelves to expand or collapse them. All Books, Recent and Favorites stay visible above the sections.
 

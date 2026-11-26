@@ -47,7 +47,7 @@ class VisibilityTests(unittest.TestCase):
 
     def run_query(self, name, show=False, **kwargs):
         args = dict(showConvertedOriginals=int(show), q='shared*', status='READING',
-                    shelfId=1, sort='title', reverse=0)
+                    shelfId=1, sort='title', reverse=0, byAuthor=0)
         args.update(kwargs)
         sql = QUERIES[name]
         # Room expands list parameters before SQLite sees them; do the same here.
@@ -80,6 +80,10 @@ class VisibilityTests(unittest.TestCase):
                               'unshelvedPaged', 'searchUnshelvedPaged', 'getUnshelvedIds',
                               'searchUnshelvedIds'):
                     self.assertEqual([], hidden); self.assertEqual([], shown)
+                elif name.startswith('initialCounts'):
+                    # Column 0 is a first letter, not an id; compare group totals instead.
+                    self.assertTrue(all(r[0] is not None for r in hidden))
+                    self.assertGreaterEqual(sum(r[1] for r in shown), sum(r[1] for r in hidden))
                 else:
                     self.assertNotIn(1, [r[0] for r in hidden])
                     self.assertIn(1, [r[0] for r in shown])

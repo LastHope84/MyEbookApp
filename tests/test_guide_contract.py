@@ -84,6 +84,16 @@ class GuideContractTest(unittest.TestCase):
         for token in ('bookDao(', 'contentResolver', 'deleteById(', 'openOutputStream('):
             self.assertNotIn(token, GUIDE)
 
+    def test_alphabet_index_is_documented_and_wired(self):
+        for text in (GUIDE, DOC):
+            self.assertIn('Alphabet index', text)
+            self.assertIn('100 or more books', text)
+            self.assertIn('hidden during search, on Recent, and while selecting books', text)
+        self.assertIn('AlphabetIndexRail(', MAIN)
+        self.assertIn('requestScrollToItem', MAIN)
+        self.assertIn('jumpThreshold = 60', MAIN)
+        self.assertIn('sortMode in setOf("title", "author")', MAIN)
+
     def test_imported_files_get_a_visible_copy(self):
         import_src = (SRC / 'ExternalImport.kt').read_text()
         self.assertIn('ImportCopies.save(context, dest)', import_src)

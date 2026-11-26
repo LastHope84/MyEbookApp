@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -35,6 +37,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.paging.*
 import androidx.paging.compose.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collectLatest
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -373,6 +376,23 @@ suspend fun idsOnShelf(tab: LibraryTab, custom: Long?, f: String?): List<Long> {
     }
 }
 
+suspend fun initialCountsOnShelf(tab: LibraryTab, custom: Long?, byAuthor: Boolean): List<InitialCount> {
+    return when {
+        custom != null -> dao.initialCountsCustomShelf(custom, byAuthor, showConvertedOriginals)
+        tab == LibraryTab.ALL -> dao.initialCountsAll(byAuthor, showConvertedOriginals)
+        tab == LibraryTab.FAV -> dao.initialCountsFavorite(byAuthor, showConvertedOriginals)
+        tab in listOf(LibraryTab.READING, LibraryTab.TBR, LibraryTab.DONE) -> {
+            val status = when (tab) { LibraryTab.READING -> "READING"; LibraryTab.TBR -> "TBR"; else -> "FINISHED" }
+            dao.initialCountsStatus(status, byAuthor, showConvertedOriginals)
+        }
+        tab == LibraryTab.COMICS -> dao.initialCountsFormat(listOf("CBZ", "CBR"), byAuthor, showConvertedOriginals)
+        tab == LibraryTab.PDFS -> dao.initialCountsFormat(listOf("PDF"), byAuthor, showConvertedOriginals)
+        tab == LibraryTab.UNFILED -> dao.initialCountsUnshelved(byAuthor, showConvertedOriginals)
+        tab == LibraryTab.RECENT -> emptyList()
+        else -> dao.initialCountsToConvert(byAuthor, showConvertedOriginals)
+    }
+}
+
 fun selectAllOnShelf() {
     cancelSelectAll()
     val previous = selIds
@@ -586,7 +606,7 @@ BackHandler(drw.isOpen || selMode || selectedCustomId != null || tab != LibraryT
 }
 
 val customId = selectedCustomId
-val paged = remember(dbQry, tab, customId, showConvertedOriginals, sortMode, sortReversed, scp) { Pager(PagingConfig(60, 180, true)) {
+val paged = remember(dbQry, tab, customId, showConvertedOriginals, sortMode, sortReversed, scp) { Pager(PagingConfig(pageSize = 60, prefetchDistance = 180, enablePlaceholders = true, maxSize = 600, jumpThreshold = 60)) {
 val f = toFtsQuery(dbQry)
 if (customId != null) {
 if (f == null) dao.customShelfPaged(customId, showConvertedOriginals, sortMode, sortReversed) else dao.searchCustomShelfPaged(customId, f, showConvertedOriginals, sortMode, sortReversed)
@@ -615,6 +635,55 @@ fun selectTab(t: LibraryTab) {
     cancelSelectAll(); selectedCustomId = null; tab = t
     selIds = emptySet(); selMode = false
     scp.launch { drw.close() }
+}
+
+val listState = rememberLazyListState()
+val gridState = rememberLazyGridState()
+var alphabetIndex by remember { mutableStateOf<AlphabetIndex?>(null) }
+var indexRevision by remember { mutableIntStateOf(0) }
+var pendingJump by remember { mutableStateOf<Int?>(null) }
+val railContext = !selMode && dbQry.isBlank() && sortMode in setOf("title", "author") && (selectedCustomId != null || tab != LibraryTab.RECENT)
+val showRail = railContext && (alphabetIndex?.total ?: 0) >= 100 && paged.itemCount > 0 && paged.loadState.refresh !is LoadState.Error
+
+LaunchedEffect(paged, railContext) {
+    if (!railContext) return@LaunchedEffect
+    snapshotFlow { paged.itemCount to (paged.loadState.refresh is LoadState.NotLoading) }
+        .collectLatest { (count, settled) ->
+            if (count > 0 && settled) { delay(400); indexRevision++ }
+        }
+}
+LaunchedEffect(railContext, tab, selectedCustomId, sortMode, showConvertedOriginals, indexRevision) {
+    if (!railContext) { alphabetIndex = null; return@LaunchedEffect }
+    val counts = withContext(Dispatchers.IO) { initialCountsOnShelf(tab, selectedCustomId, sortMode == "author") }
+    alphabetIndex = AlphabetIndex.build(counts)
+}
+LaunchedEffect(tab, selectedCustomId, dbQry, sortMode, sortReversed, showConvertedOriginals) {
+    pendingJump = null
+    listState.requestScrollToItem(0)
+    gridState.requestScrollToItem(0)
+}
+LaunchedEffect(listMode) {
+    if (listMode) listState.requestScrollToItem(gridState.firstVisibleItemIndex)
+    else gridState.requestScrollToItem(listState.firstVisibleItemIndex)
+}
+LaunchedEffect(pendingJump, paged.loadState.refresh) {
+    val target = pendingJump ?: return@LaunchedEffect
+    if (paged.loadState.refresh !is LoadState.Loading) {
+        pendingJump = null
+        listState.requestScrollToItem(target)
+        gridState.requestScrollToItem(target)
+    }
+}
+fun jumpTo(letter: Char) {
+    val idx = alphabetIndex ?: return
+    val count = paged.itemCount
+    if (count <= 0) return
+    val target = idx.target(letter, sortReversed).coerceIn(0, count - 1)
+    if (paged.loadState.refresh is LoadState.Loading) pendingJump = target
+    else {
+        listState.requestScrollToItem(target)
+        gridState.requestScrollToItem(target)
+    }
 }
 
 ModalNavigationDrawer(drawerState=drw, gesturesEnabled=!selMode, drawerContent={
@@ -781,8 +850,10 @@ val message = if (dbQry.isNotBlank()) "No books match this search on this shelf.
     else if (tab in listOf(LibraryTab.READING, LibraryTab.TBR, LibraryTab.DONE)) "No books on this shelf yet. Open a book in All Books to choose its shelf."
     else "No books here yet."
 Text(message, modifier = Modifier.padding(20.dp), style = MaterialTheme.typography.bodyMedium)
-} else if (listMode) {
-LazyColumn(contentPadding = PaddingValues(vertical = 6.dp), modifier = Modifier.fillMaxSize()) {
+} else {
+Box(Modifier.fillMaxSize()) {
+if (listMode) {
+LazyColumn(contentPadding = PaddingValues(top = 6.dp, bottom = 6.dp, end = if (showRail) 32.dp else 0.dp), state = listState, modifier = Modifier.fillMaxSize()) {
 items(paged.itemCount, key=paged.itemKey{it.id}) { i ->
     val b = paged[i]
     if (b != null) {
@@ -795,9 +866,16 @@ items(paged.itemCount, key=paged.itemKey{it.id}) { i ->
     }
 }
 }
-} else LazyVerticalGrid(columns = GridCells.Fixed(3), contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp), modifier = Modifier.fillMaxSize()) {
+} else {
+LazyVerticalGrid(columns = GridCells.Fixed(3), contentPadding = PaddingValues(start = 12.dp, top = 12.dp, bottom = 12.dp, end = if (showRail) 44.dp else 12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp), state = gridState, modifier = Modifier.fillMaxSize()) {
 items(paged.itemCount, key=paged.itemKey{it.id}) { i ->
     val b = paged[i]; if (b != null) BookGridTile(b, selMode, selIds.contains(b.id), { if (!bulkSaving && !converting) { cancelSelectAll(); if (selMode) { selIds = if (selIds.contains(b.id)) selIds - b.id else selIds + b.id; if (selIds.isEmpty()) selMode=false } else selB = b } }, { if (!bulkSaving && !converting) { cancelSelectAll(); selMode=true; selIds = selIds + b.id } }, { if (!bulkSaving && !converting) scp.launch { withContext(Dispatchers.IO) { dao.setFavorite(b.id, !b.isFavorite) } } }) else BookPlaceholderTile()
+}
+}
+}
+if (showRail) alphabetIndex?.let { idx ->
+    AlphabetIndexRail(idx, onJump = { jumpTo(it) }, modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(28.dp).padding(end = 4.dp))
+}
 }
 }
 }
