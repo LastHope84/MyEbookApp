@@ -18,6 +18,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -26,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -45,6 +47,7 @@ fun AlphabetIndexRail(
 ) {
     val letters = AlphabetIndex.LETTERS
     var active by remember { mutableStateOf<Char?>(null) }
+    var bubbleHeight by remember { mutableIntStateOf(0) }
     val haptics = LocalHapticFeedback.current
     val jump by rememberUpdatedState(onJump)
     val actions = remember {
@@ -123,11 +126,16 @@ fun AlphabetIndexRail(
                 }
             }
             active?.let { letter ->
+                val centerY = slot * (letters.indexOf(letter) + 0.5f)
+                val measured = with(LocalDensity.current) { bubbleHeight.toDp() }
+                val half = if (bubbleHeight > 0) measured / 2 else 24.dp
+                val y = (centerY - maxHeight / 2).coerceIn(half - maxHeight / 2, maxHeight / 2 - half)
                 Surface(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
                         .wrapContentWidth(unbounded = true, align = Alignment.End)
-                        .offset(x = (-34).dp),
+                        .offset(x = (-34).dp, y = y)
+                        .onSizeChanged { bubbleHeight = it.height },
                     shape = RoundedCornerShape(50),
                     color = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
