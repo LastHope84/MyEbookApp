@@ -651,6 +651,10 @@ var indexRevision by remember { mutableIntStateOf(0) }
 var pendingJump by remember { mutableStateOf<Int?>(null) }
 val railContext = !selMode && dbQry.isBlank() && sortMode in setOf("title", "author") && (selectedCustomId != null || tab != LibraryTab.RECENT)
 val showRail = railContext && (alphabetIndex?.total ?: 0) >= 100 && paged.itemCount > 0 && paged.loadState.refresh !is LoadState.Error
+// Keep the rail's margin while selecting so the grid does not re-lay-out on
+// every selection toggle, which made hiding and showing the rail feel slow.
+val railSpace = showRail || (selMode && (alphabetIndex?.total ?: 0) >= 100 && dbQry.isBlank() &&
+    sortMode in setOf("title", "author") && (selectedCustomId != null || tab != LibraryTab.RECENT))
 
 LaunchedEffect(paged, railContext) {
     if (!railContext) return@LaunchedEffect
@@ -659,8 +663,10 @@ LaunchedEffect(paged, railContext) {
             if (count > 0 && settled) { delay(400); indexRevision++ }
         }
 }
+// Keep the last built index while the rail is hidden (selection, search) so
+// showing it again is instant; it is refreshed here whenever it is visible.
 LaunchedEffect(railContext, tab, selectedCustomId, sortMode, showConvertedOriginals, indexRevision) {
-    if (!railContext) { alphabetIndex = null; return@LaunchedEffect }
+    if (!railContext) return@LaunchedEffect
     val counts = withContext(Dispatchers.IO) { initialCountsOnShelf(tab, selectedCustomId, sortMode == "author") }
     alphabetIndex = AlphabetIndex.build(counts)
 }
@@ -860,7 +866,7 @@ Text(message, modifier = Modifier.padding(20.dp), style = MaterialTheme.typograp
 } else {
 Box(Modifier.fillMaxSize()) {
 if (listMode) {
-LazyColumn(contentPadding = PaddingValues(top = 6.dp, bottom = 6.dp, end = if (showRail) 32.dp else 0.dp), state = listState, modifier = Modifier.fillMaxSize()) {
+LazyColumn(contentPadding = PaddingValues(top = 6.dp, bottom = 6.dp, end = if (railSpace) 32.dp else 0.dp), state = listState, modifier = Modifier.fillMaxSize()) {
 items(paged.itemCount, key=paged.itemKey{it.id}) { i ->
     val b = paged[i]
     if (b != null) {
@@ -874,7 +880,7 @@ items(paged.itemCount, key=paged.itemKey{it.id}) { i ->
 }
 }
 } else {
-LazyVerticalGrid(columns = GridCells.Fixed(3), contentPadding = PaddingValues(start = 12.dp, top = 12.dp, bottom = 12.dp, end = if (showRail) 44.dp else 12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp), state = gridState, modifier = Modifier.fillMaxSize()) {
+LazyVerticalGrid(columns = GridCells.Fixed(3), contentPadding = PaddingValues(start = 12.dp, top = 12.dp, bottom = 12.dp, end = if (railSpace) 44.dp else 12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(24.dp), state = gridState, modifier = Modifier.fillMaxSize()) {
 items(paged.itemCount, key=paged.itemKey{it.id}) { i ->
     val b = paged[i]; if (b != null) BookGridTile(b, selMode, selIds.contains(b.id), { if (!bulkSaving && !converting) { cancelSelectAll(); if (selMode) { selIds = if (selIds.contains(b.id)) selIds - b.id else selIds + b.id; if (selIds.isEmpty()) selMode=false } else selB = b } }, { if (!bulkSaving && !converting) { cancelSelectAll(); selMode=true; selIds = selIds + b.id } }, { if (!bulkSaving && !converting) scp.launch { withContext(Dispatchers.IO) { dao.setFavorite(b.id, !b.isFavorite) } } }) else BookPlaceholderTile()
 }
