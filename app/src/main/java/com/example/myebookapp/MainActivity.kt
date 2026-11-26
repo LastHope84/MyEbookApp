@@ -189,6 +189,8 @@ var bulkFavoriteAction by remember { mutableStateOf<Boolean?>(null) }
 var selectedFavoriteCount by remember { mutableStateOf<Int?>(null) }
 var selectedConvertibleCount by remember { mutableStateOf<Int?>(null) }
 var showBulkShareConfirm by remember { mutableStateOf(false) }
+var bulkRemoveConfirm by remember { mutableStateOf(false) }
+var removingSelected by remember { mutableStateOf(false) }
 var preparingBulkShare by remember { mutableStateOf(false) }
 var sortMode by remember { mutableStateOf(ThemePrefs.getSort(ctx)) }
 var sortReversed by remember { mutableStateOf(ThemePrefs.isSortReversed(ctx)) }
@@ -303,7 +305,7 @@ if (converting || books.isEmpty()) return
 // A conversion can hide an original; never leave an invisible book selected.
 cancelSelectAll(); selIds = emptySet(); selMode = false
 showBulkActions = false; showBulkMove = false; showBulkShelves = false
-bulkFavoriteAction = null; showBulkShareConfirm = false
+bulkFavoriteAction = null; showBulkShareConfirm = false; bulkRemoveConfirm = false
 converting = true
 if (showConverted) selB = null
 Toast.makeText(ctx, if (showConverted) "Converting ${books.first().fileName}..." else "Converting ${books.size} book${if (books.size == 1) "" else "s"}...", Toast.LENGTH_SHORT).show()
@@ -1239,6 +1241,7 @@ showBulkActions.let { if (it) {
             }
         }
         TextButton(onClick={showBulkActions=false; showBulkShareConfirm=true}, modifier=Modifier.fillMaxWidth()) { Text("Share selected files") }
+        TextButton(onClick={showBulkActions=false; bulkRemoveConfirm=true}, modifier=Modifier.fillMaxWidth()) { Text("Remove from library", color=MaterialTheme.colorScheme.error) }
         if ((selectedConvertibleCount ?: 0) > 0) TextButton(enabled=!converting,onClick={
             val ids=selIds.toList(); showBulkActions=false; bulkSaving=true
             scp.launch {
@@ -1330,6 +1333,40 @@ showBulkShareConfirm.let { if (it) {
             }
         }) {Text(if (preparingBulkShare) "Preparing…" else "Share")}
     }, dismissButton={TextButton(enabled=!preparingBulkShare,onClick={showBulkShareConfirm=false}){Text("Cancel")}})
+} }
+bulkRemoveConfirm.let { if (it) {
+    AlertDialog(
+        onDismissRequest={ if (!removingSelected) bulkRemoveConfirm=false },
+        title={Text("Remove ${selIds.size} books from the library?")},
+        text={Text("This removes their library entries, not the ebook files. Reading progress, edits, favorites, shelf membership and saved quotes for these entries are removed too. You can restore them later in Settings, under Removed books.")},
+        confirmButton={
+            TextButton(enabled=!removingSelected, onClick={
+                if (!removingSelected) {
+                    removingSelected=true
+                    val ids = selIds.toList()
+                    scp.launch {
+                        try {
+                            withContext(Dispatchers.IO) {
+                                val books = dao.getByIds(ids)
+                                check(books.isNotEmpty() && books.size == ids.size) { "Some selected books are no longer in the library." }
+                                val now = System.currentTimeMillis()
+                                dao.removeBooks(
+                                    books.map { RemovedBook(it.uriString, bookIdentity(it.uriString), it.fileName, now) },
+                                    ids
+                                )
+                            }
+                            bulkRemoveConfirm=false
+                            selIds=emptySet(); selMode=false
+                            Toast.makeText(ctx, "Removed ${ids.size} ${if (ids.size == 1) "book" else "books"} from the library.", Toast.LENGTH_LONG).show()
+                        } catch (e: CancellationException) { throw e }
+                        catch (e: Exception) { Toast.makeText(ctx,"Could not remove the selected books: ${e.localizedMessage ?: "unknown error"}",Toast.LENGTH_LONG).show() }
+                        finally { removingSelected=false }
+                    }
+                }
+            }) { Text(if (removingSelected) "Removing…" else "Remove", color=MaterialTheme.colorScheme.error) }
+        },
+        dismissButton={ TextButton(enabled=!removingSelected,onClick={bulkRemoveConfirm=false}){Text("Cancel")} }
+    )
 } }
 membershipBook?.let { book ->
     val shelfIds by remember(book.id) { dao.observeShelfIdsForBook(book.id) }.collectAsState(initial = null)

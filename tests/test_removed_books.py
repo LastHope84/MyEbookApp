@@ -77,6 +77,11 @@ class RemovedBooksWiringTest(unittest.TestCase):
         self.assertIn('suspend fun removeBooks(', DB)
         self.assertIn('markRemoved(entries)', DB)
 
+    def test_selection_actions_offer_removal(self):
+        self.assertIn('"Remove from library"', MAIN)
+        self.assertIn('bulkRemoveConfirm', MAIN)
+        self.assertIn('Removed books', MAIN)
+
     def test_duplicate_cleanup_also_remembers_removals(self):
         self.assertIn('dao.removeBooks(', DB)
         self.assertIn('bookIdentity(it.uriString)', DB)

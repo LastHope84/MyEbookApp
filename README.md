@@ -5,7 +5,7 @@ reader's shelves rather than as a store product: the library lives on the
 device, there is no account, and there is no analytics.
 
 Stable release: **1.16.0** (Android 8.0 or later, arm64-v8a), confirmed on-device.
-Latest build: **1.18.0**, which adds saved quotes, quote browsing inside the reader, and keeps removed books removed.
+Latest build: **1.18.1**, which adds saved quotes, quote browsing inside the reader, keeps removed books removed, and adds Remove to the selection actions.
 
 ## Features
 
